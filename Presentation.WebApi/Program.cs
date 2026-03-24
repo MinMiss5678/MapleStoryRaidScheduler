@@ -8,6 +8,7 @@ using Infrastructure.Dapper;
 using Infrastructure.Query;
 using Infrastructure.Repositories;
 using Infrastructure.Services;
+using Microsoft.AspNetCore.HttpOverrides;
 using Npgsql;
 using Presentation.WebApi.Middleware;
 
@@ -66,6 +67,15 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<AuthenticationMiddleware>();
+var options = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+
+// 允許 Docker bridge network
+options.KnownNetworks.Clear(); // 清掉預設 127.0.0.1/8
+options.KnownProxies.Clear();
+app.UseForwardedHeaders(options);
 app.UseHttpsRedirection();
 app.MapControllers();
 app.Run();
