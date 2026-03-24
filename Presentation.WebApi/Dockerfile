@@ -1,5 +1,4 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
-USER $APP_UID
 WORKDIR /app
 EXPOSE 5230
 
@@ -23,5 +22,4 @@ RUN dotnet publish "./Presentation.WebApi.csproj" -c $BUILD_CONFIGURATION -o /ap
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-COPY Presentation.WebApi/appsettings.json ./appsettings.json
 ENTRYPOINT ["dotnet", "Presentation.WebApi.dll"]
