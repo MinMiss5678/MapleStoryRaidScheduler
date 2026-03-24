@@ -34,7 +34,7 @@ public class AuthController : ControllerBase
                 SameSite = SameSiteMode.Strict,
                 Expires = result.Expiry
             });
-            
+
             Response.Cookies.Append("discordId", result.DiscordId.ToString(), new CookieOptions
             {
                 HttpOnly = true,
@@ -43,7 +43,7 @@ public class AuthController : ControllerBase
                 Expires = result.Expiry
             });
 
-            return Ok(new { success = true, type = "session" });
+            return Ok(new { type = "session" });
         }
         else if (result.IsJwt)
         {
@@ -54,8 +54,8 @@ public class AuthController : ControllerBase
                 SameSite = SameSiteMode.Strict,
                 Expires = result.Expiry
             });
-            
-            return Ok(new { success = true, type = "jwt" });
+
+            return Ok(new { type = "jwt" });
         }
         else
         {
@@ -74,13 +74,13 @@ public class AuthController : ControllerBase
         {
             var result = await _authAppService.LogoutAsync(sessionId, discordId);
             if (!result)
-                return StatusCode(500, new { success = false, message = "Failed to delete session" });    
+                return StatusCode(500, new { message = "Failed to delete session" });    
         }
 
         Response.Cookies.Delete($"sessionId{discordId}");
         Response.Cookies.Delete("jwtToken");
         Response.Cookies.Delete("discordId");
         
-        return Ok(new { success = true });
+        return Ok();
     }
 }
