@@ -2,17 +2,29 @@
 
 MapleStory Raid Scheduler 是一個專為新楓之谷（MapleStory）玩家設計的網頁應用程式，旨在協助玩家組織與排定 Boss 揪團（Raid）行程。
 
-## 專案概述
+## 主要功能
 
-本專案提供了一個直觀的介面，讓團長可以輕鬆建立揪團、管理團員，並與 Discord 進行整合，提供即時的通知與身分組管理。
+- **角色管理:** 玩家可以新增、編輯與刪除其遊戲角色，並同步職業與戰力。
+- **Boss 登記:** 支援多樣化的 Boss 登記，玩家可指定預計挑戰的副本及數量。
+- **彈性時段:** 玩家可自訂每週可參與的時間段（如：週一 20:00 - 22:00）。
+- **自動排程:** 管理員可根據玩家登記與時段，一鍵生成最佳化的隊伍排班表。
+- **Discord 整合:**
+  - **OAuth2 登入:** 透過 Discord 快速驗證身分。
+  - **排程通知:** 排班完成時，Bot 會在頻道發送訊息。
+  - **身分組同步:** 自動檢查伺服器身分組，確保只有授權玩家可以進行登記。
 
 ## 技術棧
 
-- **後端 (Backend):** .NET 9 (C# 13)
-- **前端 (Frontend):** Next.js (App Router, TypeScript)
+- **後端 (Backend):** .NET 9 (C# 13, ASP.NET Core)
+- **前端 (Frontend):** Next.js (App Router, Tailwind CSS, Shadcn/UI)
 - **資料庫 (Database):** PostgreSQL (使用 Dapper 作為 ORM)
 - **容器化 (Containerization):** Docker
-- **外部整合:** Discord API (身分組驗證、機器人通知)
+- **外部整合:** Discord API (OAuth2, DSharpPlus 機器人)
+- **排程引擎:** 基於玩家可用時段與副本需求的自動配對系統
+
+## 文件 (Documentation)
+
+- [Architecture 設計說明](docs/architecture.md)
 
 ## 專案結構
 
