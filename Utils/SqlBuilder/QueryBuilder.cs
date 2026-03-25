@@ -10,6 +10,7 @@ public class QueryBuilder
 {
     private string _from = "";
     private string _orderBy = "";
+    private int? _limit;
     private readonly List<string> _selects = new();
     private readonly List<string> _joins = new();
     private readonly SqlConditionGroup _rootGroup = new("AND", false);
@@ -99,6 +100,12 @@ public class QueryBuilder
         return this;
     }
 
+    public QueryBuilder Limit(int limit)
+    {
+        _limit = limit;
+        return this;
+    }
+
     public (string Sql, DynamicParameters Params) Build()
     {
         var table = _from;
@@ -112,6 +119,9 @@ public class QueryBuilder
 
         if (!string.IsNullOrEmpty(_orderBy))
             sql += _orderBy;
+
+        if (_limit.HasValue)
+            sql += $" LIMIT {_limit.Value}";
 
         return (sql, _parameters);
     }
