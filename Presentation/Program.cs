@@ -33,16 +33,28 @@ public class Program
             .ConfigureServices((context, services) =>
             {
                 var config = context.Configuration;
-                var token = config["Discord:BotToken"];
-                var intents = DiscordIntents.AllUnprivileged |
-                              DiscordIntents.MessageContents |
-                              DiscordIntents.Guilds |
-                              DiscordIntents.GuildMembers;
-                services.AddDiscordClient(token, intents);
-                
+                var tokenFile = config["Discord:BotTokenFile"];
+
+                if (!string.IsNullOrEmpty(tokenFile) && File.Exists(tokenFile))
+                {
+                    var token = File.ReadAllText(tokenFile).Trim();
+              
+                    var intents = DiscordIntents.AllUnprivileged |
+                                  DiscordIntents.MessageContents |
+                                  DiscordIntents.Guilds |
+                                  DiscordIntents.GuildMembers;
+                    services.AddDiscordClient(token, intents);
+                }
+
                 // 資料庫與 Repository 註冊
-                services.AddSingleton<NpgsqlConnection>(_ =>
-                    new NpgsqlConnection(config["ConnectionStrings:DefaultConnection"]));
+                var defaultConnectionFile = config["ConnectionStrings:DefaultConnectionFile"];
+                if (!string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectionFile))
+                {
+                    var defaultConnection = File.ReadAllText(defaultConnectionFile).Trim();
+                    services.AddSingleton<NpgsqlConnection>(_ =>
+                        new NpgsqlConnection(defaultConnection));
+                }
+                
                 services.AddSingleton<IUnitOfWork, UnitOfWork>();
                 services.AddSingleton<IDiscordService, DiscordService>();
                 services.AddSingleton<ITeamSlotQuery, TeamSlotQuery>();
