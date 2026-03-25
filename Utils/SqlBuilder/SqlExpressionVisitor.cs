@@ -52,7 +52,29 @@ internal class SqlExpressionVisitor : ExpressionVisitor
             return node;
         }
 
-        var value = Expression.Lambda(node).Compile().DynamicInvoke();
+        object? value;
+        if (node.Expression is ConstantExpression constExpr)
+        {
+            var container = constExpr.Value;
+            var member = node.Member;
+            if (member is System.Reflection.FieldInfo field)
+            {
+                value = field.GetValue(container);
+            }
+            else if (member is System.Reflection.PropertyInfo prop)
+            {
+                value = prop.GetValue(container);
+            }
+            else
+            {
+                value = Expression.Lambda(node).Compile().DynamicInvoke();
+            }
+        }
+        else
+        {
+            value = Expression.Lambda(node).Compile().DynamicInvoke();
+        }
+
         AddParameter(node.Member.Name, value);
         return node;
     }
