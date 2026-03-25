@@ -29,6 +29,11 @@ public class AuthAppService
 
         if (roles.Contains(_discordOptions.AdminRoleId))
         {
+            await _playerService.CreateAsync(new Player()
+            {
+                DiscordId = user.Id,
+                DiscordName = user.Name
+            });
             var sessionId = await _authService.CreateSessionAsync(user.Id, token);
             return new LoginResult
                 { SessionId = sessionId, DiscordId = user.Id, Expiry = DateTimeOffset.UtcNow.AddDays(30) };
