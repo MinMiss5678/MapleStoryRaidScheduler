@@ -29,8 +29,11 @@ public class PeriodQuery : IPeriodQuery
         var sql = new QueryBuilder();
         sql.Select<PeriodDbModel>(x => new {x.Id})
             .From<PeriodDbModel>()
-            .Where<PeriodDbModel>(x => x.StartDate >= nextThursday && x.StartDate <= nextWednesday);
+            .Where<PeriodDbModel>(x => x.StartDate <= targetDate && x.EndDate >= targetDate);
+
         var periodId = await _unitOfWork.QuerySingleOrDefaultAsync<int?>(sql);
+        return periodId ?? 0;
+    }
 
         return await _unitOfWork.QuerySingleAsync<int>(sql);
     }

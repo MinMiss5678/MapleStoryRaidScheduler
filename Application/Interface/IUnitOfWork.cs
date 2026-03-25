@@ -11,6 +11,6 @@ public interface IUnitOfWork
     Task<int> ExecuteAsync<T>(SqlCommandBuilder<T> builder);
     Task<int> ExecuteScalarAsync<T>(SqlCommandBuilder<T> builder);
     Task<TResult> QuerySingleAsync<TResult>(QueryBuilder builder);
-    Task<TResult> QuerySingleOrDefault<TResult>(QueryBuilder builder);
+    Task<TResult?> QuerySingleOrDefaultAsync<TResult>(QueryBuilder builder);
     Task<IEnumerable<TResult>> QueryAsync<TResult>(QueryBuilder builder);
 }
