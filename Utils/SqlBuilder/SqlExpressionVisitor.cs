@@ -9,7 +9,6 @@ public class SqlExpressionVisitor : ExpressionVisitor
     private readonly string? _alias;
     private readonly DynamicParameters _parameters;
     private readonly StringBuilder _sb = new();
-    private int _paramIndex = 0;
 
     public SqlExpressionVisitor(string? alias, DynamicParameters parameters)
     {
