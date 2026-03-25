@@ -4,7 +4,7 @@ using Dapper;
 
 namespace Utils.SqlBuilder;
 
-internal class SqlExpressionVisitor : ExpressionVisitor
+public class SqlExpressionVisitor : ExpressionVisitor
 {
     private readonly string? _alias;
     private readonly DynamicParameters _parameters;
