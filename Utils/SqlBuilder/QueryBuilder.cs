@@ -11,6 +11,7 @@ public class QueryBuilder
     private string _from = "";
     private string _orderBy = "";
     private int? _limit;
+    private int? _offset;
     private readonly List<string> _selects = new();
     private readonly List<string> _joins = new();
     private readonly SqlConditionGroup _rootGroup = new("AND", false);
@@ -106,6 +107,12 @@ public class QueryBuilder
         return this;
     }
 
+    public QueryBuilder Offset(int offset)
+    {
+        _offset = offset;
+        return this;
+    }
+
     public (string Sql, DynamicParameters Params) Build()
     {
         var table = _from;
@@ -122,6 +129,9 @@ public class QueryBuilder
 
         if (_limit.HasValue)
             sql += $" LIMIT {_limit.Value}";
+
+        if (_offset.HasValue)
+            sql += $" OFFSET {_offset.Value}";
 
         return (sql, _parameters);
     }
