@@ -73,10 +73,10 @@ public class UnitOfWork : IUnitOfWork
         return await _connection.QuerySingleAsync<TResult>(sql, param, _transaction);
     }
     
-    public async Task<TResult> QuerySingleOrDefault<TResult>(QueryBuilder builder)
+    public async Task<TResult?> QuerySingleOrDefaultAsync<TResult>(QueryBuilder builder)
     {
         var (sql, param) = builder.Build();
-        return await _connection.QuerySingleOrDefaultAsync<TResult>(sql, param, _transaction) ;
+        return await _connection.QuerySingleOrDefaultAsync<TResult?>(sql, param, _transaction) ;
     }
 
     public async Task<IEnumerable<TResult>> QueryAsync<TResult>(QueryBuilder builder)

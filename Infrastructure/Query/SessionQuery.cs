@@ -27,6 +27,6 @@ public class SessionQuery : ISessionQuery
             .From<SessionDbModel>()
             .Where<SessionDbModel>(x => x.SessionId == sessionId);
 
-        return await _unitOfWork.QuerySingleOrDefault<Session>(sql);
+        return await _unitOfWork.QuerySingleOrDefaultAsync<Session>(sql);
     }
 }
