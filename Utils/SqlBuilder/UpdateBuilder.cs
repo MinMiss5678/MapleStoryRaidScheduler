@@ -24,6 +24,11 @@ public class UpdateBuilder<T> : SqlCommandBuilder<T>
 
     protected override string BuildCommand()
     {
+        if (_set.Count == 0)
+        {
+            return "SELECT 0"; // No-op SQL
+        }
+
         var setPart = string.Join(", ", _set.Keys.Select(k => $"\"{k}\" = @{k}"));
         foreach (var kv in _set) _parameters.Add(kv.Key, kv.Value);
         
