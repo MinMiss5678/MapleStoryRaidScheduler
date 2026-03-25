@@ -9,6 +9,7 @@ namespace Utils.SqlBuilder;
 public class QueryBuilder
 {
     private string _from = "";
+    private string _orderBy = "";
     private readonly List<string> _selects = new();
     private readonly List<string> _joins = new();
     private readonly SqlConditionGroup _rootGroup = new("AND", false);
@@ -86,6 +87,18 @@ public class QueryBuilder
     }
 
     // --- Build ---
+    public QueryBuilder OrderByDescending<T>(Expression<Func<T, object>> expression)
+    {
+        var member = expression.Body switch
+        {
+            MemberExpression me => me.Member.Name,
+            UnaryExpression ue when ue.Operand is MemberExpression me => me.Member.Name,
+            _ => throw new NotSupportedException("Only member expressions are supported")
+        };
+        _orderBy = $" ORDER BY \"{member}\" DESC";
+        return this;
+    }
+
     public (string Sql, DynamicParameters Params) Build()
     {
         var table = _from;
@@ -96,6 +109,9 @@ public class QueryBuilder
 
         if (_rootGroup.Conditions.Count > 0)
             sql += $" WHERE {_rootGroup.ToSql()}";
+
+        if (!string.IsNullOrEmpty(_orderBy))
+            sql += _orderBy;
 
         return (sql, _parameters);
     }
