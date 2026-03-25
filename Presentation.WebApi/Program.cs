@@ -2,6 +2,7 @@ using Application.Interface;
 using Application.Options;
 using Application.Queries;
 using Application.Services;
+using Dapper;
 using Domain.Repositories;
 using Infrastructure.BackgroundJobs;
 using Infrastructure.Dapper;
@@ -52,8 +53,11 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddControllers();
 
-builder.Services.Configure<DiscordOptions>(
-    builder.Configuration.GetSection("Discord"));
+// Dapper TimeOnly support
+SqlMapper.AddTypeHandler(new TimeOnlyTypeHandler());
+
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection("Jwt"));
 
 builder.Services.Configure<JwtOptions>(
     builder.Configuration.GetSection("Jwt"));
