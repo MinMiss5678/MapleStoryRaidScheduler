@@ -23,7 +23,7 @@ graph TD
     end
 
     DiscordBot -->|發送通知| DiscordChannel["Discord 頻道"]
-    DiscordChannel -->|查看| User
+    User -->|查看| DiscordChannel
     User -->|OAuth2 登入| DiscordOAuth["Discord OAuth2"]
     DiscordOAuth -->|授權| Backend
 ```
