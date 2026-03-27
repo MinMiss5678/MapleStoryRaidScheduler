@@ -220,9 +220,8 @@ erDiagram
         text job
         integer attack_power
         integer rounds
-        boolean is_manual %% true 表示手動調整，自動排程不覆蓋
+        boolean is_manual
     }
-    %% 資料庫不預留空位，前端比對 BossTemplate 動態顯示缺額
     Session {
         varchar session_id PK
         bigint discord_id FK
