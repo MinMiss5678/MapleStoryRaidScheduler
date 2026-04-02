@@ -1,87 +1,31 @@
-﻿using System.Data;
-using Application.Interface;
-using Dapper;
-using Npgsql;
-using Utils.SqlBuilder;
+﻿using Application.Interface;
 
 namespace Infrastructure.Dapper;
 
 public class UnitOfWork : IUnitOfWork
 {
-    private readonly NpgsqlConnection _connection;
-    private NpgsqlTransaction? _transaction;
-    private readonly Dictionary<Type, object> _repositories = new();
+    private readonly DbContext _context;
 
-    public UnitOfWork(NpgsqlConnection connection)
+    public UnitOfWork(DbContext context)
     {
-        _connection = connection;
+        _context = context;
     }
 
-    public IRepository<T> Repository<T>() where T : class
+    public Task BeginAsync()
     {
-        var type = typeof(T);
-        if (!_repositories.ContainsKey(type))
-        {
-            _repositories[type] = new DapperRepository<T>(_connection, _transaction);
-        }
-
-        return (IRepository<T>)_repositories[type];
+        _context.Begin();
+        return Task.CompletedTask;
     }
 
-    public async Task BeginTransactionAsync()
+    public Task CommitAsync()
     {
-        if (_connection.State != ConnectionState.Open)
-        {
-            await _connection.OpenAsync();
-            _transaction = await _connection.BeginTransactionAsync();
-        }
+        _context.Commit();
+        return Task.CompletedTask;
     }
 
-    public async Task CommitAsync()
+    public Task RollbackAsync()
     {
-        if (_transaction != null)
-        {
-            await _transaction.CommitAsync();
-            _transaction = null;
-        }
-    }
-
-    public async Task RollbackAsync()
-    {
-        if (_transaction != null)
-        {
-            await _transaction.RollbackAsync();
-            _transaction = null;
-        }
-    }
-
-    public async Task<int> ExecuteAsync<T>(SqlCommandBuilder<T> builder)
-    {
-        var (sql, param) = builder.Build();
-        return await _connection.ExecuteAsync(sql, param, _transaction);
-    }
-
-    public async Task<int> ExecuteScalarAsync<T>(SqlCommandBuilder<T> builder)
-    {
-        var (sql, param) = builder.Build();
-        return await _connection.ExecuteScalarAsync<int>(sql, param, _transaction);
-    }
-
-    public async Task<TResult> QuerySingleAsync<TResult>(QueryBuilder builder)
-    {
-        var (sql, param) = builder.Build();
-        return await _connection.QuerySingleAsync<TResult>(sql, param, _transaction);
-    }
-    
-    public async Task<TResult?> QuerySingleOrDefaultAsync<TResult>(QueryBuilder builder)
-    {
-        var (sql, param) = builder.Build();
-        return await _connection.QuerySingleOrDefaultAsync<TResult?>(sql, param, _transaction) ;
-    }
-
-    public async Task<IEnumerable<TResult>> QueryAsync<TResult>(QueryBuilder builder)
-    {
-        var (sql, param) = builder.Build();
-        return await _connection.QueryAsync<TResult>(sql, param, _transaction);
+        _context.Rollback();
+        return Task.CompletedTask;
     }
 }
