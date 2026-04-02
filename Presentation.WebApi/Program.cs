@@ -20,6 +20,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddScoped<AuthenticationMiddleware>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped<DbContext>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<AuthAppService, AuthAppService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
@@ -53,6 +54,12 @@ if (!string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectio
 {
     var defaultConnection = File.ReadAllText(defaultConnectionFile).Trim();
     builder.Services.AddScoped<NpgsqlConnection>(_ => new NpgsqlConnection(defaultConnection));
+    builder.Services.AddScoped<IDbConnection>(_ =>
+    {
+        var conn = new NpgsqlConnection(defaultConnection);
+        conn.Open();
+        return conn;
+    });
 }
 
 builder.Services.AddMemoryCache();
@@ -104,7 +111,6 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseMiddleware<AuthenticationMiddleware>();
 var options = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
@@ -115,5 +121,7 @@ options.KnownNetworks.Clear(); // 清掉預設 127.0.0.1/8
 options.KnownProxies.Clear();
 app.UseForwardedHeaders(options);
 app.UseHttpsRedirection();
+app.UseMiddleware<AuthenticationMiddleware>();
+app.UseMiddleware<UnitOfWorkMiddleware>();
 app.MapControllers();
 app.Run();
