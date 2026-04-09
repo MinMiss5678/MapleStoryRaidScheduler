@@ -58,7 +58,7 @@
     image: minqq/frontend:latest
     environment:
       - NEXT_PUBLIC_APP_URL=https://maplestory.paralleluniversegame.uk
-      - NEXT_PUBLIC_API_URL=http://backend:5230
+      - BACKEND_API_URL=http://backend:5230
       - NEXT_PUBLIC_DISCORD_CLIENT_ID=836636705498595340
     container_name: frontend
     depends_on:

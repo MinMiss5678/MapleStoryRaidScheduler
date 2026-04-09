@@ -1,10 +1,21 @@
 ﻿import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
+const ALLOWED_PATHS = new Set([
+    'auth', 'character', 'boss', 'register', 'schedule',
+    'teamslot', 'period', 'systemconfig', 'jobcategory',
+]);
+
 async function handleProxy(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
     const {path} = await params;
+
+    // 路徑白名單驗證
+    if (!ALLOWED_PATHS.has(path[0]?.toLowerCase())) {
+        return new NextResponse('Forbidden', { status: 403 });
+    }
+
     const targetPath = path.join('/');
-    const targetUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/${targetPath}${req.nextUrl.search}`;
+    const targetUrl = `${process.env.BACKEND_API_URL}/api/${targetPath}${req.nextUrl.search}`;
 
     // 複製 headers（避免 Host / Connection 導致問題）
     const headers = new Headers(req.headers);
