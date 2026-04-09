@@ -105,6 +105,7 @@ options.KnownNetworks.Clear(); // 清掉預設 127.0.0.1/8
 options.KnownProxies.Clear();
 app.UseForwardedHeaders(options);
 app.UseHttpsRedirection();
+app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseMiddleware<AuthenticationMiddleware>();
 app.UseMiddleware<UnitOfWorkMiddleware>();
 app.MapControllers();
