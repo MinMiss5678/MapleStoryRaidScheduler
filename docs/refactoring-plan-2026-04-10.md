@@ -205,7 +205,7 @@
 
 ### 待確認後處理
 - [x] `PlayerRegisterSchedule.Weekdays/Timeslots` — **已確認為廢棄欄位，已刪除**
-- [ ] `TeamSlotController` `"admin"` 小寫 vs `AuthAppService` `"Admin"` 大寫 — 前端 `RolesProvider` 使用 JWT claims 中的 role，需確認後端 role 比對是否 case-insensitive
+- [x] `TeamSlotController` `"admin"` 小寫 vs `AuthAppService` `"Admin"` 大寫 — **已確認一致**：`AuthAppService` 已改為 `"admin"` 小寫，無 case-insensitive 問題
 - [x] `IScheduleService` 缺少的三個方法（`GetPartiesAsync`、`JoinTeamAsync`、`FinalizeScheduleAsync`）— **已確認為孤立功能**，前端無任何呼叫，可安全移除介面定義
 - [x] `BossController` 的 `POST`（新增 Boss）和 `PUT/{id}`（更新 Boss）— **前端已新增 `createBoss` 和 `updateBoss` 方法**，不再孤立
 
