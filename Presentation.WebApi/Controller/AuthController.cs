@@ -1,4 +1,4 @@
-﻿using Application.Services;
+﻿using Application.Interface;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,9 +8,9 @@ namespace Presentation.WebApi.Controller;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly AuthAppService _authAppService;
+    private readonly IAuthAppService _authAppService;
 
-    public AuthController(AuthAppService authAppService)
+    public AuthController(IAuthAppService authAppService)
     {
         _authAppService = authAppService;
     }

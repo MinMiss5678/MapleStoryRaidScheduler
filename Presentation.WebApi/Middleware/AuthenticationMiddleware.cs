@@ -77,9 +77,11 @@ public class AuthenticationMiddleware : IMiddleware
             var validateTokenResult = _jwtService.ValidateToken(token);
             if (validateTokenResult.IsValid)
             {
+                var jwtPlayer = await _playerService.GetAsync(validateTokenResult.DiscordId);
                 identity = new ClaimsIdentity(new[]
                 {
-                    new Claim("discordId", validateTokenResult.DiscordId.ToString())
+                    new Claim("discordId", validateTokenResult.DiscordId.ToString()),
+                    new Claim(ClaimTypes.Role, jwtPlayer?.Role ?? "")
                 }, "jwt");
             }
             else if (validateTokenResult.Exception is SecurityTokenExpiredException)
@@ -96,9 +98,11 @@ public class AuthenticationMiddleware : IMiddleware
                         Expires = DateTimeOffset.UtcNow.AddDays(30)
                     });
 
+                    var refreshedPlayer = await _playerService.GetAsync(jwtTokenClaims.DiscordId);
                     identity = new ClaimsIdentity(new[]
                     {
-                        new Claim("discordId", jwtTokenClaims.DiscordId.ToString())
+                        new Claim("discordId", jwtTokenClaims.DiscordId.ToString()),
+                        new Claim(ClaimTypes.Role, refreshedPlayer?.Role ?? "")
                     }, "jwt");
 
                     context.User = new ClaimsPrincipal(identity);

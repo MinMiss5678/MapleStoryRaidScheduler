@@ -5,7 +5,7 @@ using Domain.Repositories;
 
 namespace Application.Services;
 
-public class AuthAppService
+public class AuthAppService : IAuthAppService
 {
     private readonly IAuthService _authService;
     private readonly IDiscordOAuthClient _discordOAuthClient;

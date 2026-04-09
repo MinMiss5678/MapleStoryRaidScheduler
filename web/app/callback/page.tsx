@@ -18,7 +18,7 @@ export default function CallbackPage() {
         const loginWithCode = async () => {
             try {
                 const data = await authService.login(code);
-                setRole(data.role.toLowerCase());
+                setRole(data);
                 router.push("/");
             } catch (e) {
                 toast.error("登入失敗");
