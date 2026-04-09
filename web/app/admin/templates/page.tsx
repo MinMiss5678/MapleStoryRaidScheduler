@@ -88,7 +88,9 @@ export default function TemplateAdminPage() {
         if (!editingTemplate) return;
         
         try {
-            const success = await bossService.saveTemplate(editingTemplate);
+            const success = editingTemplate.id === 0
+                ? await bossService.createTemplate(editingTemplate)
+                : await bossService.updateTemplate(editingTemplate);
             if (success) {
                 toast.success("範本已儲存");
                 setEditingTemplate(null);
