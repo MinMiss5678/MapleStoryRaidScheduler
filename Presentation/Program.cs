@@ -1,4 +1,5 @@
-﻿using Application.Interface;
+﻿using Application.Events;
+using Application.Interface;
 using Application.Options;
 using Application.Queries;
 using Domain.Repositories;
@@ -62,6 +63,13 @@ public class Program
                 services.AddSingleton<ISessionRepository, SessionRepository>();
                 services.AddSingleton<ISessionQuery, SessionQuery>();
                 services.AddSingleton<IDiscordOAuthClient, DiscordOAuthClient>();
+                services.AddSingleton<ConfigChangeNotifier>();
+                services.AddSingleton<ISystemConfigService, SystemConfigService>();
+                services.AddSingleton<IPeriodQuery, PeriodQuery>();
+                services.AddSingleton<IPeriodRepository, PeriodRepository>();
+                services.AddSingleton<IPlayerRepository, PlayerRepository>();
+                services.AddSingleton<IPlayerService, PlayerService>();
+                services.AddSingleton<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();
                 services.ConfigureEventHandlers(b => b.AddEventHandlers<MemberUpdatedHandler>());
                 
                 services.AddMemoryCache();
@@ -69,9 +77,12 @@ public class Program
                 // 註冊自動執行的 Background Services
                 services.AddHostedService<DiscordBotService>();       // Discord 啟動管理
                 services.AddHostedService<DailyNotificationService>(); // 每日通知排程
+                services.AddHostedService<RegistrationDeadlineJob>();  // 截止通知排程
                 
                 services.Configure<DiscordOptions>(
                     config.GetSection("Discord"));
+                services.Configure<AppOptions>(
+                    config.GetSection("App"));
             })
             .Build();
 

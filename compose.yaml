@@ -1,0 +1,122 @@
+﻿services:
+  #  alpine:
+  #      image: alpine/curl:8.14.1
+  #      container_name: alpine
+  #      command: curl -fsSL http://api:5230
+  #      networks:
+  #        - frontend
+
+  database:
+    image: postgres:18
+    container_name: presentation-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+      - POSTGRES_DB=presentationdb
+    secrets:
+      - postgres_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql
+    networks:
+      - bridge
+  
+  backend:
+#    build:
+#      context: ./Presentation.WebApi
+    image: minqq/presentation.webapi:latest
+#    image: presentation.webapi:latest
+    container_name: backend
+    depends_on:
+      - database
+    environment:
+      - TZ=Asia/Taipei
+      - ASPNETCORE_URLS=http://+:5230
+      - ConnectionStrings__DefaultConnectionFile=/run/secrets/db_connection
+      - Discord:BotTokenFile=/run/secrets/discord_bot_token
+      - Discord:ClientId=836636705498595340
+      - Discord:ClientSecretFile=/run/secrets/discord_client_secret
+      - Discord:RedirectUri=https://maplestory.paralleluniversegame.uk/callback
+      - Discord:GuildId=840590742270771220
+      - Jwt:SecretKeyFile=/run/secrets/jwt_secret_key
+      - Jwt-Issuer=https://maplestory.paralleluniversegame.uk
+      - Jwt-Audience=https://maplestory.paralleluniversegame.uk
+    secrets:
+      - db_connection
+      - discord_bot_token
+      - discord_client_secret
+      - jwt_secret_key
+    expose:
+      - "5230"
+    networks:
+      - bridge
+
+  frontend:
+#    build:
+#      context: ./web
+    image: minqq/frontend:latest
+    environment:
+      - NEXT_PUBLIC_APP_URL=https://maplestory.paralleluniversegame.uk
+      - NEXT_PUBLIC_API_URL=http://backend:5230
+      - NEXT_PUBLIC_DISCORD_CLIENT_ID=836636705498595340
+    container_name: frontend
+    depends_on:
+      - backend
+    expose:
+      - "3000"  # 不需要對外開 port，Cloudflared 會在內部連
+    networks:
+      - bridge
+
+  bot:
+#    build:
+#      context: ./Presentation
+#    image: presentation:latest
+    image: minqq/presentation:latest
+    container_name: bot
+    depends_on:
+      - database
+    environment:
+      - ConnectionStrings__DefaultConnectionFile=/run/secrets/db_connection
+      - Discord:BotTokenFile=/run/secrets/discord_bot_token3
+      - Discord:ChannelId=840590742270771223
+      - App:AppUrl=https://maplestory.paralleluniversegame.uk
+    secrets:
+      - db_connection
+      - discord_bot_token
+    networks:
+      - bridge
+  
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    command: tunnel --no-autoupdate run
+    depends_on:
+      - frontend
+    environment:
+      - TUNNEL_TOKEN_FILE=/run/secrets/cloudflared_token
+    secrets:
+      - cloudflared_token
+    networks:
+      - bridge
+        
+secrets:
+  db_connection:
+    file: ./secrets/db_connection.txt
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  discord_bot_token:
+    file: ./secrets/discord_bot_token.txt
+  discord_client_secret:
+    file: ./secrets/discord_client_secret.txt
+  jwt_secret_key:
+    file: ./secrets/jwt_secret_key.txt
+  cloudflared_token:
+    file: ./secrets/cloudflared_token.txt
+
+networks:
+  bridge:
+    driver: bridge
+
+volumes:
+  db_data:
