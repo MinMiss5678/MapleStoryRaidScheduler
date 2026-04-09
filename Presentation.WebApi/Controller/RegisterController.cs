@@ -68,7 +68,7 @@ public class RegisterController: ControllerBase
     }
     
     [HttpPut]
-    public async Task<IActionResult> UpdateAsync([FromBody] Register register)
+    public async Task<IActionResult> UpdateAsync([FromBody] RegisterUpdateCommand command)
     {
         var discordId = User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value;
         if (discordId == null)
@@ -76,8 +76,8 @@ public class RegisterController: ControllerBase
             return Unauthorized(new { error = "NotAuthenticated" });
         }
 
-        register.DiscordId = Convert.ToUInt64(discordId);
-        await _registerService.UpdateAsync(register);
+        command.DiscordId = Convert.ToUInt64(discordId);
+        await _registerService.UpdateAsync(command);
         
         return Ok();
     }

@@ -88,7 +88,16 @@ public class TeamSlotService : ITeamSlotService
                 if (!isAdmin)
                     throw new UnauthorizedAccessException("只有管理員可以建立新隊伍。");
 
-                var teamSlotId = await _teamSlotRepository.CreateAsync(teamSlot);
+                var entity = new TeamSlot
+                {
+                    BossId = teamSlot.BossId,
+                    PeriodId = teamSlot.PeriodId,
+                    SlotDateTime = teamSlot.SlotDateTime,
+                    IsTemporary = teamSlot.IsTemporary,
+                    IsPublished = teamSlot.IsPublished,
+                    TemplateId = teamSlot.TemplateId
+                };
+                var teamSlotId = await _teamSlotRepository.CreateAsync(entity);
                 foreach (var character in teamSlot.Characters)
                 {
                     character.TeamSlotId = teamSlotId;

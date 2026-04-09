@@ -9,6 +9,7 @@ public class DbContext
 {
     public IDbConnection Connection { get; }
     public IDbTransaction Transaction { get; private set; }
+    private bool _completed;
 
     public DbContext(IDbConnection connection)
     {
@@ -17,6 +18,7 @@ public class DbContext
 
     public void Begin()
     {
+        _completed = false;
         if (Transaction == null)
             Transaction = Connection.BeginTransaction();
     }
@@ -25,27 +27,38 @@ public class DbContext
     {
         Transaction?.Commit();
         Transaction = null;
+        _completed = true;
     }
 
     public void Rollback()
     {
         Transaction?.Rollback();
         Transaction = null;
+        _completed = true;
+    }
+
+    private void EnsureNotCompleted()
+    {
+        if (_completed)
+            throw new InvalidOperationException("Transaction has already been committed or rolled back. No further operations are allowed.");
     }
 
     public virtual async Task<int> ExecuteAsync<T>(SqlCommandBuilder<T> builder)
     {
+        EnsureNotCompleted();
         var (sql, param) = builder.Build();
         return await Connection.ExecuteAsync(sql, param, Transaction);
     }  
     
     public virtual async Task<int> ExecuteAsync(string sql, object param)
     {
+        EnsureNotCompleted();
         return await Connection.ExecuteAsync(sql, param, Transaction);
     }
 
     public virtual async Task<int> ExecuteScalarAsync<T>(SqlCommandBuilder<T> builder)
     {
+        EnsureNotCompleted();
         var (sql, param) = builder.Build();
         return await Connection.ExecuteScalarAsync<int>(sql, param, Transaction);
     }

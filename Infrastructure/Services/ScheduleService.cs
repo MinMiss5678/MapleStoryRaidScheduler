@@ -28,46 +28,10 @@ public class ScheduleService : IScheduleService
         _jobCategoryRepository = jobCategoryRepository;
     }
 
-    public async Task<IEnumerable<TeamSlot>> GetPartiesAsync(int periodId)
-    {
-        // 從資料庫獲取該週期的團隊列表
-        return await _teamSlotRepository.GetByPeriodIdAsync(periodId);
-    }
-
-    public async Task<bool> JoinTeamAsync(int teamSlotId, int teamSlotCharacterId, string characterId)
-    {
-        var slot = await _teamSlotRepository.GetByIdAsync(teamSlotId);
-        if (slot == null || !slot.IsPublished) return false;
-
-        var characterSlot = slot.Characters.FirstOrDefault(c => c.Id == teamSlotCharacterId);
-        if (characterSlot == null || characterSlot.CharacterId != null) return false;
-
-        // 檢查角色是否符合職業需求（Job 可能存的是 JobCategory）
-        // 這裡需要串接 CharacterService 獲取角色詳情
-        
-        characterSlot.CharacterId = characterId;
-        characterSlot.IsManual = true;
-        
-        await _teamSlotRepository.UpdateAsync(slot);
-        return true;
-    }
-
-    public async Task<bool> FinalizeScheduleAsync(int periodId)
-    {
-        var temporarySlots = await _teamSlotRepository.GetTemporaryByPeriodIdAsync(periodId);
-        foreach (var slot in temporarySlots)
-        {
-            slot.IsTemporary = false;
-            slot.IsPublished = true;
-            await _teamSlotRepository.UpdateAsync(slot);
-        }
-        return true;
-    }
-
     public async Task<IEnumerable<TeamSlot>> AutoScheduleWithTemplateAsync(int bossId, int templateId)
     {
         var template = await _bossRepository.GetTemplateByIdAsync(templateId);
-        if (template == null) throw new Exception("Template not found");
+        if (template == null) throw new KeyNotFoundException($"Template {templateId} not found");
 
         var boss = await _bossRepository.GetByIdAsync(bossId);
         var roundConsumption = boss?.RoundConsumption ?? 1;
@@ -154,7 +118,7 @@ public class ScheduleService : IScheduleService
 
                     if (canFormTeam && team.Any())
                     {
-                        var slotDateTime = await GetDateTimeFromPeriod(period.StartDate, period.EndDate, group.Day, group.Slot);
+                        var slotDateTime = GetDateTimeFromPeriod(period.StartDate, period.EndDate, group.Day, group.Slot);
                         schedules.Add(new TeamSlot()
                         {
                             Id = teamSlotId++,
@@ -200,7 +164,7 @@ public class ScheduleService : IScheduleService
     private bool IsInJobCategory(string job, string category, Dictionary<string, HashSet<string>> jobCategories)
         => JobCategoryHelper.IsInJobCategory(job, category, jobCategories);
 
-    public async Task<DateTimeOffset> GetDateTimeFromPeriod(
+    public DateTimeOffset GetDateTimeFromPeriod(
         DateTimeOffset periodStart, 
         DateTimeOffset periodEnd, 
         int weekday, 

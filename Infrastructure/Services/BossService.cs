@@ -55,6 +55,13 @@ public class BossService : IBossService
 
     public async Task<bool> DeleteBossAsync(int bossId)
     {
+        // 級聯刪除：先刪除該 Boss 下所有 Template（含 Requirements），再刪除 Boss
+        var templates = await _bossRepository.GetTemplatesByBossIdAsync(bossId);
+        foreach (var template in templates)
+        {
+            await _bossRepository.DeleteTemplateAsync(template.Id);
+        }
+
         return await _bossRepository.DeleteBossAsync(bossId);
     }
 }

@@ -108,16 +108,7 @@ public class RegisterService : IRegisterService
 
     public async Task CreateAsync(Register register)
     {
-        var config = await _systemConfigService.GetAsync();
-        var currentPeriod = await _periodQuery.GetByNowAsync();
-        if (currentPeriod != null)
-        {
-            var deadline = config.GetDeadlineForPeriod(currentPeriod.StartDate);
-            if (DateTimeOffset.Now > deadline)
-            {
-                throw new Exception("目前已超過報名截止時間，無法報名。");
-            }
-        }
+        await EnsureRegistrationOpen();
 
         var playRegisterId = await _playerRegisterRepository.CreateAsync(register);
 
@@ -141,7 +132,54 @@ public class RegisterService : IRegisterService
         await _autoAssignService.AutoAssignAsync(register);
     }
 
-    public async Task UpdateAsync(Register register)
+    public async Task UpdateAsync(RegisterUpdateCommand command)
+    {
+        await EnsureRegistrationOpen();
+
+        var register = new Register
+        {
+            Id = command.Id,
+            DiscordId = command.DiscordId,
+            PeriodId = command.PeriodId,
+            CharacterRegisters = command.CharacterRegisters,
+            Availabilities = command.Availabilities
+        };
+
+        await _playerRegisterRepository.UpdateAsync(register);
+
+        await _playerAvailabilityRepository.DeleteByPlayerRegisterIdAsync(command.Id);
+        foreach (var availability in command.Availabilities)
+        {
+            await _playerAvailabilityRepository.CreateAsync(new PlayerAvailability
+            {
+                PlayerRegisterId = command.Id,
+                Weekday = availability.Weekday,
+                StartTime = availability.StartTime,
+                EndTime = availability.EndTime
+            });
+        }
+
+        foreach (var c in command.DeleteCharacterRegisterIds)
+        {
+            await _characterRegisterRepository.DeleteAsync(c);
+        }
+
+        foreach (var characterRegister in command.CharacterRegisters)
+        {
+            if (characterRegister.Id != null)
+            {
+                await _characterRegisterRepository.UpdateAsync(characterRegister);
+            }
+            else
+            {
+                characterRegister.PlayerRegisterId = command.Id;
+
+                await _characterRegisterRepository.CreateAsync(characterRegister);
+            }
+        }
+    }
+
+    private async Task EnsureRegistrationOpen()
     {
         var config = await _systemConfigService.GetAsync();
         var currentPeriod = await _periodQuery.GetByNowAsync();
@@ -150,40 +188,7 @@ public class RegisterService : IRegisterService
             var deadline = config.GetDeadlineForPeriod(currentPeriod.StartDate);
             if (DateTimeOffset.Now > deadline)
             {
-                throw new Exception("目前已超過報名截止時間，無法修改報名資訊。");
-            }
-        }
-
-        await _playerRegisterRepository.UpdateAsync(register);
-
-        await _playerAvailabilityRepository.DeleteByPlayerRegisterIdAsync(register.Id);
-        foreach (var availability in register.Availabilities)
-        {
-            await _playerAvailabilityRepository.CreateAsync(new PlayerAvailability
-            {
-                PlayerRegisterId = register.Id,
-                Weekday = availability.Weekday,
-                StartTime = availability.StartTime,
-                EndTime = availability.EndTime
-            });
-        }
-
-        foreach (var c in register.DeleteCharacterRegisterIds)
-        {
-            await _characterRegisterRepository.DeleteAsync(c);
-        }
-
-        foreach (var characterRegister in register.CharacterRegisters)
-        {
-            if (characterRegister.Id != null)
-            {
-                await _characterRegisterRepository.UpdateAsync(characterRegister);
-            }
-            else
-            {
-                characterRegister.PlayerRegisterId = register.Id;
-
-                await _characterRegisterRepository.CreateAsync(characterRegister);
+                throw new InvalidOperationException("目前已超過報名截止時間。");
             }
         }
     }
