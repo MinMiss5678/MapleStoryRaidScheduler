@@ -117,6 +117,63 @@ public class SqlExpressionVisitor : ExpressionVisitor
         return base.VisitUnary(node);
     }
 
+    protected override Expression VisitMethodCall(MethodCallExpression node)
+    {
+        if (node.Method.Name == "Contains")
+        {
+            var isEnumerable = typeof(System.Collections.IEnumerable).IsAssignableFrom(node.Method.DeclaringType);
+            var isStaticEnumerable = node.Method.DeclaringType == typeof(System.Linq.Enumerable);
+
+            if (isEnumerable || isStaticEnumerable)
+            {
+                object? collection = null;
+                var collectionExpr = node.Object ?? node.Arguments[0];
+
+                if (collectionExpr is ConstantExpression constExpr)
+                {
+                    collection = constExpr.Value;
+                }
+                else
+                {
+                    collection = Expression.Lambda(collectionExpr).Compile().DynamicInvoke();
+                }
+
+                if (collection is not System.Collections.IEnumerable enumerable)
+                    throw new NotSupportedException("Contains only supports IEnumerable");
+
+                if (!enumerable.Cast<object>().Any())
+                {
+                    _sb.Append(" (1 = 0) ");
+                    return node;
+                }
+
+                var item = node.Object != null ? node.Arguments[0] : node.Arguments[1];
+                
+                var elementType = collection.GetType().GetGenericArguments().FirstOrDefault()
+                                  ?? collection.GetType().GetElementType()
+                                  ?? typeof(object);
+                
+                var toArrayMethod = typeof(Enumerable)
+                    .GetMethod(nameof(Enumerable.ToArray))!
+                    .MakeGenericMethod(elementType);
+
+                var typedArray = toArrayMethod.Invoke(null, new object[] { collection });
+
+                Visit(item);
+                _sb.Append(" = ANY(");
+
+                var paramName = $"p{Guid.NewGuid():N}";
+                _sb.Append($"@{paramName})");
+
+                _parameters.Add(paramName, typedArray);
+
+                return node;
+            }
+        }
+
+        return base.VisitMethodCall(node);
+    }
+
     private void AddParameter(string name, object value)
     {
         _sb.Append($"@{name}");

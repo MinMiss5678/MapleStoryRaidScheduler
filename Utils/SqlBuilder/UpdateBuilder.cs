@@ -7,6 +7,7 @@ namespace Utils.SqlBuilder;
 public class UpdateBuilder<T> : SqlCommandBuilder<T>
 {
     private Dictionary<string, object> _set = new();
+    protected virtual string Quote(string name) => $"\"{name}\"";
 
     public UpdateBuilder<T> Set<TProp>(Expression<Func<T, TProp>> column, TProp value)
     {
@@ -28,13 +29,26 @@ public class UpdateBuilder<T> : SqlCommandBuilder<T>
         {
             return "SELECT 0"; // No-op SQL
         }
+        
+        if (_wheres.Count == 0)
+            throw new InvalidOperationException("UPDATE without WHERE is not allowed.");
+        
+        var setParts = new List<string>();
+
+        foreach (var kv in _set)
+        {
+            var param = $"set_{kv.Key}";
+            setParts.Add($"{Quote(kv.Key)} = @{param}");
+            _parameters.Add(param, kv.Value);
+        }
 
         var setPart = string.Join(", ", _set.Keys.Select(k => $"\"{k}\" = @{k}"));
-        foreach (var kv in _set) _parameters.Add(kv.Key, kv.Value);
         
-        var table = GetTableName();
-        var sql = $"UPDATE \"{table}\" SET {setPart}";
-        if (_wheres.Count > 0) sql += " WHERE " + string.Join(" AND ", _wheres);
+        var table = Quote(GetTableName());
+        var sql = $"UPDATE {table} SET {string.Join(", ", setParts)}";
+
+        if (_wheres.Count > 0)
+            sql += " WHERE " + string.Join(" AND ", _wheres);
         return sql;
     }
 
