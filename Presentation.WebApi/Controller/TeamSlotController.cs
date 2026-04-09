@@ -37,7 +37,7 @@ public class TeamSlotController : ControllerBase
     [HttpPut]
     public async Task<IActionResult> UpdateAsync([FromBody] TeamSlotUpdateRequest teamSlotUpdateRequest)
     {
-        var isAdmin = User.IsInRole("Admin");
+        var isAdmin = User.IsInRole("admin");
         var discordId = Convert.ToUInt64(User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value);
         await _teamSlotService.UpdateAsync(teamSlotUpdateRequest, isAdmin, discordId);
         var teamSlots = await _teamSlotService.GetByBossIdAsync(teamSlotUpdateRequest.BossId);

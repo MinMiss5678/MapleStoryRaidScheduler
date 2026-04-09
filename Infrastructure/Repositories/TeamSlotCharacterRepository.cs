@@ -1,5 +1,4 @@
-﻿using Application.Queries;
-using Domain.Entities;
+﻿using Domain.Entities;
 using Domain.Repositories;
 using Infrastructure.Dapper;
 using Infrastructure.Entities;
@@ -10,7 +9,6 @@ namespace Infrastructure.Repositories;
 public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
 {
     private readonly DbContext _dbContext;
-    private readonly IPeriodQuery _periodQuery;
 
     public TeamSlotCharacterRepository(DbContext dbContext)
     {
