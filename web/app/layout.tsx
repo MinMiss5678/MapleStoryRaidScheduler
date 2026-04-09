@@ -1,7 +1,7 @@
 import type {Metadata} from "next";
 import {Geist, Geist_Mono} from "next/font/google";
 import "./globals.css";
-import {RolesProvider} from "./providers/RolesProvider";
+import {RolesProvider, Role} from "./providers/RolesProvider";
 import {cookies} from "next/headers";
 import NavBar from "@/components/layout/NavBar";
 import ClientThemeProvider from "./providers/ClientThemeProvider";
@@ -33,7 +33,7 @@ export default async function RootLayout({
     const discordId = cookieStore.get("discordId")?.value;
     const sessionId = cookieStore.get(`sessionId${discordId}`)?.value;
     const jwtToken = cookieStore.get("jwtToken")?.value;
-    let initialRole = "";
+    let initialRole: Role = "";
     if (sessionId) {
         initialRole = "admin";
     } else if (jwtToken) {
@@ -41,7 +41,7 @@ export default async function RootLayout({
     }
 
     return (
-        <html lang="en" suppressHydrationWarning>
+        <html lang="zh-TW" suppressHydrationWarning>
         <body
             className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >

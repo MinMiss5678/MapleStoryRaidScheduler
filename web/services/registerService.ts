@@ -1,4 +1,5 @@
 ﻿import { RegisterFormState } from "@/types/register";
+import { TeamSlotCharacter } from "@/types/raid";
 
 export const registerService = {
     async getRegister(): Promise<RegisterFormState | null> {
@@ -47,7 +48,7 @@ export const registerService = {
         }
     },
 
-    async getByQuery(params: string): Promise<any> {
+    async getByQuery(params: string): Promise<TeamSlotCharacter[] | null> {
         const res = await fetch(`/api/register/GetByQuery?${params}`);
         if (res.status === 404 || res.status === 204) return null;
         if (!res.ok) throw new Error("搜尋失敗");

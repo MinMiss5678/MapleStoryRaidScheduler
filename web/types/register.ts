@@ -23,5 +23,5 @@ export interface RegisterFormState {
     periodId: number | null;
     availabilities: Availability[];
     characterRegisters: CharacterRegister[];
-    DeleteCharacterRegisterIds: number[];
+    deleteCharacterRegisterIds: number[];
 }

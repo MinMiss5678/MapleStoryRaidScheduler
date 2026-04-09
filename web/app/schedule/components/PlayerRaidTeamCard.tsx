@@ -18,6 +18,7 @@ interface PlayerRaidTeamCardProps {
     isLoadingCharacters: boolean;
     boss?: Boss;
     jobMap: Record<string, string>;
+    templates: BossTemplate[];
 }
 
 export default function PlayerRaidTeamCard({ 
@@ -30,7 +31,7 @@ export default function PlayerRaidTeamCard({
     boss,
     jobMap,
     templates
-}: PlayerRaidTeamCardProps & { templates: BossTemplate[] }) {
+}: PlayerRaidTeamCardProps) {
     const [showCharPicker, setShowCharPicker] = useState<string | null>(null);
     const { validateAddCharacter } = useRaidValidation();
 

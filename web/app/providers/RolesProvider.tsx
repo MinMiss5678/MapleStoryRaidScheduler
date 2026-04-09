@@ -2,10 +2,11 @@
 
 import { createContext, useState, ReactNode, useContext } from "react";
 
+export type Role = "admin" | "user" | "";
 
 interface RoleContextType {
-    role: string;
-    setRole: (role: string) => void;
+    role: Role;
+    setRole: (role: Role) => void;
 }
 
 const RolesContext = createContext<RoleContextType>({
@@ -13,8 +14,8 @@ const RolesContext = createContext<RoleContextType>({
     setRole: () => {}
 });
 
-export function RolesProvider({ children, initialRole }: { children: ReactNode, initialRole: string }) {
-    const [role, setRole] = useState(initialRole);
+export function RolesProvider({ children, initialRole }: { children: ReactNode, initialRole: Role }) {
+    const [role, setRole] = useState<Role>(initialRole);
 
     return <RolesContext.Provider value={{ role, setRole }}>{children}</RolesContext.Provider>;
 }

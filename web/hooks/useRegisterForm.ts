@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useLoading } from "@/app/providers/LoadingContext";
 import { useQueryClient } from "@tanstack/react-query";
@@ -26,19 +26,19 @@ export function useRegisterForm() {
         periodId: null,
         availabilities: [],
         characterRegisters: [],
-        DeleteCharacterRegisterIds: []
+        deleteCharacterRegisterIds: []
     });
 
-    const updateForm = <K extends keyof RegisterFormState>(key: K, value: RegisterFormState[K]) => {
+    const updateForm = useCallback(<K extends keyof RegisterFormState>(key: K, value: RegisterFormState[K]) => {
         setForm(prev => ({ ...prev, [key]: value }));
-    };
+    }, []);
 
     // 初始資料填充
     useEffect(() => {
         if (period) {
             updateForm("periodId", period.id);
         }
-    }, [period]);
+    }, [period, updateForm]);
 
     useEffect(() => {
         if (registerData) {
@@ -55,7 +55,7 @@ export function useRegisterForm() {
                     bossId: cr.bossId,
                     rounds: cr.rounds
                 })),
-                DeleteCharacterRegisterIds: []
+                deleteCharacterRegisterIds: []
             });
         }
     }, [registerData]);

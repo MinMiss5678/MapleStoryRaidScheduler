@@ -67,7 +67,7 @@ export function useBossAssignment({ form, updateForm, setForm, bosses, character
     if (id) {
       setForm(prev => ({
         ...prev,
-        DeleteCharacterRegisterIds: [...(prev.DeleteCharacterRegisterIds || []), id],
+        deleteCharacterRegisterIds: [...(prev.deleteCharacterRegisterIds || []), id],
         characterRegisters: prev.characterRegisters.filter((_, i) => i !== index)
       }));
     } else {
