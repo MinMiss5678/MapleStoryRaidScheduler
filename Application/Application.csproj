@@ -13,7 +13,17 @@
 
     <ItemGroup>
       <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.4" />
-      <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Remove="DTOs\AutoScheduleRequest.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Remove="DTOs\TeamStatusDto.cs" />
+      <Compile Remove="DTOs\TeamActionRequests.cs" />
+      <Compile Remove="Queries\IRaidTemplateQuery.cs" />
     </ItemGroup>
 
 </Project>

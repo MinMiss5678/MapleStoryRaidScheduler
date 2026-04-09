@@ -5,5 +5,8 @@ namespace Application.Queries;
 public interface IPeriodQuery
 {
     Task<int> GetPeriodIdByNowAsync();
-    Task<Period> GetByNowAsync();
+    Task<int> GetPeriodIdByDateAsync(DateTimeOffset date);
+    Task<int> GetLastPeriodIdAsync();
+    Task<Period?> GetByNowAsync();
+    Task<Period?> GetByIdAsync(int id);
 }
