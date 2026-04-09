@@ -10,6 +10,7 @@ import { JOBS, JOBS_WITH_ALL } from "@/constants/jobs";
 import { Input, Select } from "@/components/ui/FormControls";
 import { useCharacters } from "@/hooks/queries/useCharacters";
 import { useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 
 export default function CharacterPage() {
     const { setLoading } = useLoading();
@@ -30,15 +31,10 @@ export default function CharacterPage() {
     const deleteCharacters = async (id: string) => {
         setLoading(true);
         try {
-            const success = await characterService.deleteCharacter(id);
-            if (success) {
-                await queryClient.invalidateQueries({ queryKey: ["characters"] });
-            } else {
-                alert("刪除失敗");
-            }
+            await characterService.deleteCharacter(id);
+            await queryClient.invalidateQueries({ queryKey: ["characters"] });
         } catch (error) {
-            console.error("刪除角色時出錯:", error);
-            alert("刪除失敗，請稍後再試");
+            toast.error(error instanceof Error ? error.message : "刪除失敗，請稍後再試");
         } finally {
             setLoading(false);
         }

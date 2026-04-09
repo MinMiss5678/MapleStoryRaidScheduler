@@ -45,15 +45,10 @@ export default function AdminConfigPage() {
 
         setLoading(true);
         try {
-            const success = await systemConfigService.saveConfig(config);
-
-            if (success) {
-                toast.success("系統設定已儲存");
-            } else {
-                toast.error("儲存失敗");
-            }
-        } catch {
-            toast.error("發生錯誤");
+            await systemConfigService.saveConfig(config);
+            toast.success("系統設定已儲存");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "發生錯誤");
         } finally {
             setLoading(false);
         }

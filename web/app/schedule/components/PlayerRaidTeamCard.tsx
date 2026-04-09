@@ -128,19 +128,11 @@ export default function PlayerRaidTeamCard({
         setShowCharPicker(null);
 
         try {
-            const success = await scheduleService.saveSchedule(bossId, [updatedTeam], []);
-            
-            if (success) {
-                // 資料庫會生成 ID 並在重新獲取時更新，此處先本地更新顯示
-                onTeamSlotUpdate(updatedTeam);
-                toast.success("補位成功！");
-                // 建議在此重新拉取資料以獲取正確 ID，但父組件應該會處理
-            } else {
-                toast.error("補位失敗，請稍後再試");
-            }
+            await scheduleService.saveSchedule(bossId, [updatedTeam], []);
+            onTeamSlotUpdate(updatedTeam);
+            toast.success("補位成功！");
         } catch (error) {
-            console.error("Failed to join team:", error);
-            toast.error("補位發生錯誤");
+            toast.error(error instanceof Error ? error.message : "補位發生錯誤");
         }
     };
 

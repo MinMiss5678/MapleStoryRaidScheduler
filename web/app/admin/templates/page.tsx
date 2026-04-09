@@ -88,33 +88,27 @@ export default function TemplateAdminPage() {
         if (!editingTemplate) return;
         
         try {
-            const success = editingTemplate.id === 0
-                ? await bossService.createTemplate(editingTemplate)
-                : await bossService.updateTemplate(editingTemplate);
-            if (success) {
-                toast.success("範本已儲存");
-                setEditingTemplate(null);
-                if (selectedBoss) loadTemplates(selectedBoss.id);
+            if (editingTemplate.id === 0) {
+                await bossService.createTemplate(editingTemplate);
             } else {
-                toast.error("儲存失敗");
+                await bossService.updateTemplate(editingTemplate);
             }
-        } catch {
-            toast.error("儲存失敗");
+            toast.success("範本已儲存");
+            setEditingTemplate(null);
+            if (selectedBoss) loadTemplates(selectedBoss.id);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "儲存失敗");
         }
     };
 
     const handleDeleteTemplate = async (id: number) => {
         if (!confirm("確定要刪除此範本嗎？")) return;
         try {
-            const success = await bossService.deleteTemplate(id);
-            if (success) {
-                toast.success("範本已刪除");
-                if (selectedBoss) loadTemplates(selectedBoss.id);
-            } else {
-                toast.error("刪除失敗");
-            }
-        } catch {
-            toast.error("刪除失敗");
+            await bossService.deleteTemplate(id);
+            toast.success("範本已刪除");
+            if (selectedBoss) loadTemplates(selectedBoss.id);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "刪除失敗");
         }
     };
 

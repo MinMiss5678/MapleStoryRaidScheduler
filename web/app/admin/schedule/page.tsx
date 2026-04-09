@@ -114,19 +114,14 @@ export default function RaidSchedulerPage() {
         setLoading(true);
 
         try {
-            const success = await scheduleService.saveSchedule(selectedBoss.id, teamSlots, deleteTeamSlotIds);
-            if (success) {
-                // 重新載入隊伍列表以更新 ID 等資訊
-                const data = await scheduleService.getTeamSlots(selectedBoss.id);
-                toast.success("排團已儲存！");
-                setDeleteTeamSlotIds([]);
-                setTeamSlots(data);
-                setOriginalTeamSlots(JSON.stringify(data));
-            } else {
-                toast.error("儲存失敗");
-            }
-        } catch {
-            toast.error("儲存失敗");
+            await scheduleService.saveSchedule(selectedBoss.id, teamSlots, deleteTeamSlotIds);
+            const data = await scheduleService.getTeamSlots(selectedBoss.id);
+            toast.success("排團已儲存！");
+            setDeleteTeamSlotIds([]);
+            setTeamSlots(data);
+            setOriginalTeamSlots(JSON.stringify(data));
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "儲存失敗");
         } finally {
             setLoading(false);
         }

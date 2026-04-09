@@ -49,7 +49,7 @@ export default function AddCharacterModal({bossId, isOpen, onClose, teamSlot, on
             });
 
             const data = await registerService.getByQuery(params.toString());
-            setResults(data);
+            setResults(data ?? []);
         } catch (error) {
             console.error("Search failed:", error);
         } finally {

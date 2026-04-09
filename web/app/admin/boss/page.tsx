@@ -27,33 +27,27 @@ export default function BossAdminPage() {
         if (!editingBoss) return;
         
         try {
-            const success = editingBoss.id === 0
-                ? await bossService.createBoss(editingBoss)
-                : await bossService.updateBoss(editingBoss);
-            if (success) {
-                toast.success("Boss 已儲存");
-                setEditingBoss(null);
-                await queryClient.invalidateQueries({ queryKey: ["bosses"] });
+            if (editingBoss.id === 0) {
+                await bossService.createBoss(editingBoss);
             } else {
-                toast.error("儲存失敗");
+                await bossService.updateBoss(editingBoss);
             }
-        } catch {
-            toast.error("儲存失敗");
+            toast.success("Boss 已儲存");
+            setEditingBoss(null);
+            await queryClient.invalidateQueries({ queryKey: ["bosses"] });
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "儲存失敗");
         }
     };
 
     const handleDeleteBoss = async (id: number) => {
         if (!confirm("確定要刪除此 Boss 嗎？這可能會影響相關的範本與行程。")) return;
         try {
-            const success = await bossService.deleteBoss(id);
-            if (success) {
-                toast.success("Boss 已刪除");
-                await queryClient.invalidateQueries({ queryKey: ["bosses"] });
-            } else {
-                toast.error("刪除失敗");
-            }
-        } catch {
-            toast.error("刪除失敗");
+            await bossService.deleteBoss(id);
+            toast.success("Boss 已刪除");
+            await queryClient.invalidateQueries({ queryKey: ["bosses"] });
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "刪除失敗");
         }
     };
 

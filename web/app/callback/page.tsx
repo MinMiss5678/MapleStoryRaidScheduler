@@ -2,7 +2,7 @@
 
 import {useSearchParams, useRouter} from "next/navigation";
 import {useEffect} from "react";
-import {useRole} from "../providers/RolesProvider";
+import {useRole, Role} from "../providers/RolesProvider";
 import { authService } from "@/services/authService";
 import toast from "react-hot-toast";
 
@@ -18,7 +18,7 @@ export default function CallbackPage() {
         const loginWithCode = async () => {
             try {
                 const data = await authService.login(code);
-                setRole(data);
+                setRole(data.role as Role);
                 router.push("/");
             } catch (e) {
                 toast.error("登入失敗");

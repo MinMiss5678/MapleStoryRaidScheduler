@@ -7,6 +7,7 @@ import {Character} from "@/types/character";
 import {characterService} from "@/services/characterService";
 import {bossService, jobCategoryService} from "@/services/bossService";
 import {scheduleService} from "@/services/scheduleService";
+import toast from "react-hot-toast";
 
 export default function RaidJoinPage() {
     const [bosses, setBosses] = useState<Boss[]>([]);
@@ -29,7 +30,7 @@ export default function RaidJoinPage() {
                 setMyCharacters(charactersData);
                 setTemplates(templatesData);
             } catch (error) {
-                console.error("Failed to fetch boss data:", error);
+                toast.error(error instanceof Error ? error.message : "載入 Boss 資料失敗");
             } finally {
                 setIsLoadingCharacters(false);
             }
@@ -53,7 +54,7 @@ export default function RaidJoinPage() {
                     setIsLoadingCharacters(false);
                 }
             } catch (error) {
-                console.error("Failed to load initial data:", error);
+                toast.error(error instanceof Error ? error.message : "載入初始資料失敗");
                 setIsLoadingCharacters(false);
             }
         }
@@ -69,7 +70,7 @@ export default function RaidJoinPage() {
                 const data = await scheduleService.getTeamSlots(selectedBoss!.id);
                 setTeamSlots(data);
             } catch (error) {
-                console.error("Failed to load team slots:", error);
+                toast.error(error instanceof Error ? error.message : "載入隊伍資料失敗");
             } finally {
                 setIsLoadingTeamSlots(false);
             }
