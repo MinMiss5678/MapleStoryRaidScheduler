@@ -15,8 +15,7 @@ public class RegisterServiceTests
     private readonly Mock<IPlayerRegisterQuery> _playerRegisterQueryMock;
     private readonly Mock<ICharacterRegisterRepository> _characterRegisterRepositoryMock;
     private readonly Mock<IPlayerAvailabilityRepository> _playerAvailabilityRepositoryMock;
-    private readonly Mock<ITeamSlotService> _teamSlotServiceMock;
-    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
+    private readonly Mock<ITeamSlotAutoAssignService> _autoAssignServiceMock;
     private readonly Mock<ISystemConfigService> _systemConfigServiceMock;
     private readonly RegisterService _registerService;
 
@@ -27,11 +26,8 @@ public class RegisterServiceTests
         _playerRegisterQueryMock = new Mock<IPlayerRegisterQuery>();
         _characterRegisterRepositoryMock = new Mock<ICharacterRegisterRepository>();
         _playerAvailabilityRepositoryMock = new Mock<IPlayerAvailabilityRepository>();
-        _teamSlotServiceMock = new Mock<ITeamSlotService>();
-        _unitOfWorkMock = new Mock<IUnitOfWork>();
+        _autoAssignServiceMock = new Mock<ITeamSlotAutoAssignService>();
         _systemConfigServiceMock = new Mock<ISystemConfigService>();
-
-        // RegisterService 目前未直接使用 UnitOfWork，無需特別設定
 
         _registerService = new RegisterService(
             _periodQueryMock.Object,
@@ -40,8 +36,7 @@ public class RegisterServiceTests
             _characterRegisterRepositoryMock.Object,
             _playerAvailabilityRepositoryMock.Object,
             new Mock<ITeamSlotCharacterRepository>().Object,
-            _teamSlotServiceMock.Object,
-            _unitOfWorkMock.Object,
+            _autoAssignServiceMock.Object,
             _systemConfigServiceMock.Object
         );
     }
@@ -105,7 +100,7 @@ public class RegisterServiceTests
         _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(register), Times.Once);
         _playerAvailabilityRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<PlayerAvailability>()), Times.Once);
         _characterRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<CharacterRegister>()), Times.Once);
-        _teamSlotServiceMock.Verify(t => t.AutoAssignAsync(register), Times.Once);
+        _autoAssignServiceMock.Verify(t => t.AutoAssignAsync(register), Times.Once);
     }
 
     [Fact]

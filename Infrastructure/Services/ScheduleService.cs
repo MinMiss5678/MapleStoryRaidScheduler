@@ -1,6 +1,7 @@
 ﻿using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
+using Domain.Helpers;
 using Domain.Repositories;
 
 namespace Infrastructure.Services;
@@ -68,6 +69,9 @@ public class ScheduleService : IScheduleService
         var template = await _bossRepository.GetTemplateByIdAsync(templateId);
         if (template == null) throw new Exception("Template not found");
 
+        var boss = await _bossRepository.GetByIdAsync(bossId);
+        var roundConsumption = boss?.RoundConsumption ?? 1;
+
         var characterRegisters = await _playerRegisterQuery.GetByNowPeriodIdAsync(bossId);
         var period = await _periodQuery.GetByNowAsync();
         var schedules = new List<TeamSlot>();
@@ -96,7 +100,7 @@ public class ScheduleService : IScheduleService
 
             // 篩出該時段可用的角色
             var availableChars = characterRegisters
-                .Where(c => c.Rounds >= 7
+                .Where(c => c.Rounds >= roundConsumption
                             && c.Availabilities.Any(a => a.Weekday == group.Day && a.StartTime <= group.Slot && a.EndTime > group.Slot)
                             && !alreadyScheduled.Contains(c.Id))
                 .ToList();
@@ -174,7 +178,7 @@ public class ScheduleService : IScheduleService
                         // 更新剩餘次數與已排團標記
                         foreach (var c in team)
                         {
-                            c.Rounds -= 7;
+                            c.Rounds -= roundConsumption;
                             alreadyScheduled.Add(c.Id);
                         }
                         
@@ -194,22 +198,7 @@ public class ScheduleService : IScheduleService
     }
 
     private bool IsInJobCategory(string job, string category, Dictionary<string, HashSet<string>> jobCategories)
-    {
-        if (string.IsNullOrWhiteSpace(category)) return false;
-        
-        // 支援多個職業以逗號或斜線分隔
-        var categories = category.Split(new[] { ',', '/', ' ', '|' }, StringSplitOptions.RemoveEmptyEntries);
-        
-        foreach (var cat in categories)
-        {
-            if (job == cat) return true;
-            
-            // 檢查資料庫定義的集合
-            if (jobCategories.TryGetValue(cat, out var jobs) && jobs.Contains(job)) return true;
-        }
-        
-        return false;
-    }
+        => JobCategoryHelper.IsInJobCategory(job, category, jobCategories);
 
     public async Task<DateTimeOffset> GetDateTimeFromPeriod(
         DateTimeOffset periodStart, 

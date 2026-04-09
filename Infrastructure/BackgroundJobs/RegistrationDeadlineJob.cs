@@ -32,7 +32,7 @@ public class RegistrationDeadlineJob : BackgroundService
         _notifier.OnChanged += () =>
         {
             _logger.LogInformation("Configuration changed, restarting delay.");
-            _changeCts?.Cancel();
+            Interlocked.Exchange(ref _changeCts, null)?.Cancel();
         };
 
         while (!stoppingToken.IsCancellationRequested)
@@ -43,7 +43,7 @@ public class RegistrationDeadlineJob : BackgroundService
                 using var scope = _serviceProvider.CreateScope();
                 var configService = scope.ServiceProvider.GetRequiredService<ISystemConfigService>();
                 var config = await configService.GetAsync();
-                var now = DateTimeOffset.Now;
+                var now = DateTimeOffset.UtcNow;
 
                 if (!config.IsDeadlineNotified)
                 {
@@ -115,8 +115,9 @@ public class RegistrationDeadlineJob : BackgroundService
             _logger.LogInformation("RegistrationDeadlineJob will delay for {Delay}", delay);
             
             // 使用 Linked CancellationToken，當外部取消或設定更新時中斷等待
-            _changeCts = new CancellationTokenSource();
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, _changeCts.Token);
+            var newCts = new CancellationTokenSource();
+            Interlocked.Exchange(ref _changeCts, newCts);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, newCts.Token);
             try
             {
                 await Task.Delay(delay, linkedCts.Token);
@@ -133,7 +134,7 @@ public class RegistrationDeadlineJob : BackgroundService
     {
         // 計算下一個週四 00:00 (與 WeeklyPeriodJob 邏輯一致)
         int daysUntilThursday = ((int)DayOfWeek.Thursday - (int)now.DayOfWeek + 7) % 7;
-        if (daysUntilThursday == 0 && now.TimeOfDay.TotalHours >= 0)
+        if (daysUntilThursday == 0)
             daysUntilThursday = 7;
 
         var nextThursday = now.Date.AddDays(daysUntilThursday);

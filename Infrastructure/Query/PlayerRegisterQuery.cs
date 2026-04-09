@@ -7,6 +7,19 @@ using Utils.SqlBuilder;
 
 namespace Infrastructure.Query;
 
+internal record PlayerRegisterDbRow(
+    int Id,
+    long DiscordId,
+    string DiscordName,
+    string CharacterId,
+    string CharacterName,
+    string Job,
+    int AttackPower,
+    int Rounds,
+    int Weekday,
+    TimeOnly StartTime,
+    TimeOnly EndTime);
+
 public class PlayerRegisterQuery : IPlayerRegisterQuery
 {
     private readonly IPeriodQuery _periodQuery;
@@ -61,27 +74,27 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
             .Where<PlayerRegisterDbModel>(x => x.PeriodId == period)
             .Where<CharacterRegisterDbModel>(x => x.BossId == bossId);
 
-        var data = await _dbContext.QueryAsync<dynamic>(sql);
+        var data = await _dbContext.QueryAsync<PlayerRegisterDbRow>(sql);
         
         // 由於 Join 會產生重複的角色行（不同的 Availability），需要進行 GroupBy
-        var result = data.GroupBy(x => (int)x.Id)
+        var result = data.GroupBy(x => x.Id)
             .Select(g => {
                 var first = g.First();
                 return new PlayerRegisterSchedule
                 {
-                    Id = (int)first.Id,
+                    Id = first.Id,
                     DiscordId = (ulong)first.DiscordId,
-                    DiscordName = (string)first.DiscordName,
-                    CharacterId = (string)first.CharacterId,
-                    CharacterName = (string)first.CharacterName,
-                    Job = (string)first.Job,
-                    AttackPower = (int)first.AttackPower,
-                    Rounds = (int)first.Rounds,
+                    DiscordName = first.DiscordName,
+                    CharacterId = first.CharacterId,
+                    CharacterName = first.CharacterName,
+                    Job = first.Job,
+                    AttackPower = first.AttackPower,
+                    Rounds = first.Rounds,
                     Availabilities = g.Select(x => new PlayerAvailability
                     {
-                        Weekday = (int)x.Weekday,
-                        StartTime = (TimeOnly)x.StartTime,
-                        EndTime = (TimeOnly)x.EndTime
+                        Weekday = x.Weekday,
+                        StartTime = x.StartTime,
+                        EndTime = x.EndTime
                     }).ToList()
                 };
             });

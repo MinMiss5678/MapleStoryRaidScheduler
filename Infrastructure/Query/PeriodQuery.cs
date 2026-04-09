@@ -48,6 +48,7 @@ public class PeriodQuery : IPeriodQuery
 
     public async Task<Period?> GetByNowAsync()
     {
+        var now = DateTimeOffset.UtcNow;
         var sql = new QueryBuilder();
         sql.Select<PeriodDbModel>(x => new
             {
@@ -56,6 +57,7 @@ public class PeriodQuery : IPeriodQuery
                 x.EndDate
             })
             .From<PeriodDbModel>()
+            .Where<PeriodDbModel>(x => x.StartDate <= now)
             .OrderByDescending<PeriodDbModel>(x => x.StartDate)
             .Limit(1);
         

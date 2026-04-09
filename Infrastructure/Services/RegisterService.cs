@@ -13,9 +13,8 @@ public class RegisterService : IRegisterService
     private readonly IPlayerRegisterQuery _playerRegisterQuery;
     private readonly ICharacterRegisterRepository _characterRegisterRepository;
     private readonly IPlayerAvailabilityRepository _playerAvailabilityRepository;
-    private readonly ITeamSlotService _teamSlotService;
+    private readonly ITeamSlotAutoAssignService _autoAssignService;
     private readonly ITeamSlotCharacterRepository _teamSlotCharacterRepository;
-    private readonly IUnitOfWork _unitOfWork;
     private readonly ISystemConfigService _systemConfigService;
 
     public RegisterService(IPeriodQuery periodQuery,
@@ -23,7 +22,7 @@ public class RegisterService : IRegisterService
         ICharacterRegisterRepository characterRegisterRepository,
         IPlayerAvailabilityRepository playerAvailabilityRepository,
         ITeamSlotCharacterRepository teamSlotCharacterRepository,
-        ITeamSlotService teamSlotService, IUnitOfWork unitOfWork,
+        ITeamSlotAutoAssignService autoAssignService,
         ISystemConfigService systemConfigService)
     {
         _periodQuery = periodQuery;
@@ -31,9 +30,8 @@ public class RegisterService : IRegisterService
         _playerRegisterQuery = playerRegisterQuery;
         _characterRegisterRepository = characterRegisterRepository;
         _playerAvailabilityRepository = playerAvailabilityRepository;
-        _teamSlotService = teamSlotService;
+        _autoAssignService = autoAssignService;
         _teamSlotCharacterRepository = teamSlotCharacterRepository;
-        _unitOfWork = unitOfWork;
         _systemConfigService = systemConfigService;
     }
 
@@ -140,7 +138,7 @@ public class RegisterService : IRegisterService
             await _characterRegisterRepository.CreateAsync(characterRegister);
         }
 
-        await _teamSlotService.AutoAssignAsync(register);
+        await _autoAssignService.AutoAssignAsync(register);
     }
 
     public async Task UpdateAsync(Register register)
