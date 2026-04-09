@@ -12,13 +12,15 @@ public class AuthService : IAuthService
     private readonly ISessionService _sessionService;
     private readonly IDiscordRoleMappingRepository _roleMappingRepository;
     private readonly IJwtService _jwtService;
+    private readonly IPlayerRepository _playerRepository;
 
-    public AuthService(IDiscordOAuthClient discordClient, ISessionService sessionService, IDiscordRoleMappingRepository roleMappingRepository, IJwtService jwtService)
+    public AuthService(IDiscordOAuthClient discordClient, ISessionService sessionService, IDiscordRoleMappingRepository roleMappingRepository, IJwtService jwtService, IPlayerRepository playerRepository)
     {
         _discordClient = discordClient;
         _sessionService = sessionService;
         _roleMappingRepository = roleMappingRepository;
         _jwtService = jwtService;
+        _playerRepository = playerRepository;
     }
 
     public async Task<(DiscordUser user, DiscordToken token)> ExchangeCodeAsync(string code)
@@ -66,9 +68,11 @@ public class AuthService : IAuthService
         
         if (role != null)
         {
+            var player = await _playerRepository.GetAsync(discordId);
             return CreateJwt(new DiscordUser()
             {
                 Id = discordId,
+                Name = player?.DiscordName ?? string.Empty,
             });
         }
 

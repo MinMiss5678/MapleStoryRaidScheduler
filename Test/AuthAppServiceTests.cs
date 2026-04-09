@@ -52,7 +52,7 @@ public class AuthAppServiceTests
             .ReturnsAsync(roles);
         _roleMappingRepositoryMock
             .Setup(x => x.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
-            .ReturnsAsync("Admin");
+            .ReturnsAsync("admin");
         _authServiceMock.Setup(x => x.CreateSessionAsync(user.Id, token))
             .ReturnsAsync(sessionId);
 

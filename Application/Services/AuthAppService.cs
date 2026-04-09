@@ -49,7 +49,7 @@ public class AuthAppService
         if (string.IsNullOrEmpty(role))
         {
             // 無法從 DB 解析出系統角色，視為登入失敗
-            return new LoginResult();
+            return new LoginResult { IsSuccess = false };
         }
 
         await _playerService.CreateAsync(new Player()
@@ -59,11 +59,12 @@ public class AuthAppService
             Role = role
         });
 
-        if (role == "Admin")
+        if (role == "admin")
         {
             var sessionId = await _authService.CreateSessionAsync(user.Id, token);
             return new LoginResult
             {
+                IsSuccess = true,
                 SessionId = sessionId,
                 DiscordId = user.Id,
                 Expiry = DateTimeOffset.UtcNow.AddDays(30),
@@ -75,6 +76,7 @@ public class AuthAppService
             var jwt = _authService.CreateJwt(user);
             return new LoginResult
             {
+                IsSuccess = true,
                 JwtToken = jwt,
                 DiscordId = user.Id,
                 Expiry = DateTimeOffset.UtcNow.AddDays(30),

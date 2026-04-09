@@ -114,29 +114,13 @@ public class AuthenticationMiddleware : IMiddleware
             return;
         }
 
-        if (!identity.Claims.Any() && roleAttribute == null)
+        if (!identity.Claims.Any())
         {
-            // 如果是匿名訪問但有 token 驗證失敗的細節錯誤，可以在這裡處理，
-            // 但既然是匿名訪問且驗證失敗，通常可以直接繼續或返回 401。
-            // 這裡保持原有的 401 邏輯給那些非匿名且 token 無效的請求。
-            context.Request.Cookies.TryGetValue("jwtToken", out var token);
-            if (!string.IsNullOrEmpty(token))
-            {
-                var validateTokenResult = _jwtService.ValidateToken(token);
-                if (!validateTokenResult.IsValid)
-                {
-                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                     await context.Response.WriteAsJsonAsync(new
-                        { error = "TokenInvalid", detail = validateTokenResult.Exception.Message });
-                     return;
-                }
-            }
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
         }
 
-        if (identity.Claims.Count() != 0)
-        {
-            context.User = new ClaimsPrincipal(identity);
-        }
+        context.User = new ClaimsPrincipal(identity);
 
         await next(context);
     }
