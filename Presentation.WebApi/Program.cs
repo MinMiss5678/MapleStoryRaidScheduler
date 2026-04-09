@@ -50,6 +50,8 @@ builder.Services.AddScoped<IJobCategoryRepository, JobCategoryRepository>();
 builder.Services.AddScoped<IScheduleService, ScheduleService>();
 builder.Services.AddScoped<IPlayerRegisterQuery, PlayerRegisterQuery>();
 builder.Services.AddScoped<ITeamSlotService, TeamSlotService>();
+builder.Services.AddScoped<ITeamSlotAutoAssignService, TeamSlotAutoAssignService>();
+builder.Services.AddScoped<ITeamSlotMergeService, TeamSlotMergeService>();
 builder.Services.AddScoped<ITeamSlotRepository, TeamSlotRepository>();
 builder.Services.AddScoped<ITeamSlotQuery, TeamSlotQuery>();
 builder.Services.AddScoped<ITeamSlotCharacterService, TeamSlotCharacterService>();
@@ -92,7 +94,16 @@ builder.Services.AddControllers()
 SqlMapper.AddTypeHandler(new TimeOnlyTypeHandler());
 
 builder.Services.AddOptions<JwtOptions>()
-    .Bind(builder.Configuration.GetSection("Jwt"));
+    .Bind(builder.Configuration.GetSection("Jwt"))
+    .PostConfigure(options =>
+    {
+        if (!string.IsNullOrEmpty(options.SecretKeyFile) &&
+            File.Exists(options.SecretKeyFile))
+        {
+            options.SecretKey =
+                File.ReadAllText(options.SecretKeyFile).Trim();
+        }
+    });
 
 builder.Services.AddOptions<DiscordOptions>()
     .Bind(builder.Configuration.GetSection("Discord"))
@@ -114,18 +125,6 @@ builder.Services.AddOptions<DiscordOptions>()
         else
         {
             options.ClientSecret = options.ClientSecret;
-        }
-    });
-
-builder.Services.AddOptions<JwtOptions>()
-    .Bind(builder.Configuration.GetSection("Jwt"))
-    .PostConfigure(options =>
-    {
-        if (!string.IsNullOrEmpty(options.SecretKeyFile) &&
-            File.Exists(options.SecretKeyFile))
-        {
-            options.SecretKey =
-                File.ReadAllText(options.SecretKeyFile).Trim();
         }
     });
 

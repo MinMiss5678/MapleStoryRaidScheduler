@@ -30,8 +30,8 @@ public class MemberUpdatedHandler : IEventHandler<GuildMemberUpdatedEventArgs>
         var afterRole = await _roleMappingRepository.ResolveRoleAsync(afterIds);
 
         // Admin → 非 Admin，移除所有 Session
-        if (string.Equals(beforeRole, "Admin", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(afterRole, "Admin", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(beforeRole, "admin", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(afterRole, "admin", StringComparison.OrdinalIgnoreCase))
         {
             await _sessionService.DeleteByDiscordAsync(eventArgs.Member.Id);
         }
