@@ -15,8 +15,8 @@ public class CharacterController : ControllerBase
         _characterService = characterService;
     }
 
-    [HttpGet("GetByDiscordId")]
-    public async Task<IActionResult> GetByDiscordIdAsync()
+    [HttpGet("GetWithDiscordName")]
+    public async Task<IActionResult> GetWithDiscordNameAsync([FromQuery] int? bossId)
     {
         var discordId = User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value;
         if (discordId == null)
@@ -24,7 +24,7 @@ public class CharacterController : ControllerBase
             return Unauthorized(new { error = "NotAuthenticated" });
         }
 
-        var characters = await _characterService.GetByDiscordId(Convert.ToUInt64(discordId));
+        var characters = await _characterService.GetWithDiscordNameAsync(Convert.ToUInt64(discordId), bossId);
 
         return Ok(characters);
     }
@@ -58,7 +58,7 @@ public class CharacterController : ControllerBase
         }
         else
         {
-            return StatusCode(500, new { success = false, message = "Failed to update character" });
+            return StatusCode(500, new { message = "Failed to update character" });
         }
     }
 
@@ -73,7 +73,7 @@ public class CharacterController : ControllerBase
         }
         else
         {
-            return StatusCode(500, new { success = false, message = "Failed to delete character" });
+            return StatusCode(500, new { message = "Failed to delete character" });
         }
     }
 }

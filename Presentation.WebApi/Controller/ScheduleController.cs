@@ -17,9 +17,15 @@ public class ScheduleController : ControllerBase
     }
     
     [AuthorizeRole]
-    [HttpPost("AutoSchedule")]
-    public async Task<IActionResult> AutoScheduleAsync([FromBody] AutoScheduleRequest autoScheduleRequest)
+    [HttpPost("AutoScheduleWithTemplate")]
+    public async Task<IActionResult> AutoScheduleWithTemplateAsync([FromBody] AutoScheduleWithTemplateRequest request)
     {
-        return Ok(await _scheduleService.AutoScheduleAsync(autoScheduleRequest.BossId, autoScheduleRequest.MinMembers));
+        return Ok(await _scheduleService.AutoScheduleWithTemplateAsync(request.BossId, request.TemplateId));
     }
+}
+
+public class AutoScheduleWithTemplateRequest
+{
+    public int BossId { get; set; }
+    public int TemplateId { get; set; }
 }

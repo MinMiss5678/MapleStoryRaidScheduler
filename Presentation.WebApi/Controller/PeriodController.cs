@@ -18,6 +18,7 @@ public class PeriodController : ControllerBase
     public async Task<IActionResult> GetByNowAsync()
     {
         var result = await _periodService.GetByNowAsync();
+        if (result == null) return NotFound();
         
         return Ok(result);
     }

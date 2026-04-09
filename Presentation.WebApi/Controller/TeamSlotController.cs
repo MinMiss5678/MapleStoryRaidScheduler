@@ -34,11 +34,12 @@ public class TeamSlotController : ControllerBase
         return Ok(await _teamSlotService.GetByDiscordIdAsync(Convert.ToUInt64(discordId)));
     }
     
-    [AuthorizeRole]
     [HttpPut]
     public async Task<IActionResult> UpdateAsync([FromBody] TeamSlotUpdateRequest teamSlotUpdateRequest)
     {
-        await _teamSlotService.UpdateAsync(teamSlotUpdateRequest);
+        var isAdmin = User.IsInRole("admin");
+        var discordId = Convert.ToUInt64(User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value);
+        await _teamSlotService.UpdateAsync(teamSlotUpdateRequest, isAdmin, discordId);
         var teamSlots = await _teamSlotService.GetByBossIdAsync(teamSlotUpdateRequest.BossId);
         
         return Ok(teamSlots);

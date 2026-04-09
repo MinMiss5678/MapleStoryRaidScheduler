@@ -26,6 +26,22 @@ public class RegisterController: ControllerBase
         }
         
         var registers = await _registerService.GetAsync(Convert.ToUInt64(discordId));
+        if (registers == null) return NotFound();
+        
+        return Ok(registers);
+    }
+
+    [HttpGet("GetLast")]
+    public async Task<IActionResult> GetLastAsync()
+    {
+        var discordId = User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value;
+        if (discordId == null)
+        {
+            return Unauthorized(new { error = "NotAuthenticated" });
+        }
+
+        var registers = await _registerService.GetLastAsync(Convert.ToUInt64(discordId));
+        if (registers == null) return NotFound();
         
         return Ok(registers);
     }
