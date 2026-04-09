@@ -1,18 +1,11 @@
 ﻿import { SystemConfig } from "@/types/system";
+import { apiClient } from './apiClient';
 
 export const systemConfigService = {
     async getConfig(): Promise<SystemConfig> {
-        const res = await fetch("/api/SystemConfig");
-        if (!res.ok) throw new Error("取得系統設定失敗");
-        return res.json();
+        return apiClient.get<SystemConfig>("/api/SystemConfig");
     },
-
-    async saveConfig(config: SystemConfig): Promise<boolean> {
-        const res = await fetch("/api/SystemConfig", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(config),
-        });
-        return res.ok;
+    async saveConfig(config: SystemConfig): Promise<void> {
+        await apiClient.post("/api/SystemConfig", config);
     }
 };

@@ -1,10 +1,6 @@
 ﻿import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-
-const ALLOWED_PATHS = new Set([
-    'auth', 'character', 'boss', 'register', 'schedule',
-    'teamslot', 'period', 'systemconfig', 'jobcategory',
-]);
+import { ALLOWED_PATHS } from '@/constants/apiWhitelist';
 
 async function handleProxy(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
     const {path} = await params;

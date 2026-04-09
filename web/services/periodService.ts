@@ -1,14 +1,13 @@
 ﻿import { Period } from "@/types/register";
+import { apiClient } from './apiClient';
 
 export const periodService = {
     async getByNow(): Promise<Period> {
-        const res = await fetch("/api/period/GetByNow");
-        if (!res.ok) throw new Error("無法取得目前週期");
-        const data = await res.json();
+        const data = await apiClient.get<Record<string, unknown>>("/api/period/GetByNow");
         return {
             ...data,
-            startDate: new Date(data.startDate),
-            endDate: new Date(data.endDate),
-        };
+            startDate: new Date(data.startDate as string),
+            endDate: new Date(data.endDate as string),
+        } as Period;
     }
 };

@@ -1,17 +1,10 @@
-﻿export const authService = {
-    async login(code: string): Promise<{ role: string }> {
-        const res = await fetch("/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ code }),
-        });
-        if (!res.ok) throw new Error("登入失敗");
-        return res.json();
-    },
+﻿import { apiClient } from './apiClient';
 
+export const authService = {
+    async login(code: string): Promise<{ role: string }> {
+        return apiClient.post<{ role: string }>("/api/auth/login", { code });
+    },
     async logout(): Promise<void> {
-        await fetch("/api/auth/logout", {
-            method: "POST",
-        });
+        await apiClient.post("/api/auth/logout");
     },
 };

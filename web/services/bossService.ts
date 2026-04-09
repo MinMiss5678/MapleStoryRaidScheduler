@@ -1,73 +1,35 @@
 ﻿import { Boss, BossTemplate } from "@/types/raid";
+import { apiClient } from './apiClient';
 
 export const bossService = {
     async getAllBosses(): Promise<Boss[]> {
-        const res = await fetch("/api/boss/GetAll");
-        if (!res.ok) throw new Error("無法取得 Boss 列表");
-        return res.json();
+        return apiClient.get<Boss[]>("/api/boss/GetAll");
     },
-
     async getTemplates(bossId: number): Promise<BossTemplate[]> {
-        const res = await fetch(`/api/boss/${bossId}/Templates`);
-        if (!res.ok) throw new Error("無法取得範本列表");
-        return res.json();
+        return apiClient.get<BossTemplate[]>(`/api/boss/${bossId}/Templates`);
     },
-
-    async createTemplate(template: BossTemplate): Promise<boolean> {
-        const res = await fetch("/api/boss/Templates", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(template)
-        });
-        return res.ok;
+    async createTemplate(template: BossTemplate): Promise<void> {
+        await apiClient.post("/api/boss/Templates", template);
     },
-
-    async updateTemplate(template: BossTemplate): Promise<boolean> {
-        const res = await fetch(`/api/boss/Templates/${template.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(template)
-        });
-        return res.ok;
+    async updateTemplate(template: BossTemplate): Promise<void> {
+        await apiClient.put(`/api/boss/Templates/${template.id}`, template);
     },
-
-    async deleteTemplate(templateId: number): Promise<boolean> {
-        const res = await fetch(`/api/boss/Templates/${templateId}`, {
-            method: "DELETE"
-        });
-        return res.ok;
+    async deleteTemplate(templateId: number): Promise<void> {
+        await apiClient.delete(`/api/boss/Templates/${templateId}`);
     },
-
-    async createBoss(boss: Boss): Promise<boolean> {
-        const res = await fetch("/api/boss", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(boss)
-        });
-        return res.ok;
+    async createBoss(boss: Boss): Promise<void> {
+        await apiClient.post("/api/boss", boss);
     },
-
-    async updateBoss(boss: Boss): Promise<boolean> {
-        const res = await fetch(`/api/boss/${boss.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(boss)
-        });
-        return res.ok;
+    async updateBoss(boss: Boss): Promise<void> {
+        await apiClient.put(`/api/boss/${boss.id}`, boss);
     },
-
-    async deleteBoss(bossId: number): Promise<boolean> {
-        const res = await fetch(`/api/boss/${bossId}`, {
-            method: "DELETE"
-        });
-        return res.ok;
+    async deleteBoss(bossId: number): Promise<void> {
+        await apiClient.delete(`/api/boss/${bossId}`);
     }
 };
 
 export const jobCategoryService = {
     async getJobMap(): Promise<Record<string, string>> {
-        const res = await fetch("/api/JobCategory/GetJobMap");
-        if (!res.ok) throw new Error("無法取得職業對照表");
-        return res.json();
+        return apiClient.get<Record<string, string>>("/api/JobCategory/GetJobMap");
     }
 };
