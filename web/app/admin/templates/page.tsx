@@ -5,9 +5,10 @@ import { Boss, BossTemplate, BossTemplateRequirement } from "@/types/raid";
 import { Plus, Trash2, Save, ChevronRight, Settings2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { bossService, jobCategoryService } from "@/services/bossService";
+import { useBosses } from "@/hooks/queries/useBosses";
 
 export default function TemplateAdminPage() {
-    const [bosses, setBosses] = useState<Boss[]>([]);
+    const { data: bosses = [] } = useBosses();
     const [selectedBoss, setSelectedBoss] = useState<Boss | null>(null);
     const [templates, setTemplates] = useState<BossTemplate[]>([]);
     const [editingTemplate, setEditingTemplate] = useState<BossTemplate | null>(null);
@@ -31,17 +32,10 @@ export default function TemplateAdminPage() {
     }, []);
 
     useEffect(() => {
-        async function loadBosses() {
-            try {
-                const data = await bossService.getAllBosses();
-                setBosses(data);
-                if (data.length > 0) setSelectedBoss(data[0]);
-            } catch {
-                toast.error("無法取得 Boss 列表");
-            }
+        if (bosses.length > 0 && !selectedBoss) {
+            setSelectedBoss(bosses[0]);
         }
-        loadBosses();
-    }, []);
+    }, [bosses, selectedBoss]);
 
     useEffect(() => {
         if (selectedBoss) {

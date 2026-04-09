@@ -1,27 +1,17 @@
 ﻿"use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Boss } from "@/types/raid";
 import { Plus, Trash2, Save, Settings2, Shield } from "lucide-react";
 import toast from "react-hot-toast";
 import { bossService } from "@/services/bossService";
+import { useBosses } from "@/hooks/queries/useBosses";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function BossAdminPage() {
-    const [bosses, setBosses] = useState<Boss[]>([]);
+    const { data: bosses = [] } = useBosses();
+    const queryClient = useQueryClient();
     const [editingBoss, setEditingBoss] = useState<Boss | null>(null);
-
-    useEffect(() => {
-        loadBosses();
-    }, []);
-
-    const loadBosses = async () => {
-        try {
-            const data = await bossService.getAllBosses();
-            setBosses(data);
-        } catch {
-            toast.error("無法取得 Boss 列表");
-        }
-    };
 
     const handleCreateBoss = () => {
         const newBoss: Boss = {
@@ -41,7 +31,7 @@ export default function BossAdminPage() {
             if (success) {
                 toast.success("Boss 已儲存");
                 setEditingBoss(null);
-                loadBosses();
+                await queryClient.invalidateQueries({ queryKey: ["bosses"] });
             } else {
                 toast.error("儲存失敗");
             }
@@ -56,7 +46,7 @@ export default function BossAdminPage() {
             const success = await bossService.deleteBoss(id);
             if (success) {
                 toast.success("Boss 已刪除");
-                loadBosses();
+                await queryClient.invalidateQueries({ queryKey: ["bosses"] });
             } else {
                 toast.error("刪除失敗");
             }

@@ -9,9 +9,10 @@ import {Calendar, Plus, BrainCircuit, Save} from "lucide-react";
 import toast from "react-hot-toast";
 import { bossService } from "@/services/bossService";
 import { scheduleService } from "@/services/scheduleService";
+import { useBosses } from "@/hooks/queries/useBosses";
 
 export default function RaidSchedulerPage() {
-    const [bosses, setBosses] = useState<Boss[]>([]);
+    const { data: bosses = [] } = useBosses();
     const [selectedBoss, setSelectedBoss] = useState<Boss>();
     const [templates, setTemplates] = useState<BossTemplate[]>([]);
     const [selectedTemplate, setSelectedTemplate] = useState<number>(0);
@@ -27,20 +28,10 @@ export default function RaidSchedulerPage() {
     });
 
     useEffect(() => {
-        async function loadBosses() {
-            try {
-                const data = await bossService.getAllBosses();
-                setBosses(data);
-                if (data.length > 0) {
-                    setSelectedBoss(data[0]);
-                }
-            } catch {
-                toast.error("無法取得 Boss 列表");
-            }
+        if (bosses.length > 0 && !selectedBoss) {
+            setSelectedBoss(bosses[0]);
         }
-
-        loadBosses();
-    }, []);
+    }, [bosses, selectedBoss]);
 
     useEffect(() => {
         async function loadTeamSlots() {
@@ -106,7 +97,7 @@ export default function RaidSchedulerPage() {
         slotDate.setHours(hour, 0, 0, 0);
 
         const newTeamSlot: TeamSlot = {
-            id: Math.floor(Math.random() * 1_000_000_000),
+            id: -Date.now(),
             bossId: selectedBoss.id,
             slotDateTime: slotDate,
             characters: [],
@@ -324,6 +315,7 @@ export default function RaidSchedulerPage() {
                                     onTeamSlotUpdate={onTeamSlotUpdate}
                                     onTeamSlotDelete={onTeamSlotDelete}
                                     onAddCharacter={onAddCharacter}
+                                    requireMembers={selectedBoss.requireMembers}
                                 />
                             ))}
                         </div>

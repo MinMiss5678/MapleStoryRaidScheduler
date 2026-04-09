@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import React, {useState, useEffect} from 'react';
+import React, {useState} from 'react';
 import {useLoading} from "@/app/providers/LoadingContext";
 import CharacterForm from "./components/CharacterForm";
 import CharacterCard from "./components/CharacterCard";
@@ -8,10 +8,13 @@ import { characterService } from "@/services/characterService";
 import { Character } from "@/types/character";
 import { JOBS, JOBS_WITH_ALL } from "@/constants/jobs";
 import { Input, Select } from "@/components/ui/FormControls";
+import { useCharacters } from "@/hooks/queries/useCharacters";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function CharacterPage() {
     const { setLoading } = useLoading();
-    const [characters, setCharacters] = useState<Character[]>([]);
+    const { data: characters = [] } = useCharacters();
+    const queryClient = useQueryClient();
     const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -24,29 +27,12 @@ export default function CharacterPage() {
         return matchesSearch && matchesJob;
     });
 
-    // 取得角色列表
-    useEffect(() => {
-        const getList = async () => {
-            setLoading(true);
-            try {
-                const data = await characterService.getCharacters();
-                setCharacters(data);
-            } catch (error) {
-                console.error("無法取得角色列表:", error);
-            } finally {
-                setLoading(false);
-            }
-        }
-
-        getList();
-    }, [setLoading])
-
     const deleteCharacters = async (id: string) => {
         setLoading(true);
         try {
             const success = await characterService.deleteCharacter(id);
             if (success) {
-                setCharacters(characters.filter(r => r.id !== id));
+                await queryClient.invalidateQueries({ queryKey: ["characters"] });
             } else {
                 alert("刪除失敗");
             }
@@ -58,12 +44,8 @@ export default function CharacterPage() {
         }
     };
 
-    const handleFormSuccess = (character: Character, isUpdate: boolean) => {
-        if (isUpdate) {
-            setCharacters(characters.map(r => (r.id === character.id ? character : r)));
-        } else {
-            setCharacters([...characters, character]);
-        }
+    const handleFormSuccess = async (character: Character, isUpdate: boolean) => {
+        await queryClient.invalidateQueries({ queryKey: ["characters"] });
         setEditingCharacter(null);
     };
 
