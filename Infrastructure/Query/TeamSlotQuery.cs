@@ -22,32 +22,32 @@ public class TeamSlotQuery : ITeamSlotQuery
         sql.Select<TeamSlotDbModel>(x => new
             {
                 TeamSlotId = x.Id,
+                x.BossId,
                 x.SlotDateTime
             })
-            .Select<CharacterDbModel>(x=> new
+            .Select<TeamSlotCharacterDbModel>(x=> new
             {
-                CharacterId = x.Id,
-                CharacterName = x.Name,
+                TeamSlotCharacterId = x.Id,
+                x.CharacterId,
+                x.CharacterName,
                 x.Job,
-                x.AttackPower
-            }, "c")
-            .Select<PlayerDbModel>(x=> new
-            {
+                x.AttackPower,
                 x.DiscordId,
-                x.DiscordName
-            }, "d")
+                x.DiscordName,
+                x.Rounds
+            }, "b")
+            .Select<BossDbModel>(x => new
+            {
+                BossName = x.Name
+            }, "c")
             .From<TeamSlotDbModel>()
             .LeftJoin<TeamSlotCharacterDbModel>("""
                                                 a."Id" = b."TeamSlotId"
                                                 """
             )
-            .LeftJoin<CharacterDbModel>("""
-                                        b."CharacterId" = c."Id"
-                                        """
-            )
-            .LeftJoin<PlayerDbModel>("""
-                                     d."DiscordId" = c."DiscordId"
-                                     """
+            .LeftJoin<BossDbModel>("""
+                                   a."BossId" = c."Id"
+                                   """
             )
             .Where<TeamSlotDbModel>(x=> period.StartDate <= x.SlotDateTime && period.EndDate >= x.SlotDateTime)
             .Where<TeamSlotDbModel>(x => x.BossId == bossId);
@@ -61,42 +61,34 @@ public class TeamSlotQuery : ITeamSlotQuery
         sql.Select<TeamSlotDbModel>(x => new
             {
                 TeamSlotId = x.Id,
+                x.BossId,
                 x.SlotDateTime
             })
-            .Select<CharacterDbModel>(x=> new
+            .Select<TeamSlotCharacterDbModel>(x => new
             {
-                CharacterId = x.Id,
-                CharacterName = x.Name,
+                TeamSlotCharacterId = x.Id,
+                x.CharacterId,
+                x.CharacterName,
                 x.Job,
-                x.AttackPower
-            }, "c")
-            .Select<PlayerDbModel>(x=> new
-            {
-                x.DiscordName
-            }, "d")
-            .Select<BossDbModel>(x=> new
+                x.AttackPower,
+                x.DiscordId,
+                x.DiscordName,
+                x.Rounds
+            }, "b")
+            .Select<BossDbModel>(x => new
             {
                 BossName = x.Name
-            }, "e")
+            }, "c")
             .From<TeamSlotDbModel>()
             .LeftJoin<TeamSlotCharacterDbModel>("""
                                                 a."Id" = b."TeamSlotId"
                                                 """
             )
-            .LeftJoin<CharacterDbModel>("""
-                                        b."CharacterId" = c."Id"
-                                        """
-            )
-            .LeftJoin<PlayerDbModel>("""
-                                     c."DiscordId" = d."DiscordId"
-                                     """
-            )
             .LeftJoin<BossDbModel>("""
-                                   a."BossId" = e."Id" 
+                                   a."BossId" = c."Id" 
                                    """
-                                   )
-            .Where<TeamSlotDbModel>(x=> period.StartDate <= x.SlotDateTime && period.EndDate >= x.SlotDateTime)
-            .Where<PlayerDbModel>(x => x.DiscordId == (long)discordId);
+            )
+            .Where<TeamSlotDbModel>(x => period.StartDate <= x.SlotDateTime && period.EndDate >= x.SlotDateTime);
 
         return await _dbContext.QueryAsync<TeamSlotCharacterDto>(sql);
     }
@@ -111,10 +103,17 @@ public class TeamSlotQuery : ITeamSlotQuery
                 TeamSlotId = x.Id,
                 x.SlotDateTime
             })
-            .Select<PlayerDbModel>(x => new
+            .Select<TeamSlotCharacterDbModel>(x=> new
             {
+                TeamSlotCharacterId = x.Id,
+                x.CharacterId,
+                x.CharacterName,
+                x.Job,
+                x.AttackPower,
                 x.DiscordId,
-            }, "d")
+                x.DiscordName,
+                x.Rounds
+            }, "b")
             .Select<BossDbModel>(x=> new
             {
                 BossName = x.Name
@@ -123,14 +122,6 @@ public class TeamSlotQuery : ITeamSlotQuery
             .LeftJoin<TeamSlotCharacterDbModel>("""
                                                 a."Id" = b."TeamSlotId"
                                                 """
-            )
-            .LeftJoin<CharacterDbModel>("""
-                                        b."CharacterId" = c."Id"
-                                        """
-            )
-            .LeftJoin<PlayerDbModel>("""
-                                     c."DiscordId" = d."DiscordId"
-                                     """
             )
             .LeftJoin<BossDbModel>("""
                                    e."Id" = a."BossId"

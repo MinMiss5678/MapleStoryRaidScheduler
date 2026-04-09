@@ -23,28 +23,32 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
             .Select<PlayerRegisterDbModel>(x => new
             {
                 x.Id,
-                x.PeriodId,
-                x.Weekdays,
-                x.Timeslots
+                x.PeriodId
             })
             .Select<CharacterRegisterDbModel>(x => new
             {
                 CharacterRegisterId = x.Id,
                 x.CharacterId,
-                x.Job,
                 x.BossId,
                 x.Rounds
             }, "b")
+            .Select<CharacterDbModel>(x => new
+            {
+                x.Job
+            }, "c")
             .Select<Boss>(x => new
             {
                 BossName = x.Name
-            }, "c")
+            }, "d")
             .From<PlayerRegisterDbModel>()
             .LeftJoin<CharacterRegisterDbModel>("""
                                                 a."Id" = b."PlayerRegisterId"
                                                 """)
+            .LeftJoin<CharacterDbModel>("""
+                                        b."CharacterId" = c."Id"
+                                        """)
             .LeftJoin<BossDbModel>("""
-                                   b."BossId" = c."Id"
+                                   b."BossId" = d."Id"
                                    """)
             .Where<PlayerRegisterDbModel>(x => x.DiscordId == (long)discordId && x.PeriodId == periodId);
 
@@ -56,8 +60,6 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
         var sql = new InsertBuilder<PlayerRegisterDbModel>();
         sql.Set(x => x.DiscordId, (long)register.DiscordId)
             .Set(x => x.PeriodId, register.PeriodId)
-            .Set(x => x.Weekdays, register.Weekdays)
-            .Set(x => x.Timeslots, register.Timeslots)
             .ReturnId();
 
         var id = await _dbContext.ExecuteScalarAsync(sql);
@@ -68,9 +70,7 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
     public async Task<int> UpdateAsync(Register register)
     {
         var sql = new UpdateBuilder<PlayerRegisterDbModel>();
-        sql.Set(x => x.Weekdays, register.Weekdays)
-            .Set(x => x.Timeslots, register.Timeslots)
-            .Where(x => x.DiscordId == (long)register.DiscordId)
+        sql.Where(x => x.DiscordId == (long)register.DiscordId)
             .Where(x => x.PeriodId == register.PeriodId);
 
         return await _dbContext.ExecuteAsync(sql);

@@ -17,17 +17,15 @@ public class PeriodQuery : IPeriodQuery
     
     public async Task<int> GetPeriodIdByNowAsync()
     {
-        var today = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
+        var period = await GetByNowAsync();
+        return period?.Id ?? 0;
+    }
 
-// 計算本週四
-        var daysUntilNextThursday  = ((int)DayOfWeek.Thursday - (int)today.DayOfWeek + 7) % 7;
-        if (daysUntilNextThursday == 0) daysUntilNextThursday = 7;
-        var nextThursday = today.AddDays(daysUntilNextThursday);
-// 下週三
-        var nextWednesday = nextThursday.AddDays(6);
-        
+    public async Task<int> GetPeriodIdByDateAsync(DateTimeOffset date)
+    {
+        var targetDate = new DateTimeOffset(date.Date, TimeSpan.Zero);
         var sql = new QueryBuilder();
-        sql.Select<PeriodDbModel>(x => new {x.Id})
+        sql.Select<PeriodDbModel>(x => new { x.Id })
             .From<PeriodDbModel>()
             .Where<PeriodDbModel>(x => x.StartDate <= targetDate && x.EndDate >= targetDate);
 
@@ -35,20 +33,21 @@ public class PeriodQuery : IPeriodQuery
         return periodId ?? 0;
     }
 
-        return await _unitOfWork.QuerySingleAsync<int>(sql);
+    public async Task<int> GetLastPeriodIdAsync()
+    {
+        var sql = new QueryBuilder();
+        sql.Select<PeriodDbModel>(x => new { x.Id })
+            .From<PeriodDbModel>()
+            .OrderByDescending<PeriodDbModel>(x => x.StartDate)
+            .Offset(1) // 跳過最新的一個（當前/下一個）
+            .Limit(1);
+
+        var periodId = await _dbContext.QuerySingleOrDefaultAsync<int?>(sql);
+        return periodId ?? 0;
     }
 
-    public async Task<Period> GetByNowAsync()
+    public async Task<Period?> GetByNowAsync()
     {
-        var today = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
-
-// 計算本週四
-        var daysUntilNextThursday  = ((int)DayOfWeek.Thursday - (int)today.DayOfWeek + 7) % 7;
-        if (daysUntilNextThursday == 0) daysUntilNextThursday = 7;
-        var nextThursday = today.AddDays(daysUntilNextThursday);
-// 下週三
-        var nextWednesday = nextThursday.AddDays(6);
-        
         var sql = new QueryBuilder();
         sql.Select<PeriodDbModel>(x => new
             {
@@ -57,8 +56,24 @@ public class PeriodQuery : IPeriodQuery
                 x.EndDate
             })
             .From<PeriodDbModel>()
-            .Where<PeriodDbModel>(x => x.StartDate >= nextThursday && x.StartDate <= nextWednesday);
+            .OrderByDescending<PeriodDbModel>(x => x.StartDate)
+            .Limit(1);
         
+        return  await _dbContext.QuerySingleOrDefaultAsync<Period>(sql);
+    }
+
+    public async Task<Period?> GetByIdAsync(int id)
+    {
+        var sql = new QueryBuilder();
+        sql.Select<PeriodDbModel>(x => new
+            {
+                x.Id,
+                x.StartDate,
+                x.EndDate
+            })
+            .From<PeriodDbModel>()
+            .Where<PeriodDbModel>(x => x.Id == id);
+
         return await _dbContext.QuerySingleOrDefaultAsync<Period?>(sql);
     }
 }

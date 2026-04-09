@@ -22,16 +22,10 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
     {
         var period = await _periodQuery.GetPeriodIdByNowAsync();
         var sql = new QueryBuilder();
-        sql.Select<PlayerRegisterDbModel>(x=> new
-            {
-                x.Weekdays,
-                x.Timeslots,
-            })
-            .Select<CharacterRegisterDbModel>(x => new
+        sql.Select<CharacterRegisterDbModel>(x => new
             {
                 x.Id,
                 x.CharacterId,
-                x.Job,
                 x.Rounds
             }, "b")
             .Select<PlayerDbModel>(x => new
@@ -42,8 +36,15 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
             .Select<CharacterDbModel>(x => new
             {
                 CharacterName = x.Name,
+                x.Job,
                 x.AttackPower
             }, "d")
+            .Select<PlayerAvailabilityDbModel>(x => new
+            {
+                x.Weekday,
+                x.StartTime,
+                x.EndTime
+            }, "e")
             .From<PlayerRegisterDbModel>()
             .LeftJoin<CharacterRegisterDbModel>("""
                                                 a."Id" = b."PlayerRegisterId"
@@ -54,10 +55,38 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
             .LeftJoin<CharacterDbModel>("""
                                         b."CharacterId" = d."Id"
                                         """)
+            .LeftJoin<PlayerAvailabilityDbModel>("""
+                                                 a."Id" = e."PlayerRegisterId"
+                                                 """)
             .Where<PlayerRegisterDbModel>(x => x.PeriodId == period)
             .Where<CharacterRegisterDbModel>(x => x.BossId == bossId);
 
-        return await _unitOfWork.QueryAsync<PlayerRegisterSchedule>(sql);
+        var data = await _dbContext.QueryAsync<dynamic>(sql);
+        
+        // 由於 Join 會產生重複的角色行（不同的 Availability），需要進行 GroupBy
+        var result = data.GroupBy(x => (int)x.Id)
+            .Select(g => {
+                var first = g.First();
+                return new PlayerRegisterSchedule
+                {
+                    Id = (int)first.Id,
+                    DiscordId = (ulong)first.DiscordId,
+                    DiscordName = (string)first.DiscordName,
+                    CharacterId = (string)first.CharacterId,
+                    CharacterName = (string)first.CharacterName,
+                    Job = (string)first.Job,
+                    AttackPower = (int)first.AttackPower,
+                    Rounds = (int)first.Rounds,
+                    Availabilities = g.Select(x => new PlayerAvailability
+                    {
+                        Weekday = (int)x.Weekday,
+                        StartTime = (TimeOnly)x.StartTime,
+                        EndTime = (TimeOnly)x.EndTime
+                    }).ToList()
+                };
+            });
+
+        return result;
     }
     
     public async Task<IEnumerable<PlayerRegisterSchedule>> GetByQueryAsync(RegisterGetByQueryRequest request, int periodId)
@@ -66,7 +95,6 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
         sql.Select<CharacterRegisterDbModel>(x => new
             {
                 x.CharacterId,
-                x.Job,
                 x.Rounds
             }, "b")
             .Select<PlayerDbModel>(x => new
@@ -77,6 +105,7 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
             .Select<CharacterDbModel>(x => new
             {
                 CharacterName = x.Name,
+                x.Job,
                 x.AttackPower
             }, "d")
             .From<PlayerRegisterDbModel>()

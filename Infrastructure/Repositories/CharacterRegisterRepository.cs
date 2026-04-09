@@ -21,7 +21,6 @@ public class CharacterRegisterRepository : ICharacterRegisterRepository
         {
             PlayerRegisterId = characterRegister.PlayerRegisterId,
             CharacterId = characterRegister.CharacterId,
-            Job = characterRegister.Job,
             BossId = characterRegister.BossId,
             Rounds = characterRegister.Rounds
         });
@@ -31,7 +30,6 @@ public class CharacterRegisterRepository : ICharacterRegisterRepository
     {
         var updateSql = new UpdateBuilder<CharacterRegisterDbModel>();
         updateSql.Set(x => x.CharacterId, characterRegister.CharacterId)
-            .Set(x => x.Job, characterRegister.Job)
             .Set(x => x.BossId, characterRegister.BossId)
             .Set(x => x.Rounds, characterRegister.Rounds)
             .Where(x=> x.Id == characterRegister.Id);
@@ -48,6 +46,14 @@ public class CharacterRegisterRepository : ICharacterRegisterRepository
     {
         var sql = new DeleteBuilder<CharacterRegisterDbModel>();
         sql.Where(x => x.PlayerRegisterId == playerRegisterId);
+
+        return await _dbContext.ExecuteAsync(sql);
+    }
+
+    public async Task<int> DeleteByCharacterIdAsync(string characterId)
+    {
+        var sql = new DeleteBuilder<CharacterRegisterDbModel>();
+        sql.Where(x => x.CharacterId == characterId);
 
         return await _dbContext.ExecuteAsync(sql);
     }
