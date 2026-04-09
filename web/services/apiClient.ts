@@ -16,8 +16,10 @@ async function handleResponse<T>(res: Response): Promise<T> {
         throw new ApiError(403, '權限不足');
     }
     if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new ApiError(res.status, text || `請求失敗 (${res.status})`);
+        // 嘗試解析後端統一的 ProblemDetails 格式 { detail: string }
+        const body = await res.json().catch(() => null);
+        const message = body?.detail || body?.title || `請求失敗 (${res.status})`;
+        throw new ApiError(res.status, message);
     }
     const contentType = res.headers.get('content-type');
     if (contentType?.includes('application/json')) {
@@ -29,6 +31,13 @@ async function handleResponse<T>(res: Response): Promise<T> {
 export const apiClient = {
     async get<T = unknown>(url: string): Promise<T> {
         const res = await fetch(url);
+        return handleResponse<T>(res);
+    },
+
+    /** 404 / 204 視為「查無資料」，回傳 null；其他錯誤照常拋出 */
+    async getNullable<T = unknown>(url: string): Promise<T | null> {
+        const res = await fetch(url);
+        if (res.status === 404 || res.status === 204) return null;
         return handleResponse<T>(res);
     },
 
