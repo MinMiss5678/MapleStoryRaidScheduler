@@ -7,7 +7,7 @@ public class TimeOnlyTypeHandler : SqlMapper.TypeHandler<TimeOnly>
 {
     public override void SetValue(IDbDataParameter parameter, TimeOnly value)
     {
-        parameter.Value = value.ToTimeSpan();
+        parameter.Value = DateTime.Today.Add(value.ToTimeSpan());
     }
 
     public override TimeOnly Parse(object value)
@@ -20,6 +20,11 @@ public class TimeOnlyTypeHandler : SqlMapper.TypeHandler<TimeOnly>
         if (value is DateTime dt)
         {
             return TimeOnly.FromDateTime(dt);
+        }
+
+        if (value is DateTimeOffset dto)
+        {
+            return TimeOnly.FromDateTime(dto.DateTime);
         }
 
         return TimeOnly.Parse(value.ToString());

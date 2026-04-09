@@ -10,7 +10,6 @@ public class CharacterRegisterDbModel
     public int Id { get; set; }
     public int PlayerRegisterId { get; set; }
     public string CharacterId { get; set; }
-    public string Job { get; set; }
     public int BossId { get; set; }
     public int Rounds { get; set; }
 }
