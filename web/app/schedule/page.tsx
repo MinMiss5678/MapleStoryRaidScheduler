@@ -1,306 +1,153 @@
 ﻿"use client";
 
 import {useState, useEffect} from "react";
-import RaidTeamCard from "./components/RaidTeamCard";
-import {useLoading} from "@/app/providers/LoadingContext";
+import PlayerRaidTeamCard from "./components/PlayerRaidTeamCard";
+import {TeamSlot, Boss, BossTemplate} from "@/types/raid";
+import {Character} from "@/types/character";
+import {characterService} from "@/services/characterService";
+import {bossService, jobCategoryService} from "@/services/bossService";
+import {scheduleService} from "@/services/scheduleService";
 
-type TeamSlotCharacter = {
-    characterId: string;
-    discordId: number;
-    discordName: string;
-    characterName: string;
-    job: string;
-    attackPower: number;
-    rounds: number;
-}
-
-type TeamSlot = {
-    id: number;
-    bossId: number;
-    slotDateTime: Date;
-    characters: TeamSlotCharacter[];
-    deleteCharacterIds: string[];
-    isTemporary?: boolean;
-}
-
-type Boss = {
-    id: number;
-    name: string;
-    requireMembers: number;
-};
-
-export default function RaidSchedulerPage() {
+export default function RaidJoinPage() {
     const [bosses, setBosses] = useState<Boss[]>([]);
     const [selectedBoss, setSelectedBoss] = useState<Boss>();
-    const [minMembers, setMinMembers] = useState<number>(0);
     const [teamSlots, setTeamSlots] = useState<TeamSlot[]>([]);
-    const [deleteTeamSlotIds, setDeleteTeamSlotIds] = useState<number[]>([]);
-    const { setLoading } = useLoading();
-    const [manualSlotDateTime, setManualSlotDateTime] = useState<string>(() => {
-        const now = new Date();
-        now.setMinutes(0, 0, 0); // 強制整點
-        return now.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
-    });
+    const [myCharacters, setMyCharacters] = useState<Character[]>([]);
+    const [templates, setTemplates] = useState<BossTemplate[]>([]);
+    const [jobMap, setJobMap] = useState<Record<string, string>>({});
+    const [isLoadingCharacters, setIsLoadingCharacters] = useState(true);
+    const [isLoadingTeamSlots, setIsLoadingTeamSlots] = useState(false);
 
     useEffect(() => {
-        async function loadBosses() {
-            const res = await fetch("/api/boss/GetAll");
-            const data = await res.json();
-            setBosses(data);
-            if (data.length > 0) {
-                setSelectedBoss(data[0]);
-                setMinMembers(data[0].requireMembers);
+        if (!selectedBoss) return;
+        const fetchBossData = async () => {
+            try {
+                const [charactersData, templatesData] = await Promise.all([
+                    characterService.getCharacters(selectedBoss.id),
+                    bossService.getTemplates(selectedBoss.id)
+                ]);
+                setMyCharacters(charactersData);
+                setTemplates(templatesData);
+            } catch (error) {
+                console.error("Failed to fetch boss data:", error);
+            } finally {
+                setIsLoadingCharacters(false);
+            }
+        };
+        fetchBossData();
+    }, [selectedBoss]);
+
+    useEffect(() => {
+        async function loadInitialData() {
+            try {
+                const [bossData, jobMapData] = await Promise.all([
+                    bossService.getAllBosses(),
+                    jobCategoryService.getJobMap()
+                ]);
+                setBosses(bossData);
+                setJobMap(jobMapData);
+                if (bossData.length > 0) {
+                    setSelectedBoss(bossData[0]);
+                } else {
+                    // 如果沒有 Boss，則停止載入角色
+                    setIsLoadingCharacters(false);
+                }
+            } catch (error) {
+                console.error("Failed to load initial data:", error);
+                setIsLoadingCharacters(false);
             }
         }
 
-        loadBosses();
+        loadInitialData();
     }, []);
 
     useEffect(() => {
+        if (!selectedBoss) return;
         async function loadTeamSlots() {
-            if (!selectedBoss) return;
-            const res = await fetch(`/api/teamSlot?bossId=${selectedBoss.id}`);
-            if (res.ok) {
-                const data = await res.json();
+            setIsLoadingTeamSlots(true);
+            try {
+                const data = await scheduleService.getTeamSlots(selectedBoss!.id);
                 setTeamSlots(data);
+            } catch (error) {
+                console.error("Failed to load team slots:", error);
+            } finally {
+                setIsLoadingTeamSlots(false);
             }
         }
 
         loadTeamSlots();
     }, [selectedBoss]);
 
-    const handleAutoSchedule = async () => {
-        const res = await fetch("/api/schedule/AutoSchedule", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                bossId: selectedBoss?.id,
-                minMembers: minMembers
-            }),
-        });
-        if (res.ok) {
-            const data = await res.json();
-            setTeamSlots(data);
-        } else {
-            alert("自動排團失敗");
-        }
-    };
-
-    const handleAddManualTeamSlot = () => {
-        if (!manualSlotDateTime || !selectedBoss) return;
-
-        const [datePart, timePart] = manualSlotDateTime.split("T");
-        const [hour] = timePart.split(":").map(Number);
-
-        // 建立 Date 並強制整點
-        const slotDate = new Date(datePart);
-        slotDate.setHours(hour, 0, 0, 0);
-
-        const newTeamSlot: TeamSlot = {
-            id: Math.floor(Math.random() * 1_000_000_000),
-            bossId: selectedBoss.id,
-            slotDateTime: slotDate,
-            characters: [],
-            deleteCharacterIds: [],
-            isTemporary: true,
-        };
-
-        setTeamSlots(prev => [...prev, newTeamSlot]);
-        setManualSlotDateTime(""); // 清空輸入
-    };
-
-    const handleConfirmSchedule = async () => {
-        if (teamSlots.length === 0 && deleteTeamSlotIds.length === 0) return;
-        setLoading(true);
-
-        const res = await fetch("/api/teamSlot", {
-            method: "PUT",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                bossId: selectedBoss?.id,
-                teamSlots: teamSlots,
-                deleteTeamSlotIds: deleteTeamSlotIds
-            })
-        });
-        
-        if (res.ok) {
-            const data = await res.json();
-            alert("排團已儲存！")
-            setDeleteTeamSlotIds([]);
-            setTeamSlots(data);
-        }
-        else alert("儲存失敗");
-        setLoading(false);
-    };
-
     const onTeamSlotUpdate = (updatedTeamSlot: TeamSlot) => {
-        setTeamSlots(prev => prev.map(t => t.id === updatedTeamSlot.id ? updatedTeamSlot : t));
-    };
-
-    const onTeamSlotDelete = (teamSlot: TeamSlot) => {
-        if (!teamSlot.isTemporary) {
-            setDeleteTeamSlotIds(deleteTeamSlotIds.concat(teamSlot.id));
-        }
-        setTeamSlots((prev) => prev.filter((t) => t.id !== teamSlot.id));
-    }
-
-    const sameDay = (d1: Date, d2: Date) => {
-        const slotDate = new Date(d1);
-        const teamDate = new Date(d2);
-
-        return (
-            slotDate.getUTCFullYear() === teamDate.getUTCFullYear() &&
-            slotDate.getUTCMonth() === teamDate.getUTCMonth() &&
-            slotDate.getUTCDate() === teamDate.getUTCDate())
-    }
-
-    const onAddCharacter = (teamSlot: TeamSlot, character: TeamSlotCharacter) => {
-        const errors: string[] = [];
-        
-        const alreadyPlayedToday = teamSlots
-            .filter(slot => slot.id !== teamSlot.id)
-            .some(slot =>
-                slot.characters.some(c => c.discordId === character.discordId) &&
-                sameDay(slot.slotDateTime, teamSlot.slotDateTime)
-        );
-
-        if (alreadyPlayedToday) {
-            errors.push("該玩家今天已經加入其他隊伍，不能再加入！");
-        }
-
-        const totalRounds = teamSlots
-            .flatMap(slot => slot.characters)
-            .filter(c => c.characterId === character.characterId)
-            .reduce((sum) => sum + 7, 0);
-
-        if (totalRounds + 7 > character.rounds) {
-            errors.push("角色場數已達上限！");
-        }
-
-        if (teamSlot.characters.length === selectedBoss?.requireMembers) {
-            errors.push("隊伍已滿");
-        }
-        
-        if (teamSlot.characters.find(x => x.discordId === character.discordId)) {
-            errors.push("玩家重複");
-        }
-        
-        if (teamSlot.characters.find(x => x.characterId === character.characterId)) {
-            errors.push("角色重複");
-        }
-        
-        if (errors.length > 0) {
-            alert(errors.join("\r\n"))
-            return;
-        }
-
-        const updatedTeam = {
-            ...teamSlot,
-            characters: [...teamSlot.characters, character],
-        };
-        onTeamSlotUpdate(updatedTeam);
+        setTeamSlots(prev => prev.map(t => t.id === updatedTeamSlot.id ? { ...updatedTeamSlot } : t));
     };
 
     return (
-        <div className="min-h-screen bg-gray-950 text-gray-100 p-8">
-            {/* 上方：自動排團 + 手動新增隊伍，水平排列 */}
-            <div className="flex gap-6 mb-8">
-                {/* 左側：自動排團區塊 */}
-                <div className="w-120 bg-gray-800 p-6 rounded-2xl shadow">
-                    <h2 className="text-xl mb-3 font-semibold">🧠 自動排團</h2>
-                    <p className="text-gray-400 mb-4">
-                        選擇 Boss 並設定最少隊伍人數，自動產生最適組合。
-                    </p>
+        <div className="min-h-screen p-4 md:p-8 bg-background text-foreground transition-colors">
+            <div className="max-w-7xl mx-auto">
+                <div className="flex justify-between items-center mb-8">
+                    <h1 className="text-3xl font-bold tracking-tight">補位系統</h1>
+                </div>
 
-                    {/* Boss 選單 */}
-                    <div className="flex items-center gap-2 mb-4">
-                        <label className="text-gray-300">選擇 Boss：</label>
-                        <select
-                            value={selectedBoss?.id || ""}
-                            onChange={(e) => {
-                                const boss = bosses.find(b => b.id === Number(e.target.value));
-                                setSelectedBoss(boss);
-                                if (boss) setMinMembers(boss.requireMembers);
-                            }}
-                            className="p-1 rounded bg-gray-800 border border-gray-700"
-                        >
-                            {bosses.map(b => (
-                                <option key={b.id} value={b.id}>{b.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* 最少隊伍人數 */}
-                    <div className="flex items-center gap-2 mb-4">
-                        <label className="text-gray-300">最少隊伍人數：</label>
-                        <input
-                            type="number"
-                            min={2}
-                            value={minMembers}
-                            onChange={(e) => setMinMembers(Number(e.target.value))}
-                            className="w-16 p-1 rounded bg-gray-800 border border-gray-700 text-center"
-                        />
-                    </div>
-
-                    {/* 開始自動排團按鈕 */}
-                    <div className="flex gap-2 mb-4">
-                        <button
-                            onClick={handleAutoSchedule}
-                            className="px-6 py-3 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-600"
-                        >
-                            開始自動排團
-                        </button>
+                <div className="flex flex-col gap-6 mb-8">
+                    <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
+                        {bosses.map((boss) => (
+                            <button
+                                key={boss.id}
+                                onClick={() => {
+                                    setSelectedBoss(boss);
+                                }}
+                                className={`px-4 py-2 rounded-full whitespace-nowrap transition-all font-medium border-2 ${
+                                    selectedBoss?.id === boss.id
+                                        ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20"
+                                        : "bg-card border-border text-muted-foreground hover:border-blue-400 hover:text-blue-500 dark:bg-zinc-900"
+                                }`}
+                            >
+                                {boss.name}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
-                {/* 右側：手動新增隊伍區塊 */}
-                <div className="w-80 bg-gray-800 p-6 rounded-2xl shadow">
-                    <h2 className="text-xl mb-3 font-semibold">➕ 手動新增隊伍</h2>
-                    <div className="flex items-center gap-2 mb-4">
-                        <label className="text-gray-300">選擇日期時間：</label>
-                        <input
-                            type="datetime-local"
-                            value={manualSlotDateTime}
-                            onChange={(e) => setManualSlotDateTime(e.target.value)}
-                            className="p-1 rounded bg-gray-800 border border-gray-700"
-                            step={3600} // 每小時整點
-                        />
+                {selectedBoss && (
+                    <>
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-bold">目前隊伍狀況</h2>
+                            {!isLoadingTeamSlots && (
+                                <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full text-sm font-medium">
+                                    共 {teamSlots.length} 個隊伍
+                                </span>
+                            )}
+                        </div>
+                        
+                        {isLoadingTeamSlots ? (
+                            null
+                        ) : (
+                            <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6 mb-8">
+                                {teamSlots.map((teamSlot) => (
+                                    <PlayerRaidTeamCard
+                                        key={teamSlot.id}
+                                        bossId={teamSlot.bossId}
+                                        teamSlot={teamSlot}
+                                        allTeamSlots={teamSlots}
+                                        onTeamSlotUpdate={onTeamSlotUpdate}
+                                        myCharacters={myCharacters}
+                                        isLoadingCharacters={isLoadingCharacters}
+                                        boss={selectedBoss}
+                                        jobMap={jobMap}
+                                        templates={templates}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </>
+                )}
+                
+                {!isLoadingTeamSlots && teamSlots.length === 0 && selectedBoss && (
+                    <div className="text-center py-20 bg-card rounded-2xl border border-dashed border-border">
+                        <p className="text-muted-foreground">目前此 Boss 尚無已排定的隊伍。</p>
                     </div>
-                    <button
-                        onClick={handleAddManualTeamSlot}
-                        className="px-4 py-2 bg-purple-600 rounded hover:bg-purple-700"
-                    >
-                        新增隊伍
-                    </button>
-                </div>
-            </div>
-
-            {/* 隊伍列表 */}
-            {selectedBoss && (
-                <div className="flex flex-wrap gap-4 mb-8">
-                    {teamSlots.map((teamSlot, i) => (
-                        <RaidTeamCard
-                            key={i}
-                            bossId={selectedBoss.id}
-                            teamSlot={teamSlot}
-                            onTeamSlotUpdate={onTeamSlotUpdate}
-                            onTeamSlotDelete={onTeamSlotDelete}
-                            onAddCharacter={onAddCharacter}
-                        />
-                    ))}
-                </div>
-            )}
-
-            {/* 儲存按鈕 */}
-            <div className="flex justify-end">
-                <button
-                    onClick={handleConfirmSchedule}
-                    className="px-6 py-3 bg-green-600 rounded-lg hover:bg-green-700"
-                >
-                    儲存
-                </button>
+                )}
             </div>
         </div>
     );

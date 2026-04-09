@@ -21,7 +21,6 @@ export default function CallbackPage() {
                 setRole(data.role.toLowerCase());
                 router.push("/");
             } catch (e) {
-                // 顯示 toast 訊息
                 toast.error("登入失敗");
             }
         };
