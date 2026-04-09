@@ -11,7 +11,5 @@ public class PlayerRegisterSchedule
     public int AttackPower { get; set; }
     public int Level { get; set; }
     public List<PlayerAvailability> Availabilities { get; set; } = [];
-    public int[] Weekdays { get; set; }
-    public string[] Timeslots { get; set; }
     public int Rounds { get; set; }
 }

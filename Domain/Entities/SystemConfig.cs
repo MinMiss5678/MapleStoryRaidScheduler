@@ -18,11 +18,6 @@ public class SystemConfig
     public TimeSpan DeadlineTime { get; set; }
 
     /// <summary>
-    /// 報名截止時間 (保留用於舊程式碼相容)
-    /// </summary>
-    public DateTimeOffset RegistrationDeadline { get => DateTimeOffset.MaxValue; set { } }
-
-    /// <summary>
     /// 是否已發送截止通知
     /// </summary>
     public bool IsDeadlineNotified { get; set; }
