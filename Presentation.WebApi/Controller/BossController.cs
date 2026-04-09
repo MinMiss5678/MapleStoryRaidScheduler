@@ -32,9 +32,7 @@ public class BossController : ControllerBase
     [HttpGet("Templates/{templateId}")]
     public async Task<IActionResult> GetTemplateByIdAsync(int templateId)
     {
-        var template = await _bossService.GetTemplateByIdAsync(templateId);
-        if (template == null) return NotFound();
-        return Ok(template);
+        return Ok(await _bossService.GetTemplateByIdAsync(templateId));
     }
 
     [HttpPost("Templates")]
@@ -48,17 +46,15 @@ public class BossController : ControllerBase
     public async Task<IActionResult> UpdateTemplateAsync(int templateId, [FromBody] BossTemplate template)
     {
         template.Id = templateId;
-        var result = await _bossService.UpdateTemplateAsync(template);
-        if (result) return Ok();
-        return BadRequest();
+        await _bossService.UpdateTemplateAsync(template);
+        return Ok();
     }
 
     [HttpDelete("Templates/{templateId}")]
     public async Task<IActionResult> DeleteTemplateAsync(int templateId)
     {
-        var result = await _bossService.DeleteTemplateAsync(templateId);
-        if (result) return Ok();
-        return BadRequest();
+        await _bossService.DeleteTemplateAsync(templateId);
+        return Ok();
     }
 
     [HttpPost]
@@ -72,16 +68,14 @@ public class BossController : ControllerBase
     public async Task<IActionResult> UpdateBossAsync(int id, [FromBody] Boss boss)
     {
         boss.Id = id;
-        var result = await _bossService.UpdateBossAsync(boss);
-        if (result) return Ok();
-        return BadRequest();
+        await _bossService.UpdateBossAsync(boss);
+        return Ok();
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteBossAsync(int id)
     {
-        var result = await _bossService.DeleteBossAsync(id);
-        if (result) return Ok();
-        return BadRequest();
+        await _bossService.DeleteBossAsync(id);
+        return Ok();
     }
 }

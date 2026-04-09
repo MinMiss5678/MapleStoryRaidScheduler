@@ -25,10 +25,7 @@ public class RegisterController: ControllerBase
             return Unauthorized(new { error = "NotAuthenticated" });
         }
         
-        var registers = await _registerService.GetAsync(Convert.ToUInt64(discordId));
-        if (registers == null) return NotFound();
-        
-        return Ok(registers);
+        return Ok(await _registerService.GetAsync(Convert.ToUInt64(discordId)));
     }
 
     [HttpGet("GetLast")]
@@ -40,10 +37,7 @@ public class RegisterController: ControllerBase
             return Unauthorized(new { error = "NotAuthenticated" });
         }
 
-        var registers = await _registerService.GetLastAsync(Convert.ToUInt64(discordId));
-        if (registers == null) return NotFound();
-        
-        return Ok(registers);
+        return Ok(await _registerService.GetLastAsync(Convert.ToUInt64(discordId)));
     }
 
     [HttpGet("GetByQuery")]

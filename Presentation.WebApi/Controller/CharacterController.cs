@@ -50,30 +50,15 @@ public class CharacterController : ControllerBase
     {
         character.Id = id;
         character.DiscordId = Convert.ToUInt64(User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value);
-        
-        var result = await _characterService.UpdateAsync(character);
-        if (result == 1)
-        {
-            return Ok(character);
-        }
-        else
-        {
-            return StatusCode(500, new { message = "Failed to update character" });
-        }
+        await _characterService.UpdateAsync(character);
+        return Ok(character);
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteAsync(string id)
     {
         var discordId = Convert.ToUInt64(User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value);
-        var result = await _characterService.DeleteAsync(discordId, id);
-        if (result == 1)
-        {
-            return Ok();
-        }
-        else
-        {
-            return StatusCode(500, new { message = "Failed to delete character" });
-        }
+        await _characterService.DeleteAsync(discordId, id);
+        return Ok();
     }
 }

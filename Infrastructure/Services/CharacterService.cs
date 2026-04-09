@@ -1,4 +1,5 @@
 ﻿using Application.DTOs;
+using Application.Exceptions;
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
@@ -29,14 +30,16 @@ public class CharacterService : ICharacterService
         return await _characterRepository.CreateAsync(character);
     }
 
-    public async Task<int> UpdateAsync(Character character)
+    public async Task UpdateAsync(Character character)
     {
-        return await _characterRepository.UpdateAsync(character);
+        var rows = await _characterRepository.UpdateAsync(character);
+        if (rows == 0) throw new NotFoundException($"Character {character.Id} not found");
     }
 
-    public async Task<int> DeleteAsync(ulong discordId, string id)
+    public async Task DeleteAsync(ulong discordId, string id)
     {
         await _characterRegisterRepository.DeleteByCharacterIdAsync(id);
-        return await _characterRepository.DeleteAsync(discordId, id);
+        var rows = await _characterRepository.DeleteAsync(discordId, id);
+        if (rows == 0) throw new NotFoundException($"Character {id} not found");
     }
 }

@@ -1,4 +1,5 @@
 ﻿using Application.DTOs;
+using Application.Exceptions;
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
@@ -35,26 +36,26 @@ public class RegisterService : IRegisterService
         _systemConfigService = systemConfigService;
     }
 
-    public async Task<RegisterDto?> GetAsync(ulong discordId)
+    public async Task<RegisterDto> GetAsync(ulong discordId)
     {
         var periodId = await _periodQuery.GetPeriodIdByNowAsync();
-        if (periodId == 0) return null;
+        if (periodId == 0) throw new NotFoundException("No active period found");
         return await GetByPeriodAsync(discordId, periodId);
     }
 
-    public async Task<RegisterDto?> GetLastAsync(ulong discordId)
+    public async Task<RegisterDto> GetLastAsync(ulong discordId)
     {
         var periodId = await _periodQuery.GetLastPeriodIdAsync();
-        if (periodId == 0) return null;
+        if (periodId == 0) throw new NotFoundException("No last period found");
         return await GetByPeriodAsync(discordId, periodId);
     }
 
-    private async Task<RegisterDto?> GetByPeriodAsync(ulong discordId, int periodId)
+    private async Task<RegisterDto> GetByPeriodAsync(ulong discordId, int periodId)
     {
         var registers = (await _playerRegisterRepository.GetListAsync(discordId, periodId)).ToList();
         var first = registers.FirstOrDefault();
         if (first == null)
-            return null;
+            throw new NotFoundException("Register not found");
 
         var availabilities = await _playerAvailabilityRepository.GetByPlayerRegisterIdAsync(first.Id);
 

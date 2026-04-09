@@ -1,4 +1,5 @@
 ﻿using Application.DTOs;
+using Application.Exceptions;
 using Application.Interface;
 using Application.Queries;
 
@@ -12,11 +13,11 @@ public class PeriodService : IPeriodService
     {
         _periodQuery = periodQuery;
     }
-    
-    public async Task<PeriodDto?> GetByNowAsync()
+
+    public async Task<PeriodDto> GetByNowAsync()
     {
         var period = await _periodQuery.GetByNowAsync();
-        if (period == null) return null;
+        if (period == null) throw new NotFoundException("No active period found");
         var periodDtos = new PeriodDto()
         {
             Id = period.Id,

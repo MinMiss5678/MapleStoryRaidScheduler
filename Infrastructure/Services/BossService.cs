@@ -1,6 +1,7 @@
-﻿using Domain.Entities;
-using Domain.Repositories;
+﻿using Application.Exceptions;
 using Application.Interface;
+using Domain.Entities;
+using Domain.Repositories;
 
 namespace Infrastructure.Services;
 
@@ -23,9 +24,11 @@ public class BossService : IBossService
         return await _bossRepository.GetTemplatesByBossIdAsync(bossId);
     }
 
-    public async Task<BossTemplate?> GetTemplateByIdAsync(int templateId)
+    public async Task<BossTemplate> GetTemplateByIdAsync(int templateId)
     {
-        return await _bossRepository.GetTemplateByIdAsync(templateId);
+        var template = await _bossRepository.GetTemplateByIdAsync(templateId);
+        if (template == null) throw new NotFoundException($"BossTemplate {templateId} not found");
+        return template;
     }
 
     public async Task<int> CreateTemplateAsync(BossTemplate template)
@@ -33,14 +36,16 @@ public class BossService : IBossService
         return await _bossRepository.CreateTemplateAsync(template);
     }
 
-    public async Task<bool> UpdateTemplateAsync(BossTemplate template)
+    public async Task UpdateTemplateAsync(BossTemplate template)
     {
-        return await _bossRepository.UpdateTemplateAsync(template);
+        var ok = await _bossRepository.UpdateTemplateAsync(template);
+        if (!ok) throw new NotFoundException($"BossTemplate {template.Id} not found");
     }
 
-    public async Task<bool> DeleteTemplateAsync(int templateId)
+    public async Task DeleteTemplateAsync(int templateId)
     {
-        return await _bossRepository.DeleteTemplateAsync(templateId);
+        var ok = await _bossRepository.DeleteTemplateAsync(templateId);
+        if (!ok) throw new NotFoundException($"BossTemplate {templateId} not found");
     }
 
     public async Task<int> CreateBossAsync(Boss boss)
@@ -48,20 +53,21 @@ public class BossService : IBossService
         return await _bossRepository.CreateBossAsync(boss);
     }
 
-    public async Task<bool> UpdateBossAsync(Boss boss)
+    public async Task UpdateBossAsync(Boss boss)
     {
-        return await _bossRepository.UpdateBossAsync(boss);
+        var ok = await _bossRepository.UpdateBossAsync(boss);
+        if (!ok) throw new NotFoundException($"Boss {boss.Id} not found");
     }
 
-    public async Task<bool> DeleteBossAsync(int bossId)
+    public async Task DeleteBossAsync(int bossId)
     {
-        // 級聯刪除：先刪除該 Boss 下所有 Template（含 Requirements），再刪除 Boss
         var templates = await _bossRepository.GetTemplatesByBossIdAsync(bossId);
         foreach (var template in templates)
         {
             await _bossRepository.DeleteTemplateAsync(template.Id);
         }
 
-        return await _bossRepository.DeleteBossAsync(bossId);
+        var ok = await _bossRepository.DeleteBossAsync(bossId);
+        if (!ok) throw new NotFoundException($"Boss {bossId} not found");
     }
 }

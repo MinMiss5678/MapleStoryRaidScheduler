@@ -17,9 +17,6 @@ public class PeriodController : ControllerBase
     [HttpGet("GetByNow")]
     public async Task<IActionResult> GetByNowAsync()
     {
-        var result = await _periodService.GetByNowAsync();
-        if (result == null) return NotFound();
-        
-        return Ok(result);
+        return Ok(await _periodService.GetByNowAsync());
     }
 }
