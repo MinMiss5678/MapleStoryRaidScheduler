@@ -26,6 +26,16 @@ public class BossRepository : IBossRepository
         });
     }
 
+    public async Task<Boss?> GetByIdAsync(int bossId)
+    {
+        var sql = new QueryBuilder()
+            .Select<BossDbModel>(x => new { x.Id, x.Name, x.RequireMembers, x.RoundConsumption })
+            .From<BossDbModel>()
+            .Where<BossDbModel>(x => x.Id == bossId);
+
+        return await _dbContext.QuerySingleOrDefaultAsync<Boss>(sql);
+    }
+
     public async Task<IEnumerable<BossTemplate>> GetTemplatesByBossIdAsync(int bossId)
     {
         var templateSql = new QueryBuilder()

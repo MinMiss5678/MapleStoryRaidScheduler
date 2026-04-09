@@ -5,6 +5,7 @@ namespace Domain.Repositories;
 public interface IBossRepository
 {
     Task<IEnumerable<Boss>> GetAllAsync();
+    Task<Boss?> GetByIdAsync(int bossId);
     Task<IEnumerable<BossTemplate>> GetTemplatesByBossIdAsync(int bossId);
     Task<BossTemplate?> GetTemplateByIdAsync(int templateId);
     Task<int> CreateTemplateAsync(BossTemplate template);

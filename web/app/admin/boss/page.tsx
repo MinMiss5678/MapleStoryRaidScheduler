@@ -27,7 +27,9 @@ export default function BossAdminPage() {
         if (!editingBoss) return;
         
         try {
-            const success = await bossService.saveBoss(editingBoss);
+            const success = editingBoss.id === 0
+                ? await bossService.createBoss(editingBoss)
+                : await bossService.updateBoss(editingBoss);
             if (success) {
                 toast.success("Boss 已儲存");
                 setEditingBoss(null);

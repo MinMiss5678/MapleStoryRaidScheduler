@@ -13,14 +13,18 @@ export const bossService = {
         return res.json();
     },
 
-    async saveTemplate(template: BossTemplate): Promise<boolean> {
-        const method = template.id === 0 ? "POST" : "PUT";
-        const url = template.id === 0 
-            ? "/api/boss/Templates" 
-            : `/api/boss/Templates/${template.id}`;
+    async createTemplate(template: BossTemplate): Promise<boolean> {
+        const res = await fetch("/api/boss/Templates", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(template)
+        });
+        return res.ok;
+    },
 
-        const res = await fetch(url, {
-            method,
+    async updateTemplate(template: BossTemplate): Promise<boolean> {
+        const res = await fetch(`/api/boss/Templates/${template.id}`, {
+            method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(template)
         });
@@ -34,11 +38,18 @@ export const bossService = {
         return res.ok;
     },
 
-    async saveBoss(boss: Boss): Promise<boolean> {
-        const method = boss.id === 0 ? "POST" : "PUT";
-        const url = boss.id === 0 ? "/api/boss" : `/api/boss/${boss.id}`;
-        const res = await fetch(url, {
-            method,
+    async createBoss(boss: Boss): Promise<boolean> {
+        const res = await fetch("/api/boss", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(boss)
+        });
+        return res.ok;
+    },
+
+    async updateBoss(boss: Boss): Promise<boolean> {
+        const res = await fetch(`/api/boss/${boss.id}`, {
+            method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(boss)
         });

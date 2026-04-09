@@ -10,17 +10,13 @@ namespace Test;
 public class BossServiceTests
 {
     private readonly Mock<IBossRepository> _bossRepositoryMock;
-    private readonly Mock<IUnitOfWork> _unitOfWorkMock;
     private readonly BossService _bossService;
 
     public BossServiceTests()
     {
         _bossRepositoryMock = new Mock<IBossRepository>();
-        _unitOfWorkMock = new Mock<IUnitOfWork>();
 
-        // BossService 目前未直接使用 UnitOfWork，無需特別設定
-
-        _bossService = new BossService(_bossRepositoryMock.Object, _unitOfWorkMock.Object);
+        _bossService = new BossService(_bossRepositoryMock.Object);
     }
 
     [Fact]
