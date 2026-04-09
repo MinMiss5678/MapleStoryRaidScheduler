@@ -3,7 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { CharacterBossList } from '../app/register/components/CharacterBossList';
 import React from 'react';
 import { RegisterFormState } from '@/types/register';
-import { Character, Boss } from '@/types/raid';
+import { Character } from '@/types/character';
+import { Boss } from '@/types/raid';
 
 describe('CharacterBossList', () => {
     const mockForm: RegisterFormState = {
@@ -17,7 +18,7 @@ describe('CharacterBossList', () => {
     };
 
     const mockCharacters: Character[] = [
-        { id: 'char1', name: 'Hero', job: 'Warrior', attackPower: 50000, discordId: 123 }
+        { id: 'char1', name: 'Hero', job: 'Warrior', attackPower: 50000, discordId: '123' }
     ];
 
     const mockBosses: Boss[] = [

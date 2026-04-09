@@ -134,7 +134,7 @@ describe('CharacterForm', () => {
     fireEvent.click(screen.getByText('提交'));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/character', expect.objectContaining({
+      expect(global.fetch).toHaveBeenCalledWith('/api/character/CHAR1', expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({ name: 'Alice Updated', id: 'CHAR1', job: 'Bishop', attackPower: 100 })
       }));
