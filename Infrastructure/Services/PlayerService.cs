@@ -20,4 +20,14 @@ public class PlayerService : IPlayerService
             await _playerRepository.CreateAsync(player);
         }
     }
+    
+    public async Task<Player?> GetAsync(ulong discordId)
+    {
+        return await _playerRepository.GetAsync(discordId);
+    }
+
+    public async Task UpdateRoleAsync(ulong discordId, string role)
+    {
+        await _playerRepository.UpdateRoleAsync(discordId, role);
+    }
 }

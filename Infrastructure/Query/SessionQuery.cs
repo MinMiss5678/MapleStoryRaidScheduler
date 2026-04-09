@@ -1,6 +1,6 @@
-﻿using Application.Interface;
-using Application.Queries;
+﻿using Application.Queries;
 using Domain.Entities;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 using Utils.SqlBuilder;
 
@@ -8,11 +8,11 @@ namespace Infrastructure.Query;
 
 public class SessionQuery : ISessionQuery
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public SessionQuery(IUnitOfWork unitOfWork)
+    public SessionQuery(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
     
     public async Task<Session?> GetAsync(string sessionId)
@@ -27,6 +27,6 @@ public class SessionQuery : ISessionQuery
             .From<SessionDbModel>()
             .Where<SessionDbModel>(x => x.SessionId == sessionId);
 
-        return await _unitOfWork.QuerySingleOrDefaultAsync<Session>(sql);
+        return await _dbContext.QuerySingleOrDefaultAsync<Session>(sql);
     }
 }

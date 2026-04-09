@@ -8,4 +8,5 @@ public interface ICharacterRegisterRepository
     Task UpdateAsync(CharacterRegister characterRegister);
     Task<bool> DeleteAsync(int id);
     Task<int> DeleteByPlayerRegisterIdAsync(int playerRegisterId);
+    Task<int> DeleteByCharacterIdAsync(string characterId);
 }

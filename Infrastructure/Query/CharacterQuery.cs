@@ -1,6 +1,6 @@
-﻿using Application.Interface;
-using Application.Queries;
+﻿using Application.Queries;
 using Domain.Entities;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 using Utils.SqlBuilder;
 
@@ -8,11 +8,11 @@ namespace Infrastructure.Query;
 
 public class CharacterQuery : ICharacterQuery
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public CharacterQuery(IUnitOfWork unitOfWork)
+    public CharacterQuery(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
 
     public async Task<IEnumerable<Character>> GetByDiscordIdAsync(ulong discordId)
@@ -29,6 +29,6 @@ public class CharacterQuery : ICharacterQuery
             .From<CharacterDbModel>()
             .Where<CharacterDbModel>(x => x.DiscordId == (long)discordId);
 
-        return await _unitOfWork.QueryAsync<Character>(sql);
+        return await _dbContext.QueryAsync<Character>(sql);
     }
 }

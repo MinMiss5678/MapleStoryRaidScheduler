@@ -10,6 +10,4 @@ public class DiscordOptions
     public string RedirectUri { get; set; } = string.Empty;
     public string GuildId { get; set; } = string.Empty;
     public string ChannelId { get; set; } = string.Empty;
-    public string AdminRoleId { get; set; } = string.Empty;
-    public string UserRoleId { get; set; } = string.Empty;
 }

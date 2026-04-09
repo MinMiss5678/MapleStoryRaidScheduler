@@ -1,23 +1,23 @@
-﻿using Application.Interface;
-using Domain.Repositories;
+﻿using Domain.Repositories;
 using Infrastructure.Entities;
 using Domain.Entities;
+using Infrastructure.Dapper;
 using Utils.SqlBuilder;
 
 namespace Infrastructure.Repositories;
 
 public class SessionRepository : ISessionRepository
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public SessionRepository(IUnitOfWork unitOfWork)
+    public SessionRepository(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
 
     public async Task<int> CreateAsync(string sessionId, ulong discordId, DiscordToken token)
     {
-        return await _unitOfWork.Repository<SessionDbModel>().InsertAsync(new SessionDbModel()
+        return await _dbContext.Repository<SessionDbModel>().InsertAsync(new SessionDbModel()
         {
             SessionId = sessionId,
             DiscordId = (long)discordId,
@@ -37,12 +37,12 @@ public class SessionRepository : ISessionRepository
             .Set(x=>x.Expiry, session.Expiry)
             .Where(x=>x.SessionId == session.SessionId);
 
-        return await _unitOfWork.ExecuteAsync(sql); 
+        return await _dbContext.ExecuteAsync(sql); 
     }
 
     public async Task<bool> DeleteAsync(string id)
     {
-        return await _unitOfWork.Repository<SessionDbModel>().DeleteAsync(id);
+        return await _dbContext.Repository<SessionDbModel>().DeleteAsync(id);
     }
 
     public async Task DeleteByDiscordAsync(ulong discordId)
@@ -50,6 +50,6 @@ public class SessionRepository : ISessionRepository
         var sql = new DeleteBuilder<SessionDbModel>();
         sql.Where(x=>x.DiscordId == (long)discordId);
 
-        await _unitOfWork.ExecuteAsync(sql);
+        await _dbContext.ExecuteAsync(sql);
     }
 }

@@ -9,13 +9,15 @@ namespace Presentation.WebApi.Middleware;
 public class AuthenticationMiddleware : IMiddleware
 {
     private readonly ISessionService _sessionService;
+    private readonly IPlayerService _playerService;
     private readonly IJwtService _jwtService;
     private readonly IAuthService _authService;
 
-    public AuthenticationMiddleware(ISessionService sessionService, IJwtService jwtService,
+    public AuthenticationMiddleware(ISessionService sessionService, IPlayerService playerService, IJwtService jwtService,
         IAuthService authService)
     {
         _sessionService = sessionService;
+        _playerService = playerService;
         _jwtService = jwtService;
         _authService = authService;
     }
@@ -59,60 +61,76 @@ public class AuthenticationMiddleware : IMiddleware
                 SameSite = SameSiteMode.Strict,
                 Expires = DateTimeOffset.UtcNow.AddDays(30)
             });
+            
+            var player = await _playerService.GetAsync(session.DiscordId);
 
             identity = new ClaimsIdentity(new[]
             {
                 new Claim("discordId", session.DiscordId.ToString()),
+                new Claim(ClaimTypes.Role, player?.Role ?? "")
             }, "session");
         }
 
-        if (roleAttribute == null && !identity.Claims.Any())
+        if (!identity.Claims.Any())
         {
             context.Request.Cookies.TryGetValue("jwtToken", out var token);
             var validateTokenResult = _jwtService.ValidateToken(token);
-            if (!validateTokenResult.IsValid)
+            if (validateTokenResult.IsValid)
             {
-                if (validateTokenResult.Exception is SecurityTokenExpiredException)
+                identity = new ClaimsIdentity(new[]
                 {
-                    var jwtTokenClaims = _jwtService.ReadJsonWebToken(token);
-                    var newJwt = await _authService.RefreshToken(jwtTokenClaims.DiscordId);
-                    if (newJwt != null)
-                    {
-                        context.Response.Cookies.Append("jwtToken", newJwt, new CookieOptions
-                        {
-                            HttpOnly = true,
-                            Secure = true,
-                            SameSite = SameSiteMode.Strict,
-                            Expires = DateTimeOffset.UtcNow.AddDays(30)
-                        });
-
-                        identity = new ClaimsIdentity(new[]
-                        {
-                            new Claim("discordId", jwtTokenClaims.DiscordId.ToString())
-                        }, "jwt");
-
-                        context.User = new ClaimsPrincipal(identity);
-                        await next(context);
-                        return;
-                    }
-
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    await context.Response.WriteAsJsonAsync(new { error = "TokenExpired" });
-                }
-                else
-                {
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    await context.Response.WriteAsJsonAsync(new
-                        { error = "TokenInvalid", detail = validateTokenResult.Exception.Message });
-                }
-
-                return;
+                    new Claim("discordId", validateTokenResult.DiscordId.ToString())
+                }, "jwt");
             }
-
-            identity = new ClaimsIdentity(new[]
+            else if (validateTokenResult.Exception is SecurityTokenExpiredException)
             {
-                new Claim("discordId", validateTokenResult.DiscordId.ToString())
-            }, "jwt");
+                var jwtTokenClaims = _jwtService.ReadJsonWebToken(token);
+                var newJwt = await _authService.RefreshToken(jwtTokenClaims.DiscordId);
+                if (newJwt != null)
+                {
+                    context.Response.Cookies.Append("jwtToken", newJwt, new CookieOptions
+                    {
+                        HttpOnly = true,
+                        Secure = true,
+                        SameSite = SameSiteMode.Strict,
+                        Expires = DateTimeOffset.UtcNow.AddDays(30)
+                    });
+
+                    identity = new ClaimsIdentity(new[]
+                    {
+                        new Claim("discordId", jwtTokenClaims.DiscordId.ToString())
+                    }, "jwt");
+
+                    context.User = new ClaimsPrincipal(identity);
+                    await next(context);
+                    return;
+                }
+            }
+        }
+
+        if (roleAttribute != null && identity.AuthenticationType != "session")
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
+        if (!identity.Claims.Any() && roleAttribute == null)
+        {
+            // 如果是匿名訪問但有 token 驗證失敗的細節錯誤，可以在這裡處理，
+            // 但既然是匿名訪問且驗證失敗，通常可以直接繼續或返回 401。
+            // 這裡保持原有的 401 邏輯給那些非匿名且 token 無效的請求。
+            context.Request.Cookies.TryGetValue("jwtToken", out var token);
+            if (!string.IsNullOrEmpty(token))
+            {
+                var validateTokenResult = _jwtService.ValidateToken(token);
+                if (!validateTokenResult.IsValid)
+                {
+                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                     await context.Response.WriteAsJsonAsync(new
+                        { error = "TokenInvalid", detail = validateTokenResult.Exception.Message });
+                     return;
+                }
+            }
         }
 
         if (identity.Claims.Count() != 0)

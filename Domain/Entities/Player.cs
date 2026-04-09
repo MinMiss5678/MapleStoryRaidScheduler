@@ -7,4 +7,5 @@ public class Player
     public ulong DiscordId { get; set; }
     [MaxLength(50)]
     public string DiscordName { get; set; }
+    public string Role { get; set; }
 }

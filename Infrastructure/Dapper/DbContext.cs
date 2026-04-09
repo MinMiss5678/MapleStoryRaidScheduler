@@ -10,12 +10,6 @@ public class DbContext
     public IDbConnection Connection { get; }
     public IDbTransaction Transaction { get; private set; }
 
-    // 供測試動態代理/Mock 使用的參數less 建構子（Castle 動態代理需要）
-    protected DbContext()
-    {
-        Connection = default!; // 僅供測試 Mock 使用，不會實際呼叫非虛擬成員
-    }
-
     public DbContext(IDbConnection connection)
     {
         Connection = connection;

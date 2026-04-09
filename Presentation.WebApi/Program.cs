@@ -1,3 +1,5 @@
+using System.Data;
+using Application.Events;
 using Application.Interface;
 using Application.Options;
 using Application.Queries;
@@ -37,23 +39,29 @@ builder.Services.AddScoped<IBossService, BossService>();
 builder.Services.AddScoped<IBossRepository, BossRepository>();
 builder.Services.AddScoped<IRegisterService, RegisterService>();
 builder.Services.AddScoped<IPlayerRegisterRepository, PlayerRegisterRepository>();
+builder.Services.AddScoped<IPlayerAvailabilityRepository, PlayerAvailabilityRepository>();
 builder.Services.AddScoped<ICharacterRegisterRepository, CharacterRegisterRepository>();
 builder.Services.AddScoped<IPeriodService, PeriodService>();
 builder.Services.AddScoped<IPeriodRepository, PeriodRepository>();
 builder.Services.AddScoped<IPeriodQuery, PeriodQuery>();
+builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
+builder.Services.AddScoped<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();
+builder.Services.AddScoped<IJobCategoryRepository, JobCategoryRepository>();
 builder.Services.AddScoped<IScheduleService, ScheduleService>();
 builder.Services.AddScoped<IPlayerRegisterQuery, PlayerRegisterQuery>();
 builder.Services.AddScoped<ITeamSlotService, TeamSlotService>();
 builder.Services.AddScoped<ITeamSlotRepository, TeamSlotRepository>();
 builder.Services.AddScoped<ITeamSlotQuery, TeamSlotQuery>();
+builder.Services.AddScoped<ITeamSlotCharacterService, TeamSlotCharacterService>();
 builder.Services.AddScoped<ITeamSlotCharacterRepository, TeamSlotCharacterRepository>();
+builder.Services.AddSingleton<ConfigChangeNotifier>();
+builder.Services.AddHostedService<RegistrationDeadlineJob>();
 builder.Services.AddHostedService<WeeklyPeriodJob>();
 
 var defaultConnectionFile = builder.Configuration.GetConnectionString("DefaultConnectionFile");
 if (!string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectionFile))
 {
     var defaultConnection = File.ReadAllText(defaultConnectionFile).Trim();
-    builder.Services.AddScoped<NpgsqlConnection>(_ => new NpgsqlConnection(defaultConnection));
     builder.Services.AddScoped<IDbConnection>(_ =>
     {
         var conn = new NpgsqlConnection(defaultConnection);
@@ -61,10 +69,24 @@ if (!string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectio
         return conn;
     });
 }
+else
+{
+    builder.Services.AddScoped<IDbConnection>(_ =>
+    {
+        var conn = new NpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
+        conn.Open();
+        return conn;
+    });
+}
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddNewtonsoftJson(options =>
+    {
+        // 將所有 long/ulong 序列化為 string 以避免 JavaScript 精度遺失
+        options.SerializerSettings.Converters.Add(new Utils.JsonConverters.BigIntStringConverter());
+    });
 
 // Dapper TimeOnly support
 SqlMapper.AddTypeHandler(new TimeOnlyTypeHandler());
@@ -88,6 +110,10 @@ builder.Services.AddOptions<DiscordOptions>()
         {
             options.ClientSecret =
                 File.ReadAllText(options.ClientSecretFile).Trim();
+        }
+        else
+        {
+            options.ClientSecret = options.ClientSecret;
         }
     });
 

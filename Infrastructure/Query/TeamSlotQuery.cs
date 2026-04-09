@@ -1,7 +1,7 @@
 ﻿using Application.DTOs;
-using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 using Utils.SqlBuilder;
 
@@ -9,11 +9,11 @@ namespace Infrastructure.Query;
 
 public class TeamSlotQuery : ITeamSlotQuery
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public TeamSlotQuery(IUnitOfWork unitOfWork)
+    public TeamSlotQuery(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
     
     public async Task<IEnumerable<TeamSlotCharacterDto>> GetByPeriodAndBossIdAsync(Period period, int bossId)
@@ -52,7 +52,7 @@ public class TeamSlotQuery : ITeamSlotQuery
             .Where<TeamSlotDbModel>(x=> period.StartDate <= x.SlotDateTime && period.EndDate >= x.SlotDateTime)
             .Where<TeamSlotDbModel>(x => x.BossId == bossId);
 
-        return await _unitOfWork.QueryAsync<TeamSlotCharacterDto>(sql);
+        return await _dbContext.QueryAsync<TeamSlotCharacterDto>(sql);
     }
     
     public async Task<IEnumerable<TeamSlotCharacterDto>> GetByPeriodAndDiscordIdAsync(Period period, ulong discordId)
@@ -98,7 +98,7 @@ public class TeamSlotQuery : ITeamSlotQuery
             .Where<TeamSlotDbModel>(x=> period.StartDate <= x.SlotDateTime && period.EndDate >= x.SlotDateTime)
             .Where<PlayerDbModel>(x => x.DiscordId == (long)discordId);
 
-        return await _unitOfWork.QueryAsync<TeamSlotCharacterDto>(sql);
+        return await _dbContext.QueryAsync<TeamSlotCharacterDto>(sql);
     }
     
     public async Task<IEnumerable<TeamSlotCharacterDto>> GetBySlotDateTimeAsync(DateTimeOffset slotDateTime)
@@ -137,6 +137,6 @@ public class TeamSlotQuery : ITeamSlotQuery
                                    """)
             .Where<TeamSlotDbModel>(x => x.SlotDateTime >= slotDateTime && x.SlotDateTime < end);
 
-        return await _unitOfWork.QueryAsync<TeamSlotCharacterDto>(sql);
+        return await _dbContext.QueryAsync<TeamSlotCharacterDto>(sql);
     }
 }

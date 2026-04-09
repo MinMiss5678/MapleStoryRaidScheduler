@@ -1,6 +1,6 @@
-﻿using Application.Interface;
-using Domain.Entities;
+﻿using Domain.Entities;
 using Domain.Repositories;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 using Utils.SqlBuilder;
 
@@ -8,11 +8,11 @@ namespace Infrastructure.Repositories;
 
 public class PlayerRegisterRepository : IPlayerRegisterRepository
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public PlayerRegisterRepository(IUnitOfWork unitOfWork)
+    public PlayerRegisterRepository(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
 
     public async Task<IEnumerable<PlayerCharacterRegister>> GetListAsync(ulong discordId, int periodId)
@@ -48,7 +48,7 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
                                    """)
             .Where<PlayerRegisterDbModel>(x => x.DiscordId == (long)discordId && x.PeriodId == periodId);
 
-        return await _unitOfWork.QueryAsync<PlayerCharacterRegister>(sql);
+        return await _dbContext.QueryAsync<PlayerCharacterRegister>(sql);
     }
 
     public async Task<int> CreateAsync(Register register)
@@ -60,7 +60,7 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
             .Set(x => x.Timeslots, register.Timeslots)
             .ReturnId();
 
-        var id = await _unitOfWork.ExecuteScalarAsync(sql);
+        var id = await _dbContext.ExecuteScalarAsync(sql);
 
         return id;
     }
@@ -73,13 +73,13 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
             .Where(x => x.DiscordId == (long)register.DiscordId)
             .Where(x => x.PeriodId == register.PeriodId);
 
-        return await _unitOfWork.ExecuteAsync(sql);
+        return await _dbContext.ExecuteAsync(sql);
     }
 
     public async Task<bool> DeleteAsync(ulong discordId, int id)
     {
         var sql = new DeleteBuilder<PlayerRegisterDbModel>();
         sql.Where(x => x.DiscordId == (long)discordId);
-        return await _unitOfWork.Repository<PlayerRegisterDbModel>().DeleteAsync(id);
+        return await _dbContext.Repository<PlayerRegisterDbModel>().DeleteAsync(id);
     }
 }

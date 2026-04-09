@@ -9,6 +9,8 @@ public class PlayerRegisterSchedule
     public string CharacterName { get; set; }
     public string Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }
+    public List<PlayerAvailability> Availabilities { get; set; } = [];
     public int[] Weekdays { get; set; }
     public string[] Timeslots { get; set; }
     public int Rounds { get; set; }

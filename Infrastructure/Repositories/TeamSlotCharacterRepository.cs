@@ -1,6 +1,6 @@
-﻿using Application.Interface;
-using Domain.Entities;
+﻿using Domain.Entities;
 using Domain.Repositories;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 using Utils.SqlBuilder;
 
@@ -8,16 +8,16 @@ namespace Infrastructure.Repositories;
 
 public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public TeamSlotCharacterRepository(IUnitOfWork unitOfWork)
+    public TeamSlotCharacterRepository(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
 
     public async Task CreateAsync(TeamSlotCharacter teamSlot)
     {
-        await _unitOfWork.Repository<TeamSlotCharacterDbModel>().InsertAsync(new TeamSlotCharacterDbModel
+        await _dbContext.Repository<TeamSlotCharacterDbModel>().InsertAsync(new TeamSlotCharacterDbModel
         {
             TeamSlotId = teamSlot.TeamSlotId,
             CharacterId = teamSlot.CharacterId
@@ -29,7 +29,7 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         var sql = new DeleteBuilder<TeamSlotCharacterDbModel>();
         sql.Where(x => x.TeamSlotId == teamSlotId);
 
-        await _unitOfWork.ExecuteAsync(sql);
+        await _dbContext.ExecuteAsync(sql);
     }
 
     public async Task DeleteCharacterAsync(TeamSlotCharacter teamSlotCharacter)
@@ -38,6 +38,6 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         sql.Where(x => x.TeamSlotId == teamSlotCharacter.TeamSlotId)
             .Where(x => x.CharacterId == teamSlotCharacter.CharacterId);
 
-        await _unitOfWork.ExecuteAsync(sql);
+        await _dbContext.ExecuteAsync(sql);
     }
 }

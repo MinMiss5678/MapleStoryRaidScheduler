@@ -4,6 +4,7 @@ public class LoginResult
 {
     public string? SessionId { get; set; }
     public string? JwtToken { get; set; }
+    public string Role { get; set; } = string.Empty;
     public ulong DiscordId { get; set; }
     public DateTimeOffset Expiry { get; set; }
 

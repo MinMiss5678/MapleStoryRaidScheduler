@@ -1,6 +1,6 @@
-﻿using Application.Interface;
-using Application.Queries;
+﻿using Application.Queries;
 using Domain.Entities;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 using Utils.SqlBuilder;
 
@@ -8,11 +8,11 @@ namespace Infrastructure.Query;
 
 public class PeriodQuery : IPeriodQuery
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public PeriodQuery(IUnitOfWork unitOfWork)
+    public PeriodQuery(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
     
     public async Task<int> GetPeriodIdByNowAsync()
@@ -31,7 +31,7 @@ public class PeriodQuery : IPeriodQuery
             .From<PeriodDbModel>()
             .Where<PeriodDbModel>(x => x.StartDate <= targetDate && x.EndDate >= targetDate);
 
-        var periodId = await _unitOfWork.QuerySingleOrDefaultAsync<int?>(sql);
+        var periodId = await _dbContext.QuerySingleOrDefaultAsync<int?>(sql);
         return periodId ?? 0;
     }
 
@@ -59,6 +59,6 @@ public class PeriodQuery : IPeriodQuery
             .From<PeriodDbModel>()
             .Where<PeriodDbModel>(x => x.StartDate >= nextThursday && x.StartDate <= nextWednesday);
         
-        return await _unitOfWork.QuerySingleAsync<Period>(sql);
+        return await _dbContext.QuerySingleOrDefaultAsync<Period?>(sql);
     }
 }

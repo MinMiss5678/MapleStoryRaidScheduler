@@ -1,8 +1,7 @@
 ﻿using Application.DTOs;
 using Application.Interface;
-using Application.Options;
 using Domain.Entities;
-using Microsoft.Extensions.Options;
+using Domain.Repositories;
 
 namespace Application.Services;
 
@@ -11,45 +10,77 @@ public class AuthAppService
     private readonly IAuthService _authService;
     private readonly IDiscordOAuthClient _discordOAuthClient;
     private readonly IPlayerService _playerService;
-    private readonly DiscordOptions _discordOptions;
+    private readonly IDiscordRoleMappingRepository _roleMappingRepository;
 
     public AuthAppService(IAuthService authService, IDiscordOAuthClient discordOAuthClient,
-        IPlayerService playerService, IOptions<DiscordOptions> discordOptions)
+        IPlayerService playerService, IDiscordRoleMappingRepository roleMappingRepository)
     {
         _authService = authService;
         _discordOAuthClient = discordOAuthClient;
         _playerService = playerService;
-        _discordOptions = discordOptions.Value;
+        _roleMappingRepository = roleMappingRepository;
     }
 
     public async Task<LoginResult> LoginAsync(string code)
     {
         var (user, token) = await _authService.ExchangeCodeAsync(code);
+        var existingPlayer = await _playerService.GetAsync(user.Id);
         var roles = await _discordOAuthClient.GetUserRolesAsync(user.Id);
 
-        if (roles.Contains(_discordOptions.AdminRoleId))
+        // 角色來源改為 DB 映射：
+        // 1) 若玩家已存在，沿用 DB 中的 Player.Role
+        // 2) 若是新玩家，依 Discord 身分組透過 DiscordRoleMapping 解析系統 Role
+        string? role = existingPlayer?.Role;
+        if (string.IsNullOrEmpty(role))
         {
-            await _playerService.CreateAsync(new Player()
-            {
-                DiscordId = user.Id,
-                DiscordName = user.Name
-            });
-            var sessionId = await _authService.CreateSessionAsync(user.Id, token);
-            return new LoginResult
-                { SessionId = sessionId, DiscordId = user.Id, Expiry = DateTimeOffset.UtcNow.AddDays(30) };
-        }
-        else if (roles.Contains(_discordOptions.UserRoleId))
-        {
-            var jwt = _authService.CreateJwt(user);
-            await _playerService.CreateAsync(new Player()
-            {
-                DiscordId = user.Id,
-                DiscordName = user.Name
-            });
-            return new LoginResult { JwtToken = jwt, Expiry = DateTimeOffset.UtcNow.AddDays(30) };
+            // 將 OAuth 回傳的身分組 ID 轉為 ulong 陣列供 DB 映射使用
+            var roleIds = roles
+                .Select(r =>
+                {
+                    if (ulong.TryParse(r, out var id)) return (ulong?)id;
+                    return null;
+                })
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value);
+
+            role = await _roleMappingRepository.ResolveRoleAsync(roleIds);
         }
 
-        return new LoginResult();
+        if (string.IsNullOrEmpty(role))
+        {
+            // 無法從 DB 解析出系統角色，視為登入失敗
+            return new LoginResult();
+        }
+
+        await _playerService.CreateAsync(new Player()
+        {
+            DiscordId = user.Id,
+            DiscordName = user.Name,
+            Role = role
+        });
+
+        if (role == "Admin")
+        {
+            var sessionId = await _authService.CreateSessionAsync(user.Id, token);
+            return new LoginResult
+            {
+                SessionId = sessionId,
+                DiscordId = user.Id,
+                Expiry = DateTimeOffset.UtcNow.AddDays(30),
+                Role = role
+            };
+        }
+        else
+        {
+            var jwt = _authService.CreateJwt(user);
+            return new LoginResult
+            {
+                JwtToken = jwt,
+                DiscordId = user.Id,
+                Expiry = DateTimeOffset.UtcNow.AddDays(30),
+                Role = role
+            };
+        }
     }
 
     public async Task<bool> LogoutAsync(string sessionId, string discordId)

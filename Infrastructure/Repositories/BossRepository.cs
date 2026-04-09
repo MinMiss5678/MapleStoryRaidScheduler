@@ -1,22 +1,22 @@
-﻿using Application.Interface;
-using Domain.Entities;
+﻿using Domain.Entities;
 using Domain.Repositories;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 
 namespace Infrastructure.Repositories;
 
 public class BossRepository : IBossRepository
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public BossRepository(IUnitOfWork unitOfWork)
+    public BossRepository(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
 
     public async Task<IEnumerable<Boss>> GetAllAsync()
     {
-        return await _unitOfWork.Repository<BossDbModel>().GetAllAsync<Boss>(x => new
+        return await _dbContext.Repository<BossDbModel>().GetAllAsync<Boss>(x => new
         {
             x.Id,
             x.Name,

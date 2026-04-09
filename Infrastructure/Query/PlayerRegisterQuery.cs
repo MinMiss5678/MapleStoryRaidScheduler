@@ -1,7 +1,7 @@
 ﻿using Application.DTOs;
-using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 using Utils.SqlBuilder;
 
@@ -10,12 +10,12 @@ namespace Infrastructure.Query;
 public class PlayerRegisterQuery : IPlayerRegisterQuery
 {
     private readonly IPeriodQuery _periodQuery;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public PlayerRegisterQuery(IPeriodQuery periodQuery, IUnitOfWork unitOfWork)
+    public PlayerRegisterQuery(IPeriodQuery periodQuery, DbContext dbContext)
     {
         _periodQuery = periodQuery;
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
     
     public async Task<IEnumerable<PlayerRegisterSchedule>> GetByNowPeriodIdAsync(int bossId)
@@ -116,6 +116,6 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
                 });
         }
 
-        return await _unitOfWork.QueryAsync<PlayerRegisterSchedule>(sql);
+        return await _dbContext.QueryAsync<PlayerRegisterSchedule>(sql);
     }
 }

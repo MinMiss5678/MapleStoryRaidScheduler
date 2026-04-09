@@ -1,6 +1,6 @@
-﻿using Application.Interface;
-using Domain.Entities;
+﻿using Domain.Entities;
 using Domain.Repositories;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 using Utils.SqlBuilder;
 
@@ -8,16 +8,16 @@ namespace Infrastructure.Repositories;
 
 public class CharacterRegisterRepository : ICharacterRegisterRepository
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public CharacterRegisterRepository(IUnitOfWork unitOfWork)
+    public CharacterRegisterRepository(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
 
     public async Task CreateAsync(CharacterRegister characterRegister)
     {
-        await _unitOfWork.Repository<CharacterRegisterDbModel>().InsertAsync(new CharacterRegisterDbModel()
+        await _dbContext.Repository<CharacterRegisterDbModel>().InsertAsync(new CharacterRegisterDbModel()
         {
             PlayerRegisterId = characterRegister.PlayerRegisterId,
             CharacterId = characterRegister.CharacterId,
@@ -36,12 +36,12 @@ public class CharacterRegisterRepository : ICharacterRegisterRepository
             .Set(x => x.Rounds, characterRegister.Rounds)
             .Where(x=> x.Id == characterRegister.Id);
 
-        await _unitOfWork.ExecuteAsync(updateSql);
+        await _dbContext.ExecuteAsync(updateSql);
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        return await _unitOfWork.Repository<CharacterRegisterDbModel>().DeleteAsync(id);
+        return await _dbContext.Repository<CharacterRegisterDbModel>().DeleteAsync(id);
     }
 
     public async Task<int> DeleteByPlayerRegisterIdAsync(int playerRegisterId)
@@ -49,6 +49,6 @@ public class CharacterRegisterRepository : ICharacterRegisterRepository
         var sql = new DeleteBuilder<CharacterRegisterDbModel>();
         sql.Where(x => x.PlayerRegisterId == playerRegisterId);
 
-        return await _unitOfWork.ExecuteAsync(sql);
+        return await _dbContext.ExecuteAsync(sql);
     }
 }

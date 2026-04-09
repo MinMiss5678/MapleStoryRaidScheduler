@@ -43,7 +43,7 @@ public class AuthController : ControllerBase
                 Expires = result.Expiry
             });
 
-            return Ok(new { type = "session" });
+            return Ok(new { role = result.Role });
         }
         else if (result.IsJwt)
         {
@@ -55,7 +55,7 @@ public class AuthController : ControllerBase
                 Expires = result.Expiry
             });
 
-            return Ok(new { type = "jwt" });
+            return Ok(new { role = result.Role });
         }
         else
         {

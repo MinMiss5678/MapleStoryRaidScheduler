@@ -1,6 +1,6 @@
-﻿using Application.Interface;
-using Domain.Entities;
+﻿using Domain.Entities;
 using Domain.Repositories;
+using Infrastructure.Dapper;
 using Infrastructure.Entities;
 using Utils.SqlBuilder;
 
@@ -8,16 +8,16 @@ namespace Infrastructure.Repositories;
 
 public class CharacterRepository : ICharacterRepository
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly DbContext _dbContext;
 
-    public CharacterRepository(IUnitOfWork unitOfWork)
+    public CharacterRepository(DbContext dbContext)
     {
-        _unitOfWork = unitOfWork;
+        _dbContext = dbContext;
     }
 
     public async Task<int> CreateAsync(Character character)
     {
-        var result = await _unitOfWork.Repository<CharacterDbModel>().InsertAsync(new CharacterDbModel()
+        var result = await _dbContext.Repository<CharacterDbModel>().InsertAsync(new CharacterDbModel()
         {
             DiscordId = (long)character.DiscordId,
             Id = character.Id,
@@ -37,7 +37,7 @@ public class CharacterRepository : ICharacterRepository
             .Where(x => x.Id == character.Id)
             .Where(x => x.DiscordId == (long)character.DiscordId);
 
-        return await _unitOfWork.ExecuteAsync(sql);
+        return await _dbContext.ExecuteAsync(sql);
     }
 
     public async Task<int> DeleteAsync(ulong discordId, string id)
@@ -46,6 +46,6 @@ public class CharacterRepository : ICharacterRepository
         sql.Where(x=>x.Id == id)
             .Where(x => x.DiscordId == (long)discordId);
 
-        return await _unitOfWork.ExecuteAsync(sql);
+        return await _dbContext.ExecuteAsync(sql);
     }
 }
