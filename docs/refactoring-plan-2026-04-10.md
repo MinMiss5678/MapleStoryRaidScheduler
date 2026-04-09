@@ -3,6 +3,44 @@
 ## 審查範圍
 - Git range: `601542d..e33a856`
 - 審查檔案：約 55 個核心檔案（Application、Domain、Infrastructure、Presentation.WebApi 全層）
+- **前端審查**：`web/` 目錄（Next.js App Router + TypeScript），涵蓋 7 個 service、9 個頁面、4 個 type 定義
+
+## 前端 API 使用分析
+
+前端透過 `app/api/[...path]/route.ts` 統一代理至後端，白名單：`auth, character, boss, register, schedule, teamslot, period, systemconfig, jobcategory`。
+
+### 前端實際呼叫的端點
+| Service | 端點 | HTTP Method |
+|---------|------|-------------|
+| authService | `/api/auth/login` | POST |
+| authService | `/api/auth/logout` | POST |
+| bossService | `/api/boss/GetAll` | GET |
+| bossService | `/api/boss/{bossId}/Templates` | GET |
+| bossService | `/api/boss/Templates/{templateId}` | DELETE |
+| bossService | `/api/boss/Templates` | POST |
+| bossService | `/api/boss/Templates/{id}` | PUT |
+| bossService | `/api/boss/{bossId}` | DELETE |
+| bossService | `/api/boss` | POST |
+| bossService | `/api/boss/{id}` | PUT |
+| bossService | `/api/JobCategory/GetJobMap` | GET |
+| characterService | `/api/character/GetWithDiscordName` | GET |
+| characterService | `/api/character` | POST |
+| characterService | `/api/character/{id}` | PUT / DELETE |
+| periodService | `/api/period/GetByNow` | GET |
+| registerService | `/api/register` | GET / POST / PUT |
+| registerService | `/api/register/GetLast` | GET |
+| registerService | `/api/register/{id}` | DELETE |
+| registerService | `/api/register/GetByQuery` | GET |
+| scheduleService | `/api/teamSlot?bossId=` | GET |
+| scheduleService | `/api/schedule/AutoScheduleWithTemplate` | POST |
+| scheduleService | `/api/teamSlot` | PUT |
+| scheduleService | `/api/teamSlot/GetByDiscordId` | GET |
+| systemConfigService | `/api/SystemConfig` | GET / POST |
+
+### 前端未使用的後端功能（確認為孤立）
+- `IScheduleService.GetPartiesAsync` — 前端無對應呼叫
+- `IScheduleService.JoinTeamAsync` — 前端無對應呼叫
+- `IScheduleService.FinalizeScheduleAsync` — 前端無對應呼叫
 
 ---
 
@@ -99,7 +137,8 @@
 ### M-5 Domain Entity 包含 UI 操作指令
 - **位置**：`Domain/Entities/Register.cs`（DeleteCharacterRegisterIds）、`Domain/Entities/TeamSlot.cs`（DeleteTeamSlotCharacterIds、BossName、PeriodId）
 - **問題**：PATCH 操作指令混入 Domain Entity，違反 DDD，TeamSlot 同時承擔 Entity/ViewModel/Command 三個職責
-- **修法**：建立 `RegisterUpdateCommand`、`TeamSlotUpdateCommand` DTO，Domain Entity 只保留純領域狀態
+- **前端佐證**：前端 `RegisterFormState.deleteCharacterRegisterIds` 和 `scheduleService.saveSchedule` 的 `deleteTeamSlotIds` 參數直接對應這些欄位，確認此設計是為了前端 PATCH 操作而存在
+- **修法**：建立 `RegisterUpdateCommand`、`TeamSlotUpdateCommand` DTO，Domain Entity 只保留純領域狀態；前端 types 無需變動（DTO 欄位名稱保持一致）
 
 ### M-6 BossService 零業務邏輯
 - **位置**：`Infrastructure/Services/BossService.cs`
@@ -121,29 +160,54 @@
 ## 執行計畫
 
 ### 第一週 — Critical + 高風險安全性
-- [ ] C-1：修復 AuthenticationMiddleware 放行漏洞
-- [ ] C-4：移除 / 修復 SystemConfig.RegistrationDeadline 假 setter
-- [ ] H-5：用 `Interlocked.Exchange` 保護 `_changeCts`
-- [ ] H-4：修復 nullable period 提前 return
+- [x] C-1：修復 AuthenticationMiddleware 放行漏洞
+- [x] C-2：AuthAppService 登入失敗加入 `IsSuccess` flag
+- [x] C-3：JWT Refresh 時從 DB 取得 Player.DiscordName 再建立新 JWT
+- [x] C-4：移除 / 修復 SystemConfig.RegistrationDeadline 假 setter
+- [x] H-5：用 `Interlocked.Exchange` 保護 `_changeCts`
+- [x] H-4：修復 nullable period 提前 return
 
 ### 第二週 — 架構清理
-- [ ] H-1：TeamSlotService 改注入 IPlayerRepository（需同步新增介面方法）
-- [ ] H-3：移除 RegisterService / BossService 未使用的 IUnitOfWork 注入
-- [ ] H-7：清理 TeamSlotCharacterRepository 殘留欄位
-- [ ] H-6：統一使用 `DateTimeOffset.UtcNow`
-- [ ] H-8：PlayerRegisterQuery 以強型別 record 取代 dynamic
+- [x] H-1：TeamSlotService 改注入 IPlayerRepository（需同步新增介面方法）
+- [x] H-3：移除 RegisterService / BossService 未使用的 IUnitOfWork 注入
+- [x] H-7：清理 TeamSlotCharacterRepository 殘留欄位
+- [x] H-6：統一使用 `DateTimeOffset.UtcNow`
+- [x] H-8：PlayerRegisterQuery 以強型別 record 取代 dynamic
 
 ### 第三週 — DDD / 代碼品質
-- [ ] H-2：統一 `IsInJobCategory` 邏輯，提取至共用 Helper
-- [ ] M-1：修正 `PeriodQuery.GetByNowAsync` SQL（加 `StartDate <= NOW()`）
+- [x] H-2：統一 `IsInJobCategory` 邏輯，ScheduleService 委派至 `JobCategoryHelper`
+- [x] M-1：修正 `PeriodQuery.GetByNowAsync` SQL（加 `StartDate <= NOW()`）
 - [ ] M-5：將 Delete 指令從 Domain Entity 分離為 Command DTO
-- [ ] M-4：Options 類別加上 `required` / 驗證
-- [ ] M-3：`rounds >= 7` 改讀自 Boss 設定
+- [x] M-4：Options 類別加上 `required` / 預設值
+- [x] M-3：`rounds >= 7` 改讀自 `Boss.RoundConsumption`
+
+### Low 修復
+- [x] LOW-1：`Program.cs` 合併重複 `AddOptions<JwtOptions>()` 為一次呼叫
+- [x] LOW-2：`GetNextSlotDatePublic` 改為 `internal` + `InternalsVisibleTo("Test")`
+- [ ] LOW-3：`DbContext.Commit()/Rollback()` 防護（待評估）
+- [x] LOW-4：刪除 `PlayerRegisterSchedule.Weekdays/Timeslots` 廢棄欄位
+- [x] LOW-5：修正 `GetDelayUntilNextReset` 永真條件
+
+### TeamSlotService 重構（God Class 拆分）
+- [x] 合併 `AssignToSlot` / `FillPlayer` 為 `FillSlot`，消除重複
+- [x] 提取 `MapToTeamSlots` 共用映射方法
+- [x] 修正 `TryMergeTeamsAsync` 縮排
+- [x] 提取 `Domain/Helpers/SlotDateCalculator.cs`（純計算，無 I/O）
+- [x] `GetNextSlotDatePublic` 改為 `internal static`
+- [x] 提取 `TeamSlotMergeService`（合併邏輯）+ `ITeamSlotMergeService` 介面
+- [x] `IsInJobCategory` 委派至 `JobCategoryHelper`
+- [x] 提取 `TeamSlotAutoAssignService`（自動分配）+ `ITeamSlotAutoAssignService` 介面
+- [x] 移除 `DbContext` 直接依賴，改用 `IPlayerRepository`
+- [x] `ITeamSlotService` 移除 `AutoAssignAsync`
+- [x] `TeamSlotService` 建構函式依賴從 10 降至 4
+- [x] 更新 DI 註冊、Controller、測試
+- [x] 全量測試通過（33/33）
 
 ### 待確認後處理
-- [ ] `PlayerRegisterSchedule.Weekdays/Timeslots` — 確認是否廢棄後刪除
-- [ ] `TeamSlotController` `"admin"` 小寫 vs `AuthAppService` `"Admin"` 大寫 — 確認 role 比對是否有問題
-- [ ] `IScheduleService` 缺少的三個方法（`GetPartiesAsync`、`JoinTeamAsync`、`FinalizeScheduleAsync`）— 確認是否為孤立功能
+- [x] `PlayerRegisterSchedule.Weekdays/Timeslots` — **已確認為廢棄欄位，已刪除**
+- [ ] `TeamSlotController` `"admin"` 小寫 vs `AuthAppService` `"Admin"` 大寫 — 前端 `RolesProvider` 使用 JWT claims 中的 role，需確認後端 role 比對是否 case-insensitive
+- [x] `IScheduleService` 缺少的三個方法（`GetPartiesAsync`、`JoinTeamAsync`、`FinalizeScheduleAsync`）— **已確認為孤立功能**，前端無任何呼叫，可安全移除介面定義
+- [x] `BossController` 的 `POST`（新增 Boss）和 `PUT/{id}`（更新 Boss）— **前端已新增 `createBoss` 和 `updateBoss` 方法**，不再孤立
 
 ---
 
@@ -154,3 +218,5 @@
 - `GetDeadlineForPeriod` 放在 Entity 方法中，符合 rich entity / DDD 精神
 - `TryMatchTemplate`、`FindCommonDateTime` 演算法邊界情況處理完整
 - Docker secrets 以 `PostConfigure` 讀取，生產環境安全性到位
+- **前端架構良好**：API proxy 統一代理 + 白名單機制、React Query hooks 封裝查詢邏輯、service 層與 types 分離清晰
+- **前後端 API 契約一致**：所有前端呼叫的端點在後端 Controller 均有對應，無斷裂的 API 呼叫
