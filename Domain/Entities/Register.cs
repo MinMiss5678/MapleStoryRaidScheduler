@@ -7,5 +7,4 @@ public class Register
     public int PeriodId { get; set; }
     public List<CharacterRegister> CharacterRegisters { get; set; }
     public List<PlayerAvailability> Availabilities { get; set; } = [];
-    public List<int> DeleteCharacterRegisterIds { get; set; } = [];
 }

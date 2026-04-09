@@ -9,6 +9,6 @@ public interface IRegisterService
     Task<RegisterDto?> GetLastAsync(ulong discordId);
     Task<IEnumerable<TeamSlotCharacter>> GetByQueryAsync(RegisterGetByQueryRequest request);
     Task CreateAsync(Register register);
-    Task UpdateAsync(Register character);
+    Task UpdateAsync(RegisterUpdateCommand command);
     Task DeleteAsync(ulong discordId, int id);
 }
