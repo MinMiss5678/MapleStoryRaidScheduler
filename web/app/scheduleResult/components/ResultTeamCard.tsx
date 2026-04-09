@@ -8,9 +8,10 @@ interface ResultTeamCardProps {
     teamSlot: TeamSlot;
     bossName: string;
     isMyTeam: boolean;
+    requireMembers?: number;
 }
 
-export default function ResultTeamCard({ teamSlot, bossName, isMyTeam }: ResultTeamCardProps) {
+export default function ResultTeamCard({ teamSlot, bossName, isMyTeam, requireMembers = 6 }: ResultTeamCardProps) {
     const memberCount = teamSlot.characters.filter(c => c.characterId !== null).length;
     
     return (
@@ -40,7 +41,7 @@ export default function ResultTeamCard({ teamSlot, bossName, isMyTeam }: ResultT
                     </div>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Users size={14} />
-                        <span>成員: {memberCount} / 6</span>
+                        <span>成員: {memberCount} / {requireMembers}</span>
                     </div>
                 </div>
             </div>

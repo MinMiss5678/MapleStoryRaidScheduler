@@ -14,14 +14,15 @@ interface AdminRaidTeamCardProps {
     onTeamSlotUpdate: (team: TeamSlot) => void;
     onTeamSlotDelete: (team: TeamSlot) => void;
     onAddCharacter: (teamSlot: TeamSlot, character: TeamSlotCharacter) => void;
+    requireMembers?: number;
 }
 
-export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, onTeamSlotDelete, onAddCharacter }: AdminRaidTeamCardProps) {
+export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, onTeamSlotDelete, onAddCharacter, requireMembers = 6 }: AdminRaidTeamCardProps) {
     const [isModalOpen, setModalOpen] = useState(false);
 
     const joinedMembers = teamSlot.characters.filter(m => m.characterId !== null);
     const memberCount = joinedMembers.length;
-    const isFull = memberCount >= 6;
+    const isFull = memberCount >= requireMembers;
 
     const handleRemoveCharacter = (id: number | undefined) => {
         if (id === undefined) return;
@@ -54,7 +55,7 @@ export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, 
                     </div>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Users size={14} />
-                        <span>成員: {memberCount} / 6</span>
+                        <span>成員: {memberCount} / {requireMembers}</span>
                     </div>
                 </div>
 

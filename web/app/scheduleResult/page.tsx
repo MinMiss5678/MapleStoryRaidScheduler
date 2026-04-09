@@ -1,50 +1,33 @@
 ﻿"use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { TeamSlot, Boss } from "@/types/raid";
 import { Character } from "@/types/character";
 import ResultTeamCard from "./components/ResultTeamCard";
 import { Filter, Users, Calendar as CalendarIcon, CheckCircle2 } from "lucide-react";
-import { bossService } from "@/services/bossService";
-import { characterService } from "@/services/characterService";
 import { scheduleService } from "@/services/scheduleService";
+import { useBosses } from "@/hooks/queries/useBosses";
+import { useCharacters } from "@/hooks/queries/useCharacters";
 
 
 export default function ScheduleResultPage() {
-    const [bosses, setBosses] = useState<Boss[]>([]);
+    const { data: bosses = [] } = useBosses();
+    const { data: myCharacters = [] } = useCharacters();
     const [teamSlots, setTeamSlots] = useState<TeamSlot[]>([]);
-    const [myCharacters, setMyCharacters] = useState<Character[]>([]);
     const [selectedBossId, setSelectedBossId] = useState<number | "all">("all");
     const [showOnlyMine, setShowOnlyMine] = useState(true);
 
-    // 1. 基礎數據加載 (Boss 列表, 個人角色)
-    useEffect(() => {
-        async function fetchBaseData() {
-            try {
-                const [bossData, charData] = await Promise.all([
-                    bossService.getAllBosses(),
-                    characterService.getCharacters()
-                ]);
-
-                setBosses(bossData);
-                setMyCharacters(charData);
-            } catch (error) {
-                console.error("Failed to fetch base data:", error);
-            }
-        }
-
-        fetchBaseData();
-    }, []);
-
-    const isMyTeam = useMemo(() => (team: TeamSlot) => {
+    const isMyTeam = useCallback((team: TeamSlot) => {
         return team.characters.some(c => 
             myCharacters.some(myChar => myChar.id === c.characterId)
         );
     }, [myCharacters]);
 
-    // 2. 根據過濾條件加載團隊數據
+    // 根據過濾條件加載團隊數據
     useEffect(() => {
         if (bosses.length === 0) return;
+
+        let cancelled = false;
 
         async function fetchFilteredData() {
             try {
@@ -55,13 +38,21 @@ export default function ScheduleResultPage() {
                     const bossIdToFetch = selectedBossId === "all" ? bosses[0].id : selectedBossId;
                     data = await scheduleService.getTeamSlots(bossIdToFetch);
                 }
-                setTeamSlots(data);
+                if (!cancelled) {
+                    setTeamSlots(data);
+                }
             } catch (error) {
-                console.error("Failed to fetch filtered data:", error);
+                if (!cancelled) {
+                    console.error("Failed to fetch filtered data:", error);
+                }
             }
         }
 
         fetchFilteredData();
+
+        return () => {
+            cancelled = true;
+        };
     }, [selectedBossId, showOnlyMine, bosses]);
 
     const myTeamsCount = useMemo(() => {
@@ -157,6 +148,7 @@ export default function ScheduleResultPage() {
                                 teamSlot={team}
                                 bossName={bosses.find(b => b.id === team.bossId)?.name || "Unknown"}
                                 isMyTeam={isMyTeam(team)}
+                                requireMembers={bosses.find(b => b.id === team.bossId)?.requireMembers}
                             />
                         ))}
                     </div>
