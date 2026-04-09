@@ -104,4 +104,44 @@ public class BossServiceTests
         // Assert
         Assert.True(result);
     }
+
+    [Fact]
+    public async Task DeleteBossAsync_ShouldCascadeDeleteTemplates()
+    {
+        // Arrange
+        var templates = new List<BossTemplate>
+        {
+            new BossTemplate { Id = 10, BossId = 1 },
+            new BossTemplate { Id = 20, BossId = 1 }
+        };
+        _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(1)).ReturnsAsync(templates);
+        _bossRepositoryMock.Setup(r => r.DeleteTemplateAsync(It.IsAny<int>())).ReturnsAsync(true);
+        _bossRepositoryMock.Setup(r => r.DeleteBossAsync(1)).ReturnsAsync(true);
+
+        // Act
+        var result = await _bossService.DeleteBossAsync(1);
+
+        // Assert
+        Assert.True(result);
+        _bossRepositoryMock.Verify(r => r.GetTemplatesByBossIdAsync(1), Times.Once);
+        _bossRepositoryMock.Verify(r => r.DeleteTemplateAsync(10), Times.Once);
+        _bossRepositoryMock.Verify(r => r.DeleteTemplateAsync(20), Times.Once);
+        _bossRepositoryMock.Verify(r => r.DeleteBossAsync(1), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteBossAsync_WithNoTemplates_ShouldDeleteBossOnly()
+    {
+        // Arrange
+        _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(1)).ReturnsAsync(new List<BossTemplate>());
+        _bossRepositoryMock.Setup(r => r.DeleteBossAsync(1)).ReturnsAsync(true);
+
+        // Act
+        var result = await _bossService.DeleteBossAsync(1);
+
+        // Assert
+        Assert.True(result);
+        _bossRepositoryMock.Verify(r => r.DeleteTemplateAsync(It.IsAny<int>()), Times.Never);
+        _bossRepositoryMock.Verify(r => r.DeleteBossAsync(1), Times.Once);
+    }
 }

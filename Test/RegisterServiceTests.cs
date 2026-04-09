@@ -62,8 +62,8 @@ public class RegisterServiceTests
         };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<Exception>(() => _registerService.CreateAsync(register));
-        Assert.Equal("目前已超過報名截止時間，無法報名。", exception.Message);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => _registerService.CreateAsync(register));
+        Assert.Equal("目前已超過報名截止時間。", exception.Message);
     }
 
     [Fact]

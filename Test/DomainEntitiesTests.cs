@@ -1,4 +1,5 @@
-﻿using Domain.Entities;
+﻿using Application.DTOs;
+using Domain.Entities;
 using Xunit;
 
 namespace Test;
@@ -23,9 +24,20 @@ public class DomainEntitiesTests
 
         // Assert
         Assert.NotNull(register.Availabilities);
-        Assert.NotNull(register.DeleteCharacterRegisterIds);
         Assert.Empty(register.Availabilities);
-        Assert.Empty(register.DeleteCharacterRegisterIds);
+    }
+
+    [Fact]
+    public void RegisterUpdateCommand_ShouldInitializeLists()
+    {
+        // Arrange & Act
+        var command = new RegisterUpdateCommand();
+
+        // Assert
+        Assert.NotNull(command.Availabilities);
+        Assert.NotNull(command.DeleteCharacterRegisterIds);
+        Assert.Empty(command.Availabilities);
+        Assert.Empty(command.DeleteCharacterRegisterIds);
     }
 
     [Fact]
@@ -117,6 +129,16 @@ public class DomainEntitiesTests
         Assert.True(teamSlot.IsTemporary);
         Assert.False(teamSlot.IsPublished);
         Assert.NotNull(teamSlot.Characters);
-        Assert.NotNull(teamSlot.DeleteTeamSlotCharacterIds);
+    }
+
+    [Fact]
+    public void TeamSlotUpdateCommand_ShouldInitializeLists()
+    {
+        // Arrange & Act
+        var command = new TeamSlotUpdateCommand();
+
+        // Assert
+        Assert.NotNull(command.Characters);
+        Assert.NotNull(command.DeleteTeamSlotCharacterIds);
     }
 }
