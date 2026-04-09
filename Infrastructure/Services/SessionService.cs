@@ -51,6 +51,11 @@ public class SessionService : ISessionService
             if (DateTimeOffset.UtcNow >= session.Expiry)
             {
                 var newToken = await _discordClient.RefreshTokenAsync(session.RefreshToken);
+                if (newToken == null)
+                {
+                    return null;
+                }
+                
                 var newSession = new Session()
                 {
                     DiscordId = session.DiscordId,

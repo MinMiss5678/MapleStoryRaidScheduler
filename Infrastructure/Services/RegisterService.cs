@@ -12,40 +12,70 @@ public class RegisterService : IRegisterService
     private readonly IPlayerRegisterRepository _playerRegisterRepository;
     private readonly IPlayerRegisterQuery _playerRegisterQuery;
     private readonly ICharacterRegisterRepository _characterRegisterRepository;
+    private readonly IPlayerAvailabilityRepository _playerAvailabilityRepository;
+    private readonly ITeamSlotService _teamSlotService;
+    private readonly ITeamSlotCharacterRepository _teamSlotCharacterRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ISystemConfigService _systemConfigService;
 
     public RegisterService(IPeriodQuery periodQuery,
         IPlayerRegisterRepository playerRegisterRepository, IPlayerRegisterQuery playerRegisterQuery,
-        ICharacterRegisterRepository characterRegisterRepository, IUnitOfWork unitOfWork)
+        ICharacterRegisterRepository characterRegisterRepository,
+        IPlayerAvailabilityRepository playerAvailabilityRepository,
+        ITeamSlotCharacterRepository teamSlotCharacterRepository,
+        ITeamSlotService teamSlotService, IUnitOfWork unitOfWork,
+        ISystemConfigService systemConfigService)
     {
         _periodQuery = periodQuery;
         _playerRegisterRepository = playerRegisterRepository;
         _playerRegisterQuery = playerRegisterQuery;
         _characterRegisterRepository = characterRegisterRepository;
+        _playerAvailabilityRepository = playerAvailabilityRepository;
+        _teamSlotService = teamSlotService;
+        _teamSlotCharacterRepository = teamSlotCharacterRepository;
         _unitOfWork = unitOfWork;
+        _systemConfigService = systemConfigService;
     }
 
-    public async Task<RegisterDto> GetAsync(ulong discordId)
+    public async Task<RegisterDto?> GetAsync(ulong discordId)
     {
         var periodId = await _periodQuery.GetPeriodIdByNowAsync();
-        var registers = await _playerRegisterRepository.GetListAsync(discordId, periodId);
+        if (periodId == 0) return null;
+        return await GetByPeriodAsync(discordId, periodId);
+    }
+
+    public async Task<RegisterDto?> GetLastAsync(ulong discordId)
+    {
+        var periodId = await _periodQuery.GetLastPeriodIdAsync();
+        if (periodId == 0) return null;
+        return await GetByPeriodAsync(discordId, periodId);
+    }
+
+    private async Task<RegisterDto?> GetByPeriodAsync(ulong discordId, int periodId)
+    {
+        var registers = (await _playerRegisterRepository.GetListAsync(discordId, periodId)).ToList();
         var first = registers.FirstOrDefault();
         if (first == null)
             return null;
+
+        var availabilities = await _playerAvailabilityRepository.GetByPlayerRegisterIdAsync(first.Id);
 
         var flat = new RegisterDto
         {
             Id = first.Id,
             PeriodId = first.PeriodId,
-            Weekdays = first.Weekdays,
-            Timeslots = first.Timeslots,
+            Availabilities = availabilities.Select(a => new PlayerAvailability
+            {
+                Weekday = a.Weekday,
+                StartTime = a.StartTime,
+                EndTime = a.EndTime
+            }).ToList(),
             CharacterRegisters = registers
                 .Where(r => r.CharacterRegisterId != null)
                 .Select(r => new CharacterRegisterDto
                 {
                     Id = r.CharacterRegisterId,
                     CharacterId = r.CharacterId,
-                    Job = r.Job,
                     BossId = r.BossId,
                     Rounds = r.Rounds
                 })
@@ -57,12 +87,13 @@ public class RegisterService : IRegisterService
     
     public async Task<IEnumerable<TeamSlotCharacter>> GetByQueryAsync(RegisterGetByQueryRequest request)
     {
-        var periodId = await _periodQuery.GetPeriodIdByNowAsync();
+        var periodId = await _periodQuery.GetPeriodIdByDateAsync(request.SlotDateTime.Value);
+            
         var registers = await _playerRegisterQuery.GetByQueryAsync(request, periodId);
         var first = registers.FirstOrDefault();
         if (first == null)
-            return null;
-
+            return new List<TeamSlotCharacter>();
+        
         var flat = registers.Select(x => new TeamSlotCharacter()
         {
             DiscordId =  x.DiscordId,
@@ -79,74 +110,93 @@ public class RegisterService : IRegisterService
 
     public async Task CreateAsync(Register register)
     {
-        await _unitOfWork.BeginTransactionAsync();
-        try
+        var config = await _systemConfigService.GetAsync();
+        var currentPeriod = await _periodQuery.GetByNowAsync();
+        if (currentPeriod != null)
         {
-            var playRegisterId = await _playerRegisterRepository.CreateAsync(register);
-            foreach (var characterRegister in register.CharacterRegisters)
+            var deadline = config.GetDeadlineForPeriod(currentPeriod.StartDate);
+            if (DateTimeOffset.Now > deadline)
             {
-                characterRegister.PlayerRegisterId = playRegisterId;
-                await _characterRegisterRepository.CreateAsync(characterRegister);
+                throw new Exception("目前已超過報名截止時間，無法報名。");
             }
+        }
 
-            await _unitOfWork.CommitAsync();
-        }
-        catch (Exception e)
+        var playRegisterId = await _playerRegisterRepository.CreateAsync(register);
+
+        foreach (var availability in register.Availabilities)
         {
-            await _unitOfWork.RollbackAsync();
-            throw;
+            await _playerAvailabilityRepository.CreateAsync(new PlayerAvailability
+            {
+                PlayerRegisterId = playRegisterId,
+                Weekday = availability.Weekday,
+                StartTime = availability.StartTime,
+                EndTime = availability.EndTime
+            });
         }
+
+        foreach (var characterRegister in register.CharacterRegisters)
+        {
+            characterRegister.PlayerRegisterId = playRegisterId;
+            await _characterRegisterRepository.CreateAsync(characterRegister);
+        }
+
+        await _teamSlotService.AutoAssignAsync(register);
     }
 
     public async Task UpdateAsync(Register register)
     {
-        await _unitOfWork.BeginTransactionAsync();
-        try
+        var config = await _systemConfigService.GetAsync();
+        var currentPeriod = await _periodQuery.GetByNowAsync();
+        if (currentPeriod != null)
         {
-            await _playerRegisterRepository.UpdateAsync(register);
-            
-            foreach (var c in register.DeleteCharacterRegisterIds)
+            var deadline = config.GetDeadlineForPeriod(currentPeriod.StartDate);
+            if (DateTimeOffset.Now > deadline)
             {
-                await _characterRegisterRepository.DeleteAsync(c);
+                throw new Exception("目前已超過報名截止時間，無法修改報名資訊。");
             }
-
-            foreach (var characterRegister in register.CharacterRegisters)
-            {
-                if (characterRegister.Id != null)
-                {
-                    await _characterRegisterRepository.UpdateAsync(characterRegister);
-                }
-                else
-                {
-                    characterRegister.PlayerRegisterId = register.Id;
-
-                    await _characterRegisterRepository.CreateAsync(characterRegister);
-                }
-            }
-
-            await _unitOfWork.CommitAsync();
         }
-        catch (Exception e)
+
+        await _playerRegisterRepository.UpdateAsync(register);
+
+        await _playerAvailabilityRepository.DeleteByPlayerRegisterIdAsync(register.Id);
+        foreach (var availability in register.Availabilities)
         {
-            await _unitOfWork.RollbackAsync();
-            throw;
+            await _playerAvailabilityRepository.CreateAsync(new PlayerAvailability
+            {
+                PlayerRegisterId = register.Id,
+                Weekday = availability.Weekday,
+                StartTime = availability.StartTime,
+                EndTime = availability.EndTime
+            });
+        }
+
+        foreach (var c in register.DeleteCharacterRegisterIds)
+        {
+            await _characterRegisterRepository.DeleteAsync(c);
+        }
+
+        foreach (var characterRegister in register.CharacterRegisters)
+        {
+            if (characterRegister.Id != null)
+            {
+                await _characterRegisterRepository.UpdateAsync(characterRegister);
+            }
+            else
+            {
+                characterRegister.PlayerRegisterId = register.Id;
+
+                await _characterRegisterRepository.CreateAsync(characterRegister);
+            }
         }
     }
 
     public async Task DeleteAsync(ulong discordId, int id)
     {
-        await _unitOfWork.BeginTransactionAsync();
-        try
-        {
-            await _characterRegisterRepository.DeleteByPlayerRegisterIdAsync(id);
-            await _playerRegisterRepository.DeleteAsync(discordId, id);
-
-            await _unitOfWork.CommitAsync();
-        }
-        catch (Exception e)
-        {
-            await _unitOfWork.RollbackAsync();
-            throw;
-        }
+        var period = await _periodQuery.GetByNowAsync();
+        if (period == null) return;
+        await _teamSlotCharacterRepository.DeleteByDiscordIdAndPeriodAsync(discordId, period.StartDate,
+            period.EndDate);
+        await _characterRegisterRepository.DeleteByPlayerRegisterIdAsync(id);
+        await _playerRegisterRepository.DeleteAsync(discordId, id);
     }
 }

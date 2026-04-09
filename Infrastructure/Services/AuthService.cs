@@ -1,6 +1,7 @@
 ﻿using Application.Interface;
 using Application.Options;
 using Domain.Entities;
+using Domain.Repositories;
 using Microsoft.Extensions.Options;
 
 namespace Infrastructure.Services;
@@ -9,15 +10,15 @@ public class AuthService : IAuthService
 {
     private readonly IDiscordOAuthClient _discordClient;
     private readonly ISessionService _sessionService;
+    private readonly IDiscordRoleMappingRepository _roleMappingRepository;
     private readonly IJwtService _jwtService;
-    private readonly DiscordOptions _discordOptions;
 
-    public AuthService(IDiscordOAuthClient discordClient, ISessionService sessionService, IJwtService jwtService, IOptions<DiscordOptions> discordOptions)
+    public AuthService(IDiscordOAuthClient discordClient, ISessionService sessionService, IDiscordRoleMappingRepository roleMappingRepository, IJwtService jwtService)
     {
         _discordClient = discordClient;
         _sessionService = sessionService;
+        _roleMappingRepository = roleMappingRepository;
         _jwtService = jwtService;
-        _discordOptions = discordOptions.Value;
     }
 
     public async Task<(DiscordUser user, DiscordToken token)> ExchangeCodeAsync(string code)
@@ -52,7 +53,18 @@ public class AuthService : IAuthService
     public async Task<string?> RefreshToken(ulong discordId)
     {
         var roles = await _discordClient.GetUserRolesAsync(discordId);
-        if (roles.Contains(_discordOptions.UserRoleId))
+        var roleIds = roles
+            .Select(r =>
+            {
+                if (ulong.TryParse(r, out var id)) return (ulong?)id;
+                return null;
+            })
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value);
+        
+        var role = await _roleMappingRepository.ResolveRoleAsync(roleIds);
+        
+        if (role != null)
         {
             return CreateJwt(new DiscordUser()
             {

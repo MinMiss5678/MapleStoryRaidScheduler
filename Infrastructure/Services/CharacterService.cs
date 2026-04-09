@@ -1,4 +1,5 @@
-﻿using Application.Interface;
+﻿using Application.DTOs;
+using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
 using Domain.Repositories;
@@ -9,16 +10,18 @@ public class CharacterService : ICharacterService
 {
     private readonly ICharacterRepository _characterRepository;
     private readonly ICharacterQuery _characterQuery;
+    private readonly ICharacterRegisterRepository _characterRegisterRepository;
 
-    public CharacterService(ICharacterRepository characterRepository, ICharacterQuery characterQuery)
+    public CharacterService(ICharacterRepository characterRepository, ICharacterQuery characterQuery, ICharacterRegisterRepository characterRegisterRepository)
     {
         _characterRepository = characterRepository;
         _characterQuery = characterQuery;
+        _characterRegisterRepository = characterRegisterRepository;
     }
 
-    public async Task<IEnumerable<Character>> GetByDiscordId(ulong discordId)
+    public async Task<IEnumerable<CharacterDto>> GetWithDiscordNameAsync(ulong discordId, int? bossId = null)
     {
-        return await _characterQuery.GetByDiscordIdAsync(discordId);
+        return await _characterQuery.GetWithDiscordNameAsync(discordId, bossId);
     }
 
     public async Task<int> CreateAsync(Character character)
@@ -33,6 +36,7 @@ public class CharacterService : ICharacterService
 
     public async Task<int> DeleteAsync(ulong discordId, string id)
     {
+        await _characterRegisterRepository.DeleteByCharacterIdAsync(id);
         return await _characterRepository.DeleteAsync(discordId, id);
     }
 }

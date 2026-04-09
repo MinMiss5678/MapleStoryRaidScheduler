@@ -1,6 +1,7 @@
 ﻿using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
+using Domain.Repositories;
 
 namespace Infrastructure.Services;
 
@@ -8,29 +9,83 @@ public class ScheduleService : IScheduleService
 {
     private readonly IPeriodQuery _periodQuery;
     private readonly IPlayerRegisterQuery _playerRegisterQuery;
+    private readonly IBossRepository _bossRepository;
+    private readonly ITeamSlotRepository _teamSlotRepository;
+    private readonly IJobCategoryRepository _jobCategoryRepository;
 
-    public ScheduleService(IPeriodQuery periodQuery, IPlayerRegisterQuery playerRegisterQuery)
+    public ScheduleService(
+        IPeriodQuery periodQuery, 
+        IPlayerRegisterQuery playerRegisterQuery,
+        IBossRepository bossRepository,
+        ITeamSlotRepository teamSlotRepository,
+        IJobCategoryRepository jobCategoryRepository)
     {
         _periodQuery = periodQuery;
         _playerRegisterQuery = playerRegisterQuery;
+        _bossRepository = bossRepository;
+        _teamSlotRepository = teamSlotRepository;
+        _jobCategoryRepository = jobCategoryRepository;
     }
 
-    public async Task<IEnumerable<TeamSlot>> AutoScheduleAsync(int bossId, int maxTeamSize = 6)
+    public async Task<IEnumerable<TeamSlot>> GetPartiesAsync(int periodId)
     {
+        // 從資料庫獲取該週期的團隊列表
+        return await _teamSlotRepository.GetByPeriodIdAsync(periodId);
+    }
+
+    public async Task<bool> JoinTeamAsync(int teamSlotId, int teamSlotCharacterId, string characterId)
+    {
+        var slot = await _teamSlotRepository.GetByIdAsync(teamSlotId);
+        if (slot == null || !slot.IsPublished) return false;
+
+        var characterSlot = slot.Characters.FirstOrDefault(c => c.Id == teamSlotCharacterId);
+        if (characterSlot == null || characterSlot.CharacterId != null) return false;
+
+        // 檢查角色是否符合職業需求（Job 可能存的是 JobCategory）
+        // 這裡需要串接 CharacterService 獲取角色詳情
+        
+        characterSlot.CharacterId = characterId;
+        characterSlot.IsManual = true;
+        
+        await _teamSlotRepository.UpdateAsync(slot);
+        return true;
+    }
+
+    public async Task<bool> FinalizeScheduleAsync(int periodId)
+    {
+        var temporarySlots = await _teamSlotRepository.GetTemporaryByPeriodIdAsync(periodId);
+        foreach (var slot in temporarySlots)
+        {
+            slot.IsTemporary = false;
+            slot.IsPublished = true;
+            await _teamSlotRepository.UpdateAsync(slot);
+        }
+        return true;
+    }
+
+    public async Task<IEnumerable<TeamSlot>> AutoScheduleWithTemplateAsync(int bossId, int templateId)
+    {
+        var template = await _bossRepository.GetTemplateByIdAsync(templateId);
+        if (template == null) throw new Exception("Template not found");
+
         var characterRegisters = await _playerRegisterQuery.GetByNowPeriodIdAsync(bossId);
         var period = await _periodQuery.GetByNowAsync();
         var schedules = new List<TeamSlot>();
 
-        // 記錄玩家當天是否已經排過團
-        var scheduledPlayersByDay = new Dictionary<int, HashSet<int>>(); // key: day, value: playerIds
-
-        // 列出所有報名的 (Day, Timeslot) 組合
+        // 1. 取得所有報名的時段組合 (Day, StartTime)
         var allDaySlots = characterRegisters
-            .SelectMany(c => c.Weekdays.Zip(c.Timeslots, (day, slot) => new { Day = day, Slot = slot }))
+            .SelectMany(c => c.Availabilities.Select(a => new { Day = a.Weekday, Slot = a.StartTime }))
             .Distinct()
+            .OrderBy(x => x.Day).ThenBy(x => x.Slot)
             .ToList();
 
+        var scheduledPlayersByDay = new Dictionary<int, HashSet<int>>();
         var teamSlotId = 1;
+
+        // 2. 遍歷每個時段嘗試排團
+        var jobCategories = (await _jobCategoryRepository.GetAllAsync())
+            .GroupBy(x => x.CategoryName)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.JobName).ToHashSet());
 
         foreach (var group in allDaySlots)
         {
@@ -39,106 +94,130 @@ public class ScheduleService : IScheduleService
 
             var alreadyScheduled = scheduledPlayersByDay[group.Day];
 
-            // 篩出符合這個 day + slot 的角色
+            // 篩出該時段可用的角色
             var availableChars = characterRegisters
                 .Where(c => c.Rounds >= 7
-                            && c.Weekdays.Contains(group.Day)
-                            && c.Timeslots.Contains(group.Slot)
+                            && c.Availabilities.Any(a => a.Weekday == group.Day && a.StartTime <= group.Slot && a.EndTime > group.Slot)
                             && !alreadyScheduled.Contains(c.Id))
                 .ToList();
-            
-            while (availableChars.Any())
+
+            // 按照場數分組
+            var charGroupsByRounds = availableChars
+                .GroupBy(c => c.Rounds)
+                .OrderByDescending(g => g.Key)
+                .ToList();
+
+            foreach (var roundGroup in charGroupsByRounds)
             {
-                var team = new List<PlayerRegisterSchedule>();
-                var usedPlayers = new HashSet<int>();
-
-                // 龍騎
-                var dk = availableChars.FirstOrDefault(c =>
-                    c.Job == JobCategories.DragonKnight && !usedPlayers.Contains(c.Id));
-                if (dk != null)
+                var currentRoundAvailableChars = roundGroup.ToList();
+                
+                // 持續嘗試從該場數分組的可用角色中組成團隊
+                while (true)
                 {
-                    team.Add(dk);
-                    usedPlayers.Add(dk.Id);
-                }
+                    var team = new List<PlayerRegisterSchedule>();
+                    var usedInThisTeam = new HashSet<int>();
+                    bool canFormTeam = true;
 
-                // 法師
-                var mage = availableChars.FirstOrDefault(c =>
-                    JobCategories.Mage.Contains(c.Job) && !usedPlayers.Contains(c.Id));
-                if (mage != null)
-                {
-                    team.Add(mage);
-                    usedPlayers.Add(mage.Id);
-                }
-
-                // 必要職業不全就跳過
-                if (team.Count < 2)
-                {
-                    availableChars.RemoveAll(c =>
-                        c.Job != JobCategories.DragonKnight && !JobCategories.Mage.Contains(c.Job));
-                    break;
-                }
-
-                // 補其他職業
-                foreach (var c in availableChars)
-                {
-                    if (team.Count >= maxTeamSize) break;
-                    if (usedPlayers.Contains(c.Id)) continue;
-
-                    if (c.Job == JobCategories.Thief && team.Any(x => x.Job == JobCategories.Thief)) continue;
-                    if (JobCategories.Strength.Contains(c.Job) &&
-                        team.Any(x => JobCategories.Strength.Contains(x.Job))) continue;
-
-                    team.Add(c);
-                    usedPlayers.Add(c.Id);
-                }
-
-                if (team.Count == maxTeamSize)
-                {
-                    var slotDateTime = await GetDateTimeFromPeriod(period.StartDate, period.EndDate, group.Day, group.Slot);
-                    schedules.Add(new TeamSlot()
+                    // 3. 依照範本需求優先級填入角色
+                    foreach (var req in template.Requirements.OrderBy(r => r.Priority))
                     {
-                        Id = teamSlotId++,
-                        SlotDateTime = slotDateTime,
-                        BossId = bossId,
-                        Characters = team.Select(x=> new TeamSlotCharacter()
-                        { 
-                            DiscordId = x.DiscordId,
-                            DiscordName = x.DiscordName,
-                            CharacterId = x.CharacterId,
-                            CharacterName = x.CharacterName,
-                            Job = x.Job,
-                            AttackPower = x.AttackPower,
-                            Rounds = x.Rounds
-                        }).ToList(),
-                        IsTemporary = true
-                    });
+                        int needed = req.Count;
+                        int found = 0;
 
-                    foreach (var c in team)
+                        // 找出符合職業類別且滿足最低門檻的角色
+                        var matchedChars = currentRoundAvailableChars
+                            .Where(c => !usedInThisTeam.Contains(c.Id))
+                            .Where(c => IsInJobCategory(c.Job, req.JobCategory, jobCategories))
+                            .Where(c => !req.MinLevel.HasValue || c.Level >= req.MinLevel.Value)
+                            .Where(c => !req.MinAttribute.HasValue || c.AttackPower >= req.MinAttribute.Value)
+                            .Take(needed)
+                            .ToList();
+
+                        foreach (var mc in matchedChars)
+                        {
+                            team.Add(mc);
+                            usedInThisTeam.Add(mc.Id);
+                            found++;
+                        }
+
+                        // 如果不是選配且數量不足，則此團隊無法組成
+                        if (!req.IsOptional && found < needed)
+                        {
+                            canFormTeam = false;
+                            break;
+                        }
+                    }
+
+                    if (canFormTeam && team.Any())
                     {
-                        c.Rounds -= 7;
-                        alreadyScheduled.Add(c.Id); // ✅ 標記這個玩家當天已排團
+                        var slotDateTime = await GetDateTimeFromPeriod(period.StartDate, period.EndDate, group.Day, group.Slot);
+                        schedules.Add(new TeamSlot()
+                        {
+                            Id = teamSlotId++,
+                            SlotDateTime = slotDateTime,
+                            BossId = bossId,
+                            TemplateId = templateId,
+                            Characters = team.Select(x => new TeamSlotCharacter()
+                            {
+                                DiscordId = x.DiscordId,
+                                DiscordName = x.DiscordName,
+                                CharacterId = x.CharacterId,
+                                CharacterName = x.CharacterName,
+                                Job = x.Job,
+                                AttackPower = x.AttackPower,
+                                Level = x.Level,
+                                Rounds = x.Rounds
+                            }).ToList(),
+                            IsTemporary = true
+                        });
+
+                        // 更新剩餘次數與已排團標記
+                        foreach (var c in team)
+                        {
+                            c.Rounds -= 7;
+                            alreadyScheduled.Add(c.Id);
+                        }
+                        
+                        // 從當前場數分組列表中移除已使用的角色
+                        currentRoundAvailableChars.RemoveAll(c => usedInThisTeam.Contains(c.Id));
+                    }
+                    else
+                    {
+                        // 無法再從當前分組組成團隊，跳出 while 迴圈
+                        break;
                     }
                 }
-
-                availableChars.RemoveAll(c => usedPlayers.Contains(c.Id));
             }
         }
 
         return schedules;
     }
-    
+
+    private bool IsInJobCategory(string job, string category, Dictionary<string, HashSet<string>> jobCategories)
+    {
+        if (string.IsNullOrWhiteSpace(category)) return false;
+        
+        // 支援多個職業以逗號或斜線分隔
+        var categories = category.Split(new[] { ',', '/', ' ', '|' }, StringSplitOptions.RemoveEmptyEntries);
+        
+        foreach (var cat in categories)
+        {
+            if (job == cat) return true;
+            
+            // 檢查資料庫定義的集合
+            if (jobCategories.TryGetValue(cat, out var jobs) && jobs.Contains(job)) return true;
+        }
+        
+        return false;
+    }
+
     public async Task<DateTimeOffset> GetDateTimeFromPeriod(
         DateTimeOffset periodStart, 
         DateTimeOffset periodEnd, 
         int weekday, 
-        string timeslot,
+        TimeOnly startTime,
         string timeZoneId = "Asia/Taipei")
     {
-        // 解析時段 "HH:mm"
-        var parts = timeslot.Split(':');
-        int hour = int.Parse(parts[0]);
-        int minute = parts.Length > 1 ? int.Parse(parts[1]) : 0;
-
         var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
 
         // 將星期日 DayOfWeek=0 改成 7
@@ -158,18 +237,8 @@ public class ScheduleService : IScheduleService
             throw new ArgumentOutOfRangeException(nameof(weekday), $"Weekday {weekday} 不在週期範圍內");
 
         var local = new DateTimeOffset(
-            targetDate.Year, targetDate.Month, targetDate.Day, hour, minute, 0, tz.BaseUtcOffset);
+            targetDate.Year, targetDate.Month, targetDate.Day, startTime.Hour, startTime.Minute, 0, tz.BaseUtcOffset);
 
         return TimeZoneInfo.ConvertTime(local, tz);
     }
-}
-
-public static class JobCategories
-{
-    public const string DragonKnight = "龍騎";
-    public static readonly HashSet<string> Mage = new() { "冰雷", "火毒" };
-    public const string Thief = "神偷";
-    public const string Priest = "祭司";
-    public static readonly HashSet<string> Strength = new() { "十字軍", "騎士", "格鬥家" };
-    public static readonly HashSet<string> Agility = new() { "遊俠", "狙擊手", "暗殺者", "神槍手" };
 }

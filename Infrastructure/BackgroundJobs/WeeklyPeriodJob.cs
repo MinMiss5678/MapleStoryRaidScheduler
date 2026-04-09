@@ -21,45 +21,52 @@ public class WeeklyPeriodJob : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var now = DateTimeOffset.Now;
+            var now = DateTimeOffset.UtcNow;
 
-            // 計算下一個週四 00:00
-            int daysUntilThursday = ((int)DayOfWeek.Thursday - (int)now.DayOfWeek + 7) % 7;
-            if (daysUntilThursday == 0 && now.TimeOfDay.TotalHours >= 0) 
-                daysUntilThursday = 7; // 如果今天已經是週四 00:00 之後，就跳到下週四
+            // 計算最近的週四 00:00 UTC（今天是週四且已過 00:00，會取下週週四）
+            int daysUntilNextThursday = ((int)DayOfWeek.Thursday - (int)now.DayOfWeek + 7) % 7;
+            if (daysUntilNextThursday == 0) daysUntilNextThursday = 7; // 今天週四已過，跳到下週
+            var nextThursday = new DateTimeOffset(now.Date.AddDays(daysUntilNextThursday), TimeSpan.Zero);
 
-            var nextThursday = now.Date.AddDays(daysUntilThursday); // 00:00
-            var delay = nextThursday - now;
-
-            _logger.LogInformation($"Next weekly period job will run in {delay.TotalMinutes:F0} minutes.");
-
-            // 等待到下一個週四
-            await Task.Delay(delay, stoppingToken);
-
-            if (stoppingToken.IsCancellationRequested) break;
+            // 計算當週週期的起訖時間
+            var periodStart = nextThursday;
+            var periodEnd = periodStart.AddDays(6).AddHours(23).AddMinutes(59).AddSeconds(59);
 
             try
             {
-                var start = nextThursday;
-                var end = start.AddDays(6).AddHours(23).AddMinutes(59).AddSeconds(59);
-                
                 using var scope = _serviceProvider.CreateScope();
-                var repo  = scope.ServiceProvider.GetRequiredService<IPeriodRepository>();
+                var repo = scope.ServiceProvider.GetRequiredService<IPeriodRepository>();
 
-                if (!await repo.ExistByStartDateAsync(start))
+                if (!await repo.ExistByStartDateAsync(periodStart))
                 {
                     await repo.CreateAsync(new Period
                     {
-                        StartDate = start,
-                        EndDate = end
+                        StartDate = periodStart,
+                        EndDate = periodEnd
                     });
+                    _logger.LogInformation($"Inserted missing period: {periodStart:yyyy-MM-dd} ~ {periodEnd:yyyy-MM-dd}");
                 }
-
-                _logger.LogInformation($"Inserted period: {start:yyyy-MM-dd} ~ {end:yyyy-MM-dd}");
+                else
+                {
+                    _logger.LogInformation($"Period already exists: {periodStart:yyyy-MM-dd} ~ {periodEnd:yyyy-MM-dd}");
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error inserting weekly period");
+            }
+
+            // 計算下次延遲到下一個週四 00:00
+            var delay = nextThursday.AddDays(7) - DateTimeOffset.UtcNow;
+            _logger.LogInformation($"Next weekly period job will run in {delay.TotalMinutes:F0} minutes.");
+
+            try
+            {
+                await Task.Delay(delay, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
         }
     }
