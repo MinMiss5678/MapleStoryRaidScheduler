@@ -1,9 +1,10 @@
-﻿using Domain.Entities;
+﻿using Application.Exceptions;
+using Application.Interface;
+using Domain.Entities;
 using Domain.Repositories;
 using Infrastructure.Services;
 using Moq;
 using Xunit;
-using Application.Interface;
 
 namespace Test;
 
@@ -79,30 +80,81 @@ public class BossServiceTests
     }
 
     [Fact]
-    public async Task UpdateTemplateAsync_ShouldReturnTrue()
+    public async Task UpdateTemplateAsync_ShouldComplete_WhenTemplateExists()
     {
         // Arrange
         var template = new BossTemplate { Id = 1 };
         _bossRepositoryMock.Setup(r => r.UpdateTemplateAsync(template)).ReturnsAsync(true);
 
-        // Act
-        var result = await _bossService.UpdateTemplateAsync(template);
-
-        // Assert
-        Assert.True(result);
+        // Act & Assert (no exception)
+        await _bossService.UpdateTemplateAsync(template);
     }
 
     [Fact]
-    public async Task DeleteTemplateAsync_ShouldReturnTrue()
+    public async Task UpdateTemplateAsync_ShouldThrowNotFoundException_WhenTemplateNotFound()
+    {
+        // Arrange
+        var template = new BossTemplate { Id = 99 };
+        _bossRepositoryMock.Setup(r => r.UpdateTemplateAsync(template)).ReturnsAsync(false);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<NotFoundException>(() => _bossService.UpdateTemplateAsync(template));
+    }
+
+    [Fact]
+    public async Task DeleteTemplateAsync_ShouldComplete_WhenTemplateExists()
     {
         // Arrange
         _bossRepositoryMock.Setup(r => r.DeleteTemplateAsync(1)).ReturnsAsync(true);
 
+        // Act & Assert (no exception)
+        await _bossService.DeleteTemplateAsync(1);
+    }
+
+    [Fact]
+    public async Task DeleteTemplateAsync_ShouldThrowNotFoundException_WhenTemplateNotFound()
+    {
+        // Arrange
+        _bossRepositoryMock.Setup(r => r.DeleteTemplateAsync(99)).ReturnsAsync(false);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<NotFoundException>(() => _bossService.DeleteTemplateAsync(99));
+    }
+
+    [Fact]
+    public async Task CreateBossAsync_ShouldReturnId()
+    {
+        // Arrange
+        var boss = new Boss { Name = "Horntail" };
+        _bossRepositoryMock.Setup(r => r.CreateBossAsync(boss)).ReturnsAsync(42);
+
         // Act
-        var result = await _bossService.DeleteTemplateAsync(1);
+        var result = await _bossService.CreateBossAsync(boss);
 
         // Assert
-        Assert.True(result);
+        Assert.Equal(42, result);
+    }
+
+    [Fact]
+    public async Task UpdateBossAsync_ShouldComplete_WhenBossExists()
+    {
+        // Arrange
+        var boss = new Boss { Id = 1, Name = "Horntail" };
+        _bossRepositoryMock.Setup(r => r.UpdateBossAsync(boss)).ReturnsAsync(true);
+
+        // Act & Assert (no exception)
+        await _bossService.UpdateBossAsync(boss);
+    }
+
+    [Fact]
+    public async Task UpdateBossAsync_ShouldThrowNotFoundException_WhenBossNotFound()
+    {
+        // Arrange
+        var boss = new Boss { Id = 99 };
+        _bossRepositoryMock.Setup(r => r.UpdateBossAsync(boss)).ReturnsAsync(false);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<NotFoundException>(() => _bossService.UpdateBossAsync(boss));
     }
 
     [Fact]
@@ -119,10 +171,9 @@ public class BossServiceTests
         _bossRepositoryMock.Setup(r => r.DeleteBossAsync(1)).ReturnsAsync(true);
 
         // Act
-        var result = await _bossService.DeleteBossAsync(1);
+        await _bossService.DeleteBossAsync(1);
 
         // Assert
-        Assert.True(result);
         _bossRepositoryMock.Verify(r => r.GetTemplatesByBossIdAsync(1), Times.Once);
         _bossRepositoryMock.Verify(r => r.DeleteTemplateAsync(10), Times.Once);
         _bossRepositoryMock.Verify(r => r.DeleteTemplateAsync(20), Times.Once);
@@ -137,11 +188,31 @@ public class BossServiceTests
         _bossRepositoryMock.Setup(r => r.DeleteBossAsync(1)).ReturnsAsync(true);
 
         // Act
-        var result = await _bossService.DeleteBossAsync(1);
+        await _bossService.DeleteBossAsync(1);
 
         // Assert
-        Assert.True(result);
         _bossRepositoryMock.Verify(r => r.DeleteTemplateAsync(It.IsAny<int>()), Times.Never);
         _bossRepositoryMock.Verify(r => r.DeleteBossAsync(1), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteBossAsync_ShouldThrowNotFoundException_WhenBossNotFound()
+    {
+        // Arrange
+        _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(99)).ReturnsAsync(new List<BossTemplate>());
+        _bossRepositoryMock.Setup(r => r.DeleteBossAsync(99)).ReturnsAsync(false);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<NotFoundException>(() => _bossService.DeleteBossAsync(99));
+    }
+
+    [Fact]
+    public async Task GetTemplateByIdAsync_ShouldThrowNotFoundException_WhenNotFound()
+    {
+        // Arrange
+        _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(999)).ReturnsAsync((BossTemplate?)null);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<NotFoundException>(() => _bossService.GetTemplateByIdAsync(999));
     }
 }

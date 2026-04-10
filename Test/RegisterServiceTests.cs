@@ -12,7 +12,6 @@ public class RegisterServiceTests
 {
     private readonly Mock<IPeriodQuery> _periodQueryMock;
     private readonly Mock<IPlayerRegisterRepository> _playerRegisterRepositoryMock;
-    private readonly Mock<IPlayerRegisterQuery> _playerRegisterQueryMock;
     private readonly Mock<ICharacterRegisterRepository> _characterRegisterRepositoryMock;
     private readonly Mock<IPlayerAvailabilityRepository> _playerAvailabilityRepositoryMock;
     private readonly Mock<ITeamSlotAutoAssignService> _autoAssignServiceMock;
@@ -23,7 +22,6 @@ public class RegisterServiceTests
     {
         _periodQueryMock = new Mock<IPeriodQuery>();
         _playerRegisterRepositoryMock = new Mock<IPlayerRegisterRepository>();
-        _playerRegisterQueryMock = new Mock<IPlayerRegisterQuery>();
         _characterRegisterRepositoryMock = new Mock<ICharacterRegisterRepository>();
         _playerAvailabilityRepositoryMock = new Mock<IPlayerAvailabilityRepository>();
         _autoAssignServiceMock = new Mock<ITeamSlotAutoAssignService>();
@@ -32,7 +30,6 @@ public class RegisterServiceTests
         _registerService = new RegisterService(
             _periodQueryMock.Object,
             _playerRegisterRepositoryMock.Object,
-            _playerRegisterQueryMock.Object,
             _characterRegisterRepositoryMock.Object,
             _playerAvailabilityRepositoryMock.Object,
             new Mock<ITeamSlotCharacterRepository>().Object,
@@ -103,50 +100,4 @@ public class RegisterServiceTests
         _autoAssignServiceMock.Verify(t => t.AutoAssignAsync(register), Times.Once);
     }
 
-    [Fact]
-    public async Task GetAsync_ShouldReturnCorrectDto_WhenRegisterExists()
-    {
-        // Arrange
-        ulong discordId = 12345;
-        int periodId = 1;
-        int playerRegisterId = 100;
-
-        _periodQueryMock.Setup(p => p.GetPeriodIdByNowAsync()).ReturnsAsync(periodId);
-
-        var playerCharacterRegisters = new List<PlayerCharacterRegister>
-        {
-            new PlayerCharacterRegister
-            {
-                Id = playerRegisterId,
-                PeriodId = periodId,
-                CharacterRegisterId = 200,
-                CharacterId = "char1",
-                Job = "Hero",
-                BossId = 1,
-                Rounds = 1
-            }
-        };
-
-        _playerRegisterRepositoryMock.Setup(r => r.GetListAsync(discordId, periodId))
-            .ReturnsAsync(playerCharacterRegisters);
-
-        var availabilities = new List<PlayerAvailability>
-        {
-            new PlayerAvailability { Weekday = 1, StartTime = new TimeOnly(10, 0), EndTime = new TimeOnly(12, 0) }
-        };
-
-        _playerAvailabilityRepositoryMock.Setup(r => r.GetByPlayerRegisterIdAsync(playerRegisterId))
-            .ReturnsAsync(availabilities);
-
-        // Act
-        var result = await _registerService.GetAsync(discordId);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal(playerRegisterId, result.Id);
-        Assert.Single(result.CharacterRegisters);
-        Assert.Equal("char1", result.CharacterRegisters[0].CharacterId);
-        Assert.Single(result.Availabilities);
-        Assert.Equal(1, result.Availabilities[0].Weekday);
-    }
 }
