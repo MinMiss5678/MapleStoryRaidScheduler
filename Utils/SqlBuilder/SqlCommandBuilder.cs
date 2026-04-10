@@ -1,4 +1,5 @@
-﻿using System.Linq.Expressions;
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.Reflection;
 using Dapper;
 
 namespace Utils.SqlBuilder;
@@ -8,13 +9,6 @@ public abstract class SqlCommandBuilder<T>
     protected List<string> _wheres = new();
     protected DynamicParameters _parameters = new();
 
-    public SqlCommandBuilder<T> Where(Expression<Func<T, bool>> expr)
-    {
-        var sql = ExpressionToSql(expr); // 解析 Expression 成 SQL
-        _wheres.Add(sql);
-        return this;
-    }
-
     protected abstract string BuildCommand();
 
     public (string Sql, DynamicParameters Params) Build()
@@ -22,10 +16,11 @@ public abstract class SqlCommandBuilder<T>
         return (BuildCommand(), _parameters);
     }
 
-    private string ExpressionToSql(Expression expr)
+    // 從 [Table] attribute 取得資料表名稱，fallback 為 class 名稱
+    protected static string GetTableName()
     {
-        // TODO: 實作 Expression -> SQL
-        // 例如 x => x.Id == 1 會轉成 "Id = @Id"
-        throw new NotImplementedException();
+        var type = typeof(T);
+        var attr = type.GetCustomAttribute<TableAttribute>();
+        return attr != null ? attr.Name : type.Name;
     }
 }
