@@ -1,38 +1,155 @@
-﻿# System Design - MapleStoryRaidScheduler
+﻿# 架構設計文件 — MapleStory Raid Scheduler
 
-本文件展示專案整體架構、API 流程、資料庫設計與部署方式，方便快速了解系統設計思路。
+本文件說明系統的整體架構、關鍵設計決策與實作細節，適合快速了解系統設計思路。
 
 ---
 
-## 架構圖 (System Architecture)
+## 系統架構總覽
 
-### 高階系統架構
+### 高階架構圖
 
 ```mermaid
 graph TD
-    User["玩家 (Player)"] -->|HTTPS| Frontend["Next.js 前端"]
+    User["玩家 (Player)"] -->|HTTPS| Frontend["Next.js 15 前端"]
     Frontend -->|REST API| Backend["ASP.NET Core Web API"]
 
     subgraph "Docker 容器環境"
-        Backend --> Application["Application Layer (DTOs, Interfaces)"]
-        Application --> Domain["Domain Layer (Entities, Logic)"]
-        Domain --> Infrastructure["Infrastructure Layer (Dapper, Discord)"]
+        Backend --> Middleware["Middleware 管線\n(Auth / UnitOfWork / Idempotency / ExceptionHandler)"]
+        Middleware --> Application["Application Layer\n(DTOs, Interfaces, CQRS-Lite)"]
+        Application --> Domain["Domain Layer\n(Entities, Repository Interfaces)"]
+        Domain --> Infrastructure["Infrastructure Layer\n(Dapper, Discord, Background Jobs)"]
 
-        Infrastructure --> DB[("PostgreSQL")]
+        Infrastructure --> DB[("PostgreSQL 18")]
         Infrastructure --> DiscordBot["Discord Bot (DSharpPlus)"]
+        Infrastructure --> Seq["Seq (結構化日誌)"]
     end
 
-    DiscordBot -->|發送通知| DiscordChannel["Discord 頻道"]
-    User -->|查看| DiscordChannel
+    DiscordBot -->|Bot 通知| DiscordChannel["Discord 頻道"]
+    User -->|查看通知| DiscordChannel
     User -->|OAuth2 登入| DiscordOAuth["Discord OAuth2"]
-    DiscordOAuth -->|授權| Backend
+    DiscordOAuth -->|授權 code| Backend
 ```
 
-## 領域設計 (Domain Design)
+### 分層架構與依賴方向
 
-本系統的核心業務邏輯圍繞在「角色管理」、「副本登記」以及「自動/手動排程」上。
+```
+Presentation.WebApi  →  Application  →  Domain
+                              ↓
+                       Infrastructure
+```
 
-### 核心實體 (Core Entities)
+| 層級 | 職責 | 設計原則 |
+|---|---|---|
+| **Domain** | 核心實體、Repository 介面、業務規則 | 零外部依賴，可獨立單元測試 |
+| **Application** | DTOs、服務介面、查詢介面 | 定義業務邊界，不含實作細節 |
+| **Infrastructure** | Dapper Repository、Discord 整合、背景作業 | 實作所有 I/O，依賴注入替換 |
+| **Presentation.WebApi** | Controller、Middleware 管線 | 薄控制器，業務邏輯不在此層 |
+
+---
+
+## 關鍵設計決策
+
+### 1. 不使用 EF Core，改用 Dapper + 自製 SqlBuilder
+
+**決策原因**：EF Core 的 LINQ 翻譯在複雜查詢（多層 JOIN、CTE、條件動態組合）下難以預測生成的 SQL，且效能調優困難。
+
+**實作方式**：自製 `Utils/SqlBuilder/`，以 C# Expression Tree 解析 Lambda 表達式為 SQL 條件：
+
+```csharp
+// 型別安全，編譯期檢查欄位名稱
+Sql.Query<CharacterDbModel>()
+   .Where(c => c.DiscordId == discordId && c.Job != null)
+   .Select(c => new { c.Id, c.Name, c.Job })
+   .Build();
+```
+
+| 類別 | 功能 |
+|---|---|
+| `QueryBuilder` / `TypedQueryBuilder` | SELECT 查詢，支援 Lambda 選欄 |
+| `InsertBuilder` / `UpdateBuilder` / `DeleteBuilder` | 寫入操作 |
+| `CteBuilder` | CTE（WITH 子句）建構 |
+| `SqlConditionGroup` | AND/OR 條件群組組合 |
+| `SqlExpressionVisitor` | 解析 Lambda 為 SQL，支援 NULL 比較 |
+
+### 2. CQRS-Lite 讀寫分離
+
+**決策原因**：讀取與寫入的需求差異大——寫入需要事務保護與業務驗證，讀取需要最佳化 SQL 與多表 JOIN。混用同一 Repository 會導致讀取路徑被事務拖慢。
+
+**實作方式**：
+- **寫入 (Command)**：`Application/Interface/` 定義介面 → `Infrastructure/Services/` 實作，走 `UnitOfWork` 事務。
+- **讀取 (Query)**：`Application/Queries/` 定義介面 → `Infrastructure/Query/` 實作，直接執行最佳化 SQL，不走事務。
+
+### 3. 雙軌身分驗證（JWT + Session）
+
+**決策原因**：一般玩家數量多且無狀態需求，適合 JWT；管理員需要強制登出能力（撤銷 Session），不適合純 JWT。
+
+**實作方式**：
+- **玩家**：Discord OAuth2 → 核發自定義 JWT（含 DiscordId、Role）。
+- **管理員**：Discord OAuth2 → 建立 DB Session 紀錄，核發 `SessionId`。
+- 同一 `AuthenticationMiddleware` 依 Header 格式自動判斷驗證路徑。
+
+### 4. 冪等性 Middleware
+
+**決策原因**：前端在網路不穩時可能重試請求，若無冪等保護會造成重複報名、重複建立隊伍等問題。
+
+**實作方式**：所有 POST/PUT/DELETE 請求必須帶 `X-Idempotency-Key`，`IdempotencyMiddleware` 以此 Key 為快取鍵，相同 Key 的重複請求直接回傳快取結果，不重新執行業務邏輯。
+
+---
+
+## Middleware 管線
+
+請求進入後依序經過：
+
+```
+Request
+  │
+  ▼
+ExceptionHandlerMiddleware   ← 全域例外捕捉，統一回傳 ProblemDetails
+  │
+  ▼
+IdempotencyMiddleware        ← 強制 X-Idempotency-Key，防重複操作
+  │
+  ▼
+AuthenticationMiddleware     ← 驗證 JWT（玩家）或 SessionId（管理員）
+  │
+  ▼
+UnitOfWorkMiddleware         ← 開啟 DB 事務，成功 Commit，例外 Rollback
+  │
+  ▼
+Controller / Service
+```
+
+---
+
+## 自動排程引擎
+
+這是系統最核心的業務邏輯，分為三個階段：
+
+### 流程圖
+
+```mermaid
+flowchart TD
+    A[玩家報名] --> B[即時觸發 AutoAssignAsync]
+    B --> C{找到符合時段\n且有空位的隊伍？}
+    C -->|是| D[加入現有隊伍]
+    C -->|否| E[建立新隊伍草稿\nIsPublished = false]
+    D --> F[排程完成]
+    E --> F
+
+    G[管理員觸發批次排程] --> H[全局 AutoAssignAsync]
+    H --> I[TeamSlotMergeService\n合併零散隊伍]
+    I --> J[根據 BossTemplate 優化陣容]
+    J --> K[尋找所有成員共同可用時間]
+    K --> L[更新隊伍草稿]
+```
+
+### 補位保護機制
+
+發布後的隊伍允許玩家手動補位，補位成員標記 `IsManual = true`。批次排程執行時會跳過含有 `IsManual` 成員的隊伍，確保人工調整不被覆蓋。
+
+---
+
+## 領域模型
 
 ```mermaid
 classDiagram
@@ -42,9 +159,8 @@ classDiagram
         +string Role
     }
     class Character {
-        +string Id (名字)
+        +string Id
         +ulong DiscordId
-        +string Name
         +string Job
         +int AttackPower
     }
@@ -66,81 +182,43 @@ classDiagram
         +List~CharacterRegister~ CharacterRegisters
         +List~PlayerAvailability~ Availabilities
     }
-    class CharacterRegister {
-        +int? Id
-        +int PlayerRegisterId
-        +string CharacterId
-        +int BossId
-        +int Rounds
-    }
     class TeamSlot {
         +int Id
         +int BossId
-        +int PeriodId
-        +string? BossName
         +DateTimeOffset SlotDateTime
         +bool IsTemporary
         +bool IsPublished
         +int? TemplateId
     }
     class TeamSlotCharacter {
-        +int? Id
-        +int TeamSlotId
-        +ulong DiscordId
-        +string DiscordName
+        +int Id
         +string CharacterId
-        +string CharacterName
         +string Job
         +int AttackPower
-        +int Level
-        +int Rounds
-        +bool IsManual (手動調整保護)
-    }
-
-    class PlayerAvailability {
-        +int Id
-        +int PlayerRegisterId
-        +int Weekday
-        +TimeOnly StartTime
-        +TimeOnly EndTime
+        +bool IsManual
     }
     class BossTemplate {
         +int Id
         +int BossId
-        +string Name
         +List~BossTemplateRequirement~ Requirements
     }
-    class BossTemplateRequirement {
-        +int Id
-        +int BossTemplateId
-        +string JobCategory
-        +int Count
-        +int Priority
-    }
-    class JobCategory {
-        +string CategoryName
-        +string JobName
-    }
 
-    Player "1" -- "*" Character : 擁有多個
-    Player "1" -- "0..1" Register : 登記時段
-    Register "*" -- "1" Period : 屬於特定週期
-    Register "1" -- "*" CharacterRegister : 登記具體角色與王
-    CharacterRegister "*" -- "1" Boss : 關聯副本
-    CharacterRegister "*" -- "1" Character : 關聯角色
-    TeamSlot "*" -- "1" Boss : 屬於特定副本
-    TeamSlot "1" -- "*" TeamSlotCharacter : 包含多個成員
-    TeamSlotCharacter "*" -- "0..1" Character : 關聯角色
+    Player "1" -- "*" Character : 擁有
+    Player "1" -- "0..1" Register : 報名
+    Register "*" -- "1" Period : 屬於
+    Register "1" -- "*" CharacterRegister : 包含
+    TeamSlot "*" -- "1" Boss : 屬於
+    TeamSlot "1" -- "*" TeamSlotCharacter : 包含
     Boss "1" -- "*" BossTemplate : 定義樣板
     BossTemplate "1" -- "*" BossTemplateRequirement : 包含需求
     TeamSlot "*" -- "0..1" BossTemplate : 基於樣板
 ```
 
-## 資料庫設計 (Database Design)
+---
 
-使用 PostgreSQL 作為資料儲存，並透過 Dapper 進行輕量級 ORM 操作。
+## 資料庫設計 (ERD)
 
-### 實體關係圖 (ERD)
+使用 PostgreSQL 18，Dapper 手寫 SQL，無 ORM 自動 Migration。
 
 ```mermaid
 erDiagram
@@ -153,7 +231,6 @@ erDiagram
     Character ||--o{ CharacterRegister : "is assigned to"
     Boss ||--o{ TeamSlot : "scheduled for"
     TeamSlot ||--o{ TeamSlotCharacter : "contains"
-    Character ||--o{ TeamSlotCharacter : "fills"
     Player ||--o{ Session : "has"
     Boss ||--o{ BossTemplate : "defines"
     BossTemplate ||--o{ BossTemplateRequirement : "contains"
@@ -161,19 +238,19 @@ erDiagram
 
     Player {
         bigint discord_id PK
-        varchar(50) discord_name
+        varchar discord_name
         text role
     }
     Character {
         char(5) id PK
         bigint discord_id FK
-        varchar(20) name
-        varchar(5) job
+        varchar name
+        varchar job
         integer attack_power
     }
     Boss {
         integer id PK
-        varchar(10) name
+        varchar name
         integer require_members
         integer round_consumption
     }
@@ -191,8 +268,8 @@ erDiagram
         integer id PK
         integer player_register_id FK
         integer weekday
-        timestamptz start_time
-        timestamptz end_time
+        time start_time
+        time end_time
     }
     CharacterRegister {
         integer id PK
@@ -208,15 +285,13 @@ erDiagram
         timestamptz slot_date_time
         boolean is_temporary
         boolean is_published
-        integer template_id
+        integer template_id FK
     }
     TeamSlotCharacter {
         integer id PK
         integer team_slot_id FK
         bigint discord_id
-        varchar discord_name
         text character_id FK
-        text character_name
         text job
         integer attack_power
         integer rounds
@@ -241,81 +316,55 @@ erDiagram
         integer count
         integer priority
     }
-    JobCategory {
-        varchar(100) category_name
-        varchar(100) job_name PK
-    }
 ```
 
-## Discord 整合 (Discord Integration)
+---
 
-系統深度整合 Discord，用於身分驗證與通知。
+## Discord 整合
 
-### 1. 認證流程 (OAuth2)
-- 玩家點擊前端「Discord 登入」。
-- 跳轉至 Discord 授權頁面，取得 `code`。
-- 後端 `DiscordOAuthClient` 將 `code` 兌換為 `access_token` 與 `refresh_token`。
-- 系統根據玩家在 Discord 伺服器中的**身分組 (Roles)** 判斷角色：
-    - **管理員 (Admin)**: 建立 `Session` 紀錄並核發 `SessionId` 作為登入憑證。
-    - **一般玩家 (User)**: 根據 Discord ID 識別玩家，並核發自定義 **JWT Token**。
+### OAuth2 認證流程
 
-### 2. Discord Bot 功能 (System Functions)
-- **核心庫**: 使用 **DSharpPlus** 函式庫實作背景服務 (`DiscordBotService`)。
-- **通知功能**: 
-    - **每日提醒**: 每天自動提醒玩家當日的 Boss 行程。
-    - **截止提醒**: 報名截止當天提醒玩家，並附上結果連結。
-- **身分組同步 (Identity Sync)**: 
-    - 雖然非由 DSharpPlus 客戶端處理，但系統透過 `DiscordOAuthClient` 使用 **Bot Token** 直接調用 Discord REST API (`/guilds/{GuildId}/members/{DiscordId}`)，在登入時檢查玩家的身分組以進行權限控管 (`Admin` 或 `User`)。
+```mermaid
+sequenceDiagram
+    participant User as 玩家
+    participant Frontend as Next.js
+    participant API as ASP.NET Core
+    participant Discord as Discord API
 
-## 系統流程 (Request Flow)
+    User->>Frontend: 點擊「Discord 登入」
+    Frontend->>Discord: 跳轉 OAuth2 授權頁
+    Discord-->>Frontend: 回傳 code
+    Frontend->>API: POST /api/Auth/Login { code }
+    API->>Discord: 兌換 access_token
+    Discord-->>API: token + 使用者資訊
+    API->>Discord: 查詢 Guild Member 身分組 (Bot Token)
+    Discord-->>API: roles[]
+    alt 身分組 = Admin
+        API-->>Frontend: SessionId (DB Session)
+    else 身分組 = User
+        API-->>Frontend: JWT Token
+    end
+```
 
-### 1. 認證與登入 (Authentication)
-1. **玩家**: 在前端點擊「Discord 登入」。
-2. **Discord**: 玩家在授權頁面授權後，重新導向至前端並帶入 `code`。
-3. **API**: 前端發送 `code` 到 `/api/Auth/Login`。
-4. **Application Layer**: `AuthAppService` 呼叫 `DiscordOAuthClient` 取得 Token 與玩家資訊，並同步 Discord 身分組判斷角色。
-5. **Domain/Infrastructure**: 
-   - 檢查並建立 `Player` 實體。
-   - **分流處理**:
-     - **Admin**: 呼叫 `CreateSessionAsync` 建立 `Session` 紀錄，回傳 `SessionId`。
-     - **User**: 呼叫 `CreateJwt` 核發自定義 JWT Token。
-6. **前端**: 根據回傳的 `SessionId` 或 `JwtToken` 儲存憑證，並顯示對應的管理或玩家介面。
+### Discord Bot 功能
 
-### 2. Raid 登記 (Registration)
-1. **玩家**: 在前端選擇參與週期的 Boss、對應的角色與剩餘次數，並設定可用時段。
-2. **API**: 發送 `POST /api/Register`。
-3. **Infrastructure Layer**: `RegisterService` 使用 `UnitOfWork` 處理事務。
-   - 更新或建立 `PlayerRegister`。
-   - 清除並重新建立 `CharacterRegister` 與 `PlayerAvailability`。
-4. **自動排程觸發**: 報名成功後，系統會立即針對該玩家的登記資訊調用 `TeamSlotService.AutoAssignAsync`。
-   - 尋找該週期符合玩家可用時段且有空位的現成隊伍草稿。
-   - 若有符合條件的現成隊伍草稿，優先加入成員；若無合適隊伍，則建立新的隊伍。這使得系統在報名階段就已初步完成排位，不完全依賴管理員發布排程。
+| 功能 | 說明 |
+|---|---|
+| **每日提醒** | 背景作業每天掃描當日 `TeamSlot`，Bot 標記玩家提醒行程 |
+| **截止提醒** | 報名截止日自動觸發，附上排程結果 URL |
+| **身分組同步** | 登入時透過 Bot Token 查詢 Discord Guild Member，判斷 `Admin` / `User` |
 
-### 3. 自動排程 (Auto Scheduling)
-1. **即時自動排位 (Real-time Assignment)**: 玩家報名後立即觸發。系統會根據玩家可用時段，嘗試將角色分配至「已存在但未滿員」的隊伍。這降低了管理員發布前的操作工作量。
-2. **手動/批次觸發 (Batch Scheduling)**: 管理員可在後台點擊「一鍵自動排程」對所有報名資料進行全局優化、合併與重排。
-3. **Infrastructure Layer**: `TeamSlotService.AutoAssignAsync` 執行核心邏輯：
-   - 獲取目前週期的所有登記資料。
-   - **適配隊伍**: 尋找符合玩家時段且未滿員的現有 `TeamSlot`。
-   - **建立新隊伍**: 若無匹配隊伍，則建立新 `TeamSlot` (IsPublished = false)，並根據玩家最優時段設定隊伍時間。
-   - **合併隊伍**: 針對零散的隊伍進行 `MergeTeams`，根據樣板 (Template) 優化陣容，並嘗試尋找所有成員的共同可用時間。
-4. **結果**: 生成或更新排班草稿，供管理員微調。
+---
 
-### 4. 補位與手動微調 (Fills & Adjustments)
-1. **發布**: 管理員將 `TeamSlot.IsPublished` 設為 `true`。
-2. **補位 (Fills)**: 玩家可於前端查看已發布的隊伍，前端會比對 `TeamSlot` 關聯的 `BossTemplate` 需求與目前的 `TeamSlotCharacter` 列表，動態顯示缺少的職業類別位子。
-3. **手動更新**: 玩家點擊空位進行補位，發送 `PUT /api/TeamSlot` 呼叫 `TeamSlotService.UpdateAsync` 新增成員。
-   - 系統驗證玩家只能操作自己的角色，除非是管理員。
-   - 更新 `TeamSlotCharacter` 的 `IsManual = true`，**此旗標確保後續執行「一鍵自動排程」或「合併隊伍」時，系統會保護該成員及其所在的隊伍，不被自動重排邏輯覆蓋或拆散**。
-4. **取消報名**: 玩家移除自己的角色位，系統將該位刪除。
+## 主要服務一覽
 
-### 5. 通知系統 (Notification)
-1. **每日提醒 (Daily Reminder)**:
-   - 背景作業 (Background Job) 每天定時掃描當日的 `TeamSlot`。
-   - 針對有安排行程的玩家，Bot 會在頻道標記提醒當日時段。
-2. **截止提醒 (Deadline Reminder)**:
-   - 在報名截止日當天，系統自動觸發提醒。
-   - Bot 發送訊息至頻道，提醒玩家報名已截止，並附上排團結果的 URL。
-3. **Infrastructure Layer**: Discord Bot 透過 **DSharpPlus** 實作。
-4. **玩家**: 在 Discord 收到通知並查看最新排程。
-
+| 服務 | 職責 |
+|---|---|
+| `RegisterService` | 玩家報名寫入，報名後觸發即時自動排程 |
+| `TeamSlotAutoAssignService` | 自動排程核心：即時分配 + 批次排程 |
+| `TeamSlotMergeService` | 合併零散隊伍，根據 BossTemplate 優化陣容 |
+| `TeamSlotCharacterService` | 補位、移除成員，設定 `IsManual` 保護旗標 |
+| `AuthAppService` | Discord OAuth2 流程、角色判斷、憑證核發 |
+| `JwtService` / `SessionService` | JWT 核發驗證 / DB Session 管理 |
+| `DiscordOAuthClient` | Discord REST API 呼叫（token 兌換、身分組查詢） |
+| `ScheduleService` | 背景作業協調（每日提醒、截止提醒） |
