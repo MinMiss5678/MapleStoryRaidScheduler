@@ -28,6 +28,10 @@ async function handleResponse<T>(res: Response): Promise<T> {
     return undefined as T;
 }
 
+function idempotencyHeader(): Record<string, string> {
+    return { 'X-Idempotency-Key': crypto.randomUUID() };
+}
+
 export const apiClient = {
     async get<T = unknown>(url: string): Promise<T> {
         const res = await fetch(url);
@@ -44,7 +48,7 @@ export const apiClient = {
     async post<T = unknown>(url: string, body?: unknown): Promise<T> {
         const res = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...idempotencyHeader() },
             body: body !== undefined ? JSON.stringify(body) : undefined,
         });
         return handleResponse<T>(res);
@@ -53,14 +57,14 @@ export const apiClient = {
     async put<T = unknown>(url: string, body?: unknown): Promise<T> {
         const res = await fetch(url, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...idempotencyHeader() },
             body: body !== undefined ? JSON.stringify(body) : undefined,
         });
         return handleResponse<T>(res);
     },
 
     async delete<T = unknown>(url: string): Promise<T> {
-        const res = await fetch(url, { method: 'DELETE' });
+        const res = await fetch(url, { method: 'DELETE', headers: idempotencyHeader() });
         return handleResponse<T>(res);
     },
 };

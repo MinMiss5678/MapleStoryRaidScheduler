@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using Application.Options;
 using Dapper;
 using Infrastructure.BackgroundJobs;
@@ -126,6 +126,7 @@ app.UseHttpsRedirection();
 // 記錄每個 HTTP Request / Response（不含健康檢查等靜態路徑）
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlerMiddleware>();
+app.UseMiddleware<IdempotencyMiddleware>();
 app.UseMiddleware<AuthenticationMiddleware>();
 app.UseMiddleware<UnitOfWorkMiddleware>();
 app.MapControllers();
