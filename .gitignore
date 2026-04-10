@@ -2,3 +2,7 @@
 *obj/
 *bin/
 appsettings.json
+
+TestResults/
+Test/TestResults*/
+
