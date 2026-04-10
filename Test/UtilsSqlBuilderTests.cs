@@ -541,42 +541,161 @@ public class UtilsSqlBuilderTests
         Assert.Contains("WHERE", sql);
     }
 
-    // ========== Result<T> ==========
+    // ========== Sql 靜態工廠 + TypedQueryBuilder ==========
 
     [Fact]
-    public void Result_Success_IsSuccessTrue()
+    public void Sql_From_Select_Where_BuildsCorrectSql()
     {
-        var result = Result<int>.Success(42);
-        Assert.True(result.IsSuccess);
-        Assert.Equal(42, result.Data);
-        Assert.Null(result.ErrorMessage);
+        var (sql, _) = Sql.From<TestCharacter>()
+            .Select(x => new { x.Id, x.Name })
+            .Where(x => x.Id == 1)
+            .Build();
+
+        Assert.Contains("FROM \"Character\" AS a", sql);
+        Assert.Contains("a.\"Id\"", sql);
+        Assert.Contains("a.\"Name\"", sql);
+        Assert.Contains("WHERE", sql);
     }
 
     [Fact]
-    public void Result_Fail_IsSuccessFalse()
+    public void Sql_From_SelectValueTypeColumn_HandlesBoxing()
     {
-        var result = Result<int>.Fail("error occurred");
-        Assert.False(result.IsSuccess);
-        Assert.Equal("error occurred", result.ErrorMessage);
-    }
+        // value type (int) 的 x => x.Id 會產生 UnaryExpression(boxing)
+        var (sql, _) = Sql.From<TestCharacter>()
+            .Select(x => x.Id)
+            .Build();
 
-    // ========== DbExecutor ==========
-
-    [Fact]
-    public async Task DbExecutor_SuccessfulFunc_ReturnsSuccess()
-    {
-        var executor = new DbExecutor();
-        var result = await executor.ExecuteAsync(async () => { await Task.CompletedTask; return 42; });
-        Assert.True(result.IsSuccess);
-        Assert.Equal(42, result.Data);
+        Assert.Contains("a.\"Id\"", sql);
     }
 
     [Fact]
-    public async Task DbExecutor_ThrowingFunc_ReturnsFailure()
+    public void Sql_From_WhereGroup_BuildsGroupedCondition()
     {
-        var executor = new DbExecutor();
-        var result = await executor.ExecuteAsync<int>(() => throw new Exception("db error"));
-        Assert.False(result.IsSuccess);
-        Assert.Contains("db error", result.ErrorMessage);
+        var (sql, _) = Sql.From<TestCharacter>()
+            .Select(x => new { x.Id })
+            .WhereGroup(g => g
+                .Where(x => x.Id == 1)
+                .OrWhere(x => x.Id == 2))
+            .Where(x => x.Age > 0)
+            .Build();
+
+        Assert.Contains("(", sql);
+        Assert.Contains("OR", sql);
+        Assert.Contains("AND", sql);
+    }
+
+    [Fact]
+    public void Sql_From_OrderBy_BuildsAscendingOrder()
+    {
+        var (sql, _) = Sql.From<TestCharacter>()
+            .Select(x => new { x.Id })
+            .OrderBy(x => x.Name)
+            .Build();
+
+        Assert.Contains("ORDER BY \"Name\" ASC", sql);
+    }
+
+    [Fact]
+    public void Sql_From_WhereRaw_InjectsRawCondition()
+    {
+        var (sql, _) = Sql.From<TestCharacter>()
+            .Select(x => new { x.Id })
+            .WhereRaw("\"Age\" IS NOT NULL")
+            .Build();
+
+        Assert.Contains("\"Age\" IS NOT NULL", sql);
+    }
+
+    [Fact]
+    public void Sql_From_ImplicitConversionToQueryBuilder_Works()
+    {
+        // TypedQueryBuilder<T> 可以隱含轉換成 QueryBuilder
+        QueryBuilder qb = Sql.From<TestCharacter>()
+            .Select(x => new { x.Id })
+            .Where(x => x.Id > 0);
+
+        var (sql, _) = qb.Build();
+        Assert.Contains("FROM \"Character\"", sql);
+    }
+
+    [Fact]
+    public void Sql_InsertInto_BuildsCorrectSql()
+    {
+        var (sql, _) = Sql.InsertInto<TestCharacter>()
+            .Set(x => x.Name, "Hero")
+            .Set(x => x.Age, 20)
+            .ReturnId()
+            .Build();
+
+        Assert.Contains("INSERT INTO \"Character\"", sql);
+        Assert.Contains("RETURNING \"Id\"", sql);
+    }
+
+    [Fact]
+    public void Sql_Update_BuildsCorrectSql()
+    {
+        var (sql, _) = Sql.Update<TestCharacter>()
+            .Set(x => x.Name, "NewName")
+            .Where(x => x.Id == 1)
+            .Build();
+
+        Assert.Contains("UPDATE \"Character\"", sql);
+        Assert.Contains("WHERE", sql);
+    }
+
+    [Fact]
+    public void Sql_DeleteFrom_BuildsCorrectSql()
+    {
+        var (sql, _) = Sql.DeleteFrom<TestCharacter>()
+            .Where(x => x.Id == 1)
+            .Build();
+
+        Assert.Contains("DELETE FROM \"Character\"", sql);
+        Assert.Contains("WHERE", sql);
+    }
+
+    [Fact]
+    public void SqlExpressionVisitor_NullEqual_BuildsIsNullSql()
+    {
+        var params_ = new DynamicParameters();
+        var visitor = new SqlExpressionVisitor("a", params_);
+        var expr = ((System.Linq.Expressions.Expression<Func<TestCharacter, bool>>)(x => x.Name == null)).Body;
+        var sql = visitor.Translate(expr);
+        Assert.Contains("IS NULL", sql);
+        Assert.DoesNotContain("=", sql);
+    }
+
+    [Fact]
+    public void SqlExpressionVisitor_NullNotEqual_BuildsIsNotNullSql()
+    {
+        var params_ = new DynamicParameters();
+        var visitor = new SqlExpressionVisitor("a", params_);
+        var expr = ((System.Linq.Expressions.Expression<Func<TestCharacter, bool>>)(x => x.Name != null)).Body;
+        var sql = visitor.Translate(expr);
+        Assert.Contains("IS NOT NULL", sql);
+    }
+
+    [Fact]
+    public void QueryBuilder_WhereRaw_AddsRawCondition()
+    {
+        var (sql, _) = new QueryBuilder()
+            .From<TestCharacter>()
+            .Select<TestCharacter>(x => new { x.Id })
+            .WhereRaw("\"Id\" > 0")
+            .Build();
+
+        Assert.Contains("\"Id\" > 0", sql);
+    }
+
+    [Fact]
+    public void QueryBuilder_OrderBy_BuildsAscendingOrder()
+    {
+        var (sql, _) = new QueryBuilder()
+            .From<TestCharacter>()
+            .Select<TestCharacter>(x => new { x.Id })
+            .OrderBy<TestCharacter>(x => x.Name)
+            .Build();
+
+        Assert.Contains("ORDER BY \"Name\" ASC", sql);
     }
 }

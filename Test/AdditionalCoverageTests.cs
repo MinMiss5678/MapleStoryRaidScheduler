@@ -15,20 +15,6 @@ namespace Test;
 
 public class AdditionalCoverageTests
 {
-    // ========== SqlCommandBuilder base class Where ==========
-
-    [Fact]
-    public void SqlCommandBuilder_Where_ThrowsNotImplementedException()
-    {
-        // 呼叫 InsertBuilder 繼承自 SqlCommandBuilder 的 Where 方法
-        // (InsertBuilder 本身沒有覆寫 Where，故觸發基底類別)
-        var builder = new InsertBuilder<TestCharacter>();
-
-        // 基底類 Where 呼叫 ExpressionToSql 會丟出 NotImplementedException
-        Assert.Throws<NotImplementedException>(() =>
-            builder.Where(x => x.Id == 1));
-    }
-
     // ========== QueryBuilder unsupported expression ==========
 
     [Fact]
