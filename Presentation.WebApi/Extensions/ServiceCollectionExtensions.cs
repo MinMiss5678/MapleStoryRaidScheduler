@@ -33,6 +33,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDiscordOAuthClient, DiscordOAuthClient>();
         services.AddScoped<IBossService, BossService>();
         services.AddScoped<IRegisterService, RegisterService>();
+        services.AddScoped<IRegisterQueryService, RegisterQueryService>();
         services.AddScoped<IPeriodService, PeriodService>();
         services.AddScoped<ISystemConfigService, SystemConfigService>();
         services.AddScoped<IScheduleService, ScheduleService>();

@@ -10,12 +10,14 @@ namespace Presentation.WebApi.Controller;
 public class RegisterController: ControllerBase
 {
     private readonly IRegisterService _registerService;
+    private readonly IRegisterQueryService _registerQueryService;
 
-    public RegisterController(IRegisterService registerService)
+    public RegisterController(IRegisterService registerService, IRegisterQueryService registerQueryService)
     {
         _registerService = registerService;
+        _registerQueryService = registerQueryService;
     }
-    
+
     [HttpGet]
     public async Task<IActionResult> GetAsync()
     {
@@ -24,8 +26,8 @@ public class RegisterController: ControllerBase
         {
             return Unauthorized(new { error = "NotAuthenticated" });
         }
-        
-        return Ok(await _registerService.GetAsync(Convert.ToUInt64(discordId)));
+
+        return Ok(await _registerQueryService.GetAsync(Convert.ToUInt64(discordId)));
     }
 
     [HttpGet("GetLast")]
@@ -37,13 +39,13 @@ public class RegisterController: ControllerBase
             return Unauthorized(new { error = "NotAuthenticated" });
         }
 
-        return Ok(await _registerService.GetLastAsync(Convert.ToUInt64(discordId)));
+        return Ok(await _registerQueryService.GetLastAsync(Convert.ToUInt64(discordId)));
     }
 
     [HttpGet("GetByQuery")]
     public async Task<IActionResult> GetByQueryAsync([FromQuery] RegisterGetByQueryRequest request)
     {
-        return Ok(await _registerService.GetByQueryAsync(request));
+        return Ok(await _registerQueryService.GetByQueryAsync(request));
     }
     
     [HttpPost]

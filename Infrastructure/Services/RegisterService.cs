@@ -1,5 +1,4 @@
 ﻿using Application.DTOs;
-using Application.Exceptions;
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
@@ -11,15 +10,15 @@ public class RegisterService : IRegisterService
 {
     private readonly IPeriodQuery _periodQuery;
     private readonly IPlayerRegisterRepository _playerRegisterRepository;
-    private readonly IPlayerRegisterQuery _playerRegisterQuery;
     private readonly ICharacterRegisterRepository _characterRegisterRepository;
     private readonly IPlayerAvailabilityRepository _playerAvailabilityRepository;
     private readonly ITeamSlotAutoAssignService _autoAssignService;
     private readonly ITeamSlotCharacterRepository _teamSlotCharacterRepository;
     private readonly ISystemConfigService _systemConfigService;
 
-    public RegisterService(IPeriodQuery periodQuery,
-        IPlayerRegisterRepository playerRegisterRepository, IPlayerRegisterQuery playerRegisterQuery,
+    public RegisterService(
+        IPeriodQuery periodQuery,
+        IPlayerRegisterRepository playerRegisterRepository,
         ICharacterRegisterRepository characterRegisterRepository,
         IPlayerAvailabilityRepository playerAvailabilityRepository,
         ITeamSlotCharacterRepository teamSlotCharacterRepository,
@@ -28,83 +27,11 @@ public class RegisterService : IRegisterService
     {
         _periodQuery = periodQuery;
         _playerRegisterRepository = playerRegisterRepository;
-        _playerRegisterQuery = playerRegisterQuery;
         _characterRegisterRepository = characterRegisterRepository;
         _playerAvailabilityRepository = playerAvailabilityRepository;
         _autoAssignService = autoAssignService;
         _teamSlotCharacterRepository = teamSlotCharacterRepository;
         _systemConfigService = systemConfigService;
-    }
-
-    public async Task<RegisterDto> GetAsync(ulong discordId)
-    {
-        var periodId = await _periodQuery.GetPeriodIdByNowAsync();
-        if (periodId == 0) throw new NotFoundException("No active period found");
-        return await GetByPeriodAsync(discordId, periodId);
-    }
-
-    public async Task<RegisterDto> GetLastAsync(ulong discordId)
-    {
-        var periodId = await _periodQuery.GetLastPeriodIdAsync();
-        if (periodId == 0) throw new NotFoundException("No last period found");
-        return await GetByPeriodAsync(discordId, periodId);
-    }
-
-    private async Task<RegisterDto> GetByPeriodAsync(ulong discordId, int periodId)
-    {
-        var registers = (await _playerRegisterRepository.GetListAsync(discordId, periodId)).ToList();
-        var first = registers.FirstOrDefault();
-        if (first == null)
-            throw new NotFoundException("Register not found");
-
-        var availabilities = await _playerAvailabilityRepository.GetByPlayerRegisterIdAsync(first.Id);
-
-        var flat = new RegisterDto
-        {
-            Id = first.Id,
-            PeriodId = first.PeriodId,
-            Availabilities = availabilities.Select(a => new PlayerAvailability
-            {
-                Weekday = a.Weekday,
-                StartTime = a.StartTime,
-                EndTime = a.EndTime
-            }).ToList(),
-            CharacterRegisters = registers
-                .Where(r => r.CharacterRegisterId != null)
-                .Select(r => new CharacterRegisterDto
-                {
-                    Id = r.CharacterRegisterId,
-                    CharacterId = r.CharacterId,
-                    BossId = r.BossId,
-                    Rounds = r.Rounds
-                })
-                .ToList()
-        };
-
-        return flat;
-    }
-    
-    public async Task<IEnumerable<TeamSlotCharacter>> GetByQueryAsync(RegisterGetByQueryRequest request)
-    {
-        var periodId = await _periodQuery.GetPeriodIdByDateAsync(request.SlotDateTime.Value);
-            
-        var registers = await _playerRegisterQuery.GetByQueryAsync(request, periodId);
-        var first = registers.FirstOrDefault();
-        if (first == null)
-            return new List<TeamSlotCharacter>();
-        
-        var flat = registers.Select(x => new TeamSlotCharacter()
-        {
-            DiscordId =  x.DiscordId,
-            DiscordName = x.DiscordName,
-            CharacterId = x.CharacterId,
-            CharacterName = x.CharacterName,
-            Job = x.Job,
-            AttackPower = x.AttackPower,
-            Rounds = x.Rounds
-        });
-        
-        return flat;
     }
 
     public async Task CreateAsync(Register register)
