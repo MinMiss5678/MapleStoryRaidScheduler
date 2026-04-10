@@ -136,6 +136,11 @@ public class TeamSlotService : ITeamSlotService
                     if (!isAdmin && character.DiscordId != currentDiscordId)
                         throw new UnauthorizedAccessException("不能替他人新增角色");
 
+                    // 防止同一角色重複加入同一隊伍
+                    if (character.CharacterId != null &&
+                        originalTeam.Characters.Any(c => c.CharacterId == character.CharacterId))
+                        throw new InvalidOperationException("該角色已在此隊伍中，不可重複加入。");
+
                     character.TeamSlotId = teamSlot.Id;
                     await _teamSlotCharacterRepository.CreateAsync(character);
                 }

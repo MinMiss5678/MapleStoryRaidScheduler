@@ -38,6 +38,9 @@ public class RegisterService : IRegisterService
     {
         await EnsureRegistrationOpen();
 
+        if (await _playerRegisterRepository.ExistAsync(register.DiscordId, register.PeriodId))
+            throw new InvalidOperationException("您已完成本期報名，請勿重複提交。");
+
         var playRegisterId = await _playerRegisterRepository.CreateAsync(register);
 
         foreach (var availability in register.Availabilities)

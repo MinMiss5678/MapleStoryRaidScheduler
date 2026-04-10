@@ -100,4 +100,36 @@ public class RegisterServiceTests
         _autoAssignServiceMock.Verify(t => t.AutoAssignAsync(register), Times.Once);
     }
 
+    [Fact]
+    public async Task CreateAsync_ShouldThrowException_WhenAlreadyRegistered()
+    {
+        // Arrange
+        var period = new Period { StartDate = DateTimeOffset.Now.AddDays(1) };
+        var config = new SystemConfig
+        {
+            DeadlineDayOfWeek = DayOfWeek.Wednesday,
+            DeadlineTime = new TimeSpan(23, 59, 59)
+        };
+        _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
+        _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
+
+        var register = new Register
+        {
+            DiscordId = 123456789UL,
+            PeriodId = 1,
+            Availabilities = new List<PlayerAvailability>(),
+            CharacterRegisters = new List<CharacterRegister>()
+        };
+
+        _playerRegisterRepositoryMock
+            .Setup(r => r.ExistAsync(register.DiscordId, register.PeriodId))
+            .ReturnsAsync(true);
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _registerService.CreateAsync(register));
+        Assert.Equal("您已完成本期報名，請勿重複提交。", exception.Message);
+        _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<Register>()), Times.Never);
+    }
+
 }

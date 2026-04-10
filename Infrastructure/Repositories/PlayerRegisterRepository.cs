@@ -55,6 +55,12 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
         return await _dbContext.QueryAsync<PlayerCharacterRegister>(sql);
     }
 
+    public async Task<bool> ExistAsync(ulong discordId, int periodId)
+    {
+        return await _dbContext.Repository<PlayerRegisterDbModel>()
+            .ExistAsync(x => x.DiscordId == (long)discordId && x.PeriodId == periodId);
+    }
+
     public async Task<int> CreateAsync(Register register)
     {
         var sql = new InsertBuilder<PlayerRegisterDbModel>();
