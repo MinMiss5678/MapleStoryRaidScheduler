@@ -161,6 +161,7 @@ classDiagram
     class Character {
         +string Id
         +ulong DiscordId
+        +string Name
         +string Job
         +int AttackPower
     }
@@ -182,25 +183,60 @@ classDiagram
         +List~CharacterRegister~ CharacterRegisters
         +List~PlayerAvailability~ Availabilities
     }
+    class CharacterRegister {
+        +int Id
+        +int PlayerRegisterId
+        +string CharacterId
+        +int BossId
+        +int Rounds
+    }
+    class PlayerAvailability {
+        +int Id
+        +ulong DiscordId
+        +int PlayerRegisterId
+        +int Weekday
+        +TimeOnly StartTime
+        +TimeOnly EndTime
+    }
     class TeamSlot {
         +int Id
         +int BossId
+        +int PeriodId
+        +string? BossName
         +DateTimeOffset SlotDateTime
         +bool IsTemporary
         +bool IsPublished
         +int? TemplateId
     }
     class TeamSlotCharacter {
-        +int Id
-        +string CharacterId
+        +int? Id
+        +int TeamSlotId
+        +ulong DiscordId
+        +string DiscordName
+        +string? CharacterId
+        +string? CharacterName
         +string Job
         +int AttackPower
+        +int Level
+        +int Rounds
         +bool IsManual
     }
     class BossTemplate {
         +int Id
         +int BossId
+        +string Name
         +List~BossTemplateRequirement~ Requirements
+    }
+    class BossTemplateRequirement {
+        +int Id
+        +int BossTemplateId
+        +string JobCategory
+        +int Count
+        +int Priority
+        +int? MinLevel
+        +int? MinAttribute
+        +bool IsOptional
+        +string? Description
     }
 
     Player "1" -- "*" Character : 擁有
@@ -266,6 +302,7 @@ erDiagram
     }
     PlayerAvailability {
         integer id PK
+        bigint discord_id FK
         integer player_register_id FK
         integer weekday
         time start_time
@@ -282,6 +319,7 @@ erDiagram
         integer id PK
         integer boss_id FK
         integer period_id FK
+        varchar boss_name
         timestamptz slot_date_time
         boolean is_temporary
         boolean is_published
@@ -291,9 +329,12 @@ erDiagram
         integer id PK
         integer team_slot_id FK
         bigint discord_id
+        varchar discord_name
         text character_id FK
+        varchar character_name
         text job
         integer attack_power
+        integer level
         integer rounds
         boolean is_manual
     }
@@ -315,6 +356,10 @@ erDiagram
         text job_category
         integer count
         integer priority
+        integer min_level
+        integer min_attribute
+        boolean is_optional
+        text description
     }
 ```
 
