@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
-using System.Linq.Expressions;
-using System.Reflection;
+﻿using System.Linq.Expressions;
 using Dapper;
 
 namespace Utils.SqlBuilder;
@@ -60,10 +58,4 @@ public class DeleteBuilder<T> : SqlCommandBuilder<T>
         return sql;
     }
 
-    protected string GetTableName()
-    {
-        var type = typeof(T);
-        var attr = type.GetCustomAttribute<TableAttribute>();
-        return attr != null ? attr.Name : type.Name;
-    }
 }

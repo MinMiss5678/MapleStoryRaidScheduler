@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
-using System.Linq.Expressions;
-using System.Reflection;
+﻿using System.Linq.Expressions;
 
 namespace Utils.SqlBuilder;
 
@@ -8,13 +6,13 @@ public class InsertBuilder<T> : SqlCommandBuilder<T>
 {
     private Dictionary<string, object> _columns = new();
     private bool _returnId = false;
-    
+
     public InsertBuilder<T> Set<TProp>(Expression<Func<T, TProp>> column, TProp value)
     {
         _columns.Add(GetMemberName(column), value);
         return this;
     }
-    
+
     public InsertBuilder<T> ReturnId()
     {
         _returnId = true;
@@ -26,22 +24,14 @@ public class InsertBuilder<T> : SqlCommandBuilder<T>
         var cols = string.Join(", ", _columns.Keys.Select(k => $"\"{k}\""));
         var vals = string.Join(", ", _columns.Keys.Select(k => $"@{k}"));
         foreach (var kv in _columns) _parameters.Add(kv.Key, kv.Value);
-        var sql = $"INSERT INTO {GetTableName()} ({cols}) VALUES ({vals})";
+        var sql = $"INSERT INTO \"{GetTableName()}\" ({cols}) VALUES ({vals})";
         if (_returnId)
             sql += " RETURNING \"Id\"";
 
         return sql;
     }
-    
-    protected string GetTableName()
-    {
-        var type = typeof(T);
-        var attr = type.GetCustomAttribute<TableAttribute>();
-        var tableName = attr != null ? attr.Name : type.Name;
-        return $"\"{tableName}\"";
-    }
-    
-    private string GetMemberName<TProp>(Expression<Func<T, TProp>> expr)
+
+    private static string GetMemberName<TProp>(Expression<Func<T, TProp>> expr)
     {
         if (expr.Body is MemberExpression m) return m.Member.Name;
         throw new InvalidOperationException();

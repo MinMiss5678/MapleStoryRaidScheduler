@@ -1,7 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Text;
 using Dapper;
 
 namespace Utils.SqlBuilder;
@@ -88,18 +87,32 @@ public class QueryBuilder
         return this;
     }
 
-    // --- Build ---
+    public QueryBuilder WhereRaw(string sql)
+    {
+        _rootGroup.Add(new SqlCondition("AND", sql));
+        return this;
+    }
+
+    // --- Order / Limit / Offset ---
+    public QueryBuilder OrderBy<T>(Expression<Func<T, object>> expression)
+    {
+        _orderBy = $" ORDER BY \"{ExtractMemberName(expression)}\" ASC";
+        return this;
+    }
+
     public QueryBuilder OrderByDescending<T>(Expression<Func<T, object>> expression)
     {
-        var member = expression.Body switch
+        _orderBy = $" ORDER BY \"{ExtractMemberName(expression)}\" DESC";
+        return this;
+    }
+
+    private static string ExtractMemberName<T>(Expression<Func<T, object>> expression) =>
+        expression.Body switch
         {
             MemberExpression me => me.Member.Name,
             UnaryExpression ue when ue.Operand is MemberExpression me => me.Member.Name,
             _ => throw new NotSupportedException("Only member expressions are supported")
         };
-        _orderBy = $" ORDER BY \"{member}\" DESC";
-        return this;
-    }
 
     public QueryBuilder Limit(int limit)
     {
@@ -164,62 +177,13 @@ public class QueryBuilder
         }
 
         if (selector.Body is MemberExpression memberExp)
-            return new[] { $"{alias}.\"{memberExp.Member.Name}\"" };
-    
+            return [$"{alias}.\"{memberExp.Member.Name}\""];
+
+        // value type 欄位（如 int）在 Expression<Func<T, object>> 下會被 boxing 成 UnaryExpression(Convert)
+        if (selector.Body is UnaryExpression { Operand: MemberExpression boxedMember })
+            return [$"{alias}.\"{boxedMember.Member.Name}\""];
+
         throw new NotSupportedException("Unsupported select expression");
     }
 }
 
-internal class SqlCondition
-{
-    public string Operator { get; }
-    public string Condition { get; }
-
-    public SqlCondition(string op, string cond)
-    {
-        Operator = op;
-        Condition = cond;
-    }
-}
-
-internal class SqlConditionGroup
-{
-    public string Operator { get; }
-    public bool IsGroup { get; }
-    public List<object> Conditions { get; } = new(); // SqlCondition 或 SqlConditionGroup
-
-    public SqlConditionGroup(string op = "AND", bool isGroup = true)
-    {
-        Operator = op;
-        IsGroup = isGroup;
-    }
-
-    public void Add(object condition) => Conditions.Add(condition);
-
-    public string ToSql()
-    {
-        if (!Conditions.Any()) return "";
-
-        var sb = new StringBuilder();
-        bool first = true;
-        foreach (var cond in Conditions)
-        {
-            if (!first)
-            {
-                // 根據條件自己的 Operator 串接
-                sb.Append(" " + (cond is SqlCondition sc ? sc.Operator : Operator) + " ");
-            }
-
-            sb.Append(cond switch
-            {
-                SqlCondition sc => sc.Condition,
-                SqlConditionGroup sg => sg.ToSql(),
-                _ => throw new NotSupportedException()
-            });
-
-            first = false;
-        }
-
-        return IsGroup && Conditions.Count > 1 ? $"({sb})" : sb.ToString();
-    }
-}
