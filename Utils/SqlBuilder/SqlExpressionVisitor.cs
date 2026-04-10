@@ -24,6 +24,19 @@ public class SqlExpressionVisitor : ExpressionVisitor
 
     protected override Expression VisitBinary(BinaryExpression node)
     {
+        // null 比較需轉為 IS NULL / IS NOT NULL
+        if (node.NodeType is ExpressionType.Equal or ExpressionType.NotEqual)
+        {
+            var isNullRight = node.Right is ConstantExpression { Value: null };
+            var isNullLeft = node.Left is ConstantExpression { Value: null };
+            if (isNullRight || isNullLeft)
+            {
+                Visit(isNullRight ? node.Left : node.Right);
+                _sb.Append(node.NodeType == ExpressionType.Equal ? " IS NULL" : " IS NOT NULL");
+                return node;
+            }
+        }
+
         Visit(node.Left);
 
         _sb.Append(node.NodeType switch
