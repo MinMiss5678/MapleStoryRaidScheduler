@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <!-- 排除無法進行 unit test 的基礎建設程式碼 -->
+          <Exclude>
+            <!-- Dapper 基礎建設 -->
+            [Infrastructure]Infrastructure.Dapper.*
+            <!-- Dapper Repository 實作 (需要真實資料庫) -->
+            [Infrastructure]Infrastructure.Repositories.*
+            <!-- DB Model 實體 (純資料類別) -->
+            [Infrastructure]Infrastructure.Entities.*
+            <!-- Query 實作 (Dapper SQL 查詢) -->
+            [Infrastructure]Infrastructure.Query.*
+            <!-- 背景工作 (需要真實服務) -->
+            [Infrastructure]Infrastructure.BackgroundJobs.*
+            <!-- Discord 外部服務 -->
+            [Infrastructure]Infrastructure.Services.DiscordService
+            [Infrastructure]Infrastructure.Services.DiscordOAuthClient
+            [Infrastructure]Infrastructure.Services.AuthService
+            [Infrastructure]Infrastructure.Services.SessionService
+            <!-- Presentation 層 Discord Handler -->
+            [Infrastructure]Presentation.Infrastructure.*
+            <!-- Utils SQL Builder (工具類，不需 unit test) -->
+            [Utils]Utils.SqlBuilder.*
+            [Utils]Utils.JsonConverters.*
+            <!-- Controller (需要整合測試) -->
+            [Presentation.WebApi]*
+            [Presentation]*
+          </Exclude>
+          <ExcludeByAttribute>
+            GeneratedCodeAttribute,
+            CompilerGeneratedAttribute,
+            ExcludeFromCodeCoverageAttribute
+          </ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
