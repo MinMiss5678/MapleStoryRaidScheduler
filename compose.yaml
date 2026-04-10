@@ -22,6 +22,20 @@
     networks:
       - bridge
   
+  seq:
+    image: datalust/seq:latest
+    container_name: seq
+    environment:
+      - ACCEPT_EULA=Y
+      - SEQ_FIRSTRUN_ADMINPASSWORD=admin
+    ports:
+      - "8080:80"    # Web UI → http://localhost:8080
+      - "5341:5341"  # Ingest endpoint
+    volumes:
+      - seq_data:/data
+    networks:
+      - bridge
+
   backend:
 #    build:
 #      context: ./Presentation.WebApi
@@ -30,6 +44,7 @@
     container_name: backend
     depends_on:
       - database
+      - seq
     environment:
       - TZ=Asia/Taipei
       - ASPNETCORE_URLS=http://+:5230
@@ -42,6 +57,7 @@
       - Jwt:SecretKeyFile=/run/secrets/jwt_secret_key
       - Jwt-Issuer=https://maplestory.paralleluniversegame.uk
       - Jwt-Audience=https://maplestory.paralleluniversegame.uk
+      - Seq:ServerUrl=http://seq:5341
     secrets:
       - db_connection
       - discord_bot_token
@@ -120,3 +136,4 @@ networks:
 
 volumes:
   db_data:
+  seq_data:

@@ -7,8 +7,26 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Npgsql;
 using Presentation.WebApi.Extensions;
 using Presentation.WebApi.Middleware;
+using Serilog;
+
+// 最早初始化 Serilog，讓 startup 期間的錯誤也能被記錄
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((ctx, services, config) =>
+{
+    var seqUrl = ctx.Configuration["Seq:ServerUrl"];
+    config
+        .ReadFrom.Configuration(ctx.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("Application", "MapleStoryRaidScheduler")
+        .WriteTo.Console()
+        .WriteTo.Seq(string.IsNullOrEmpty(seqUrl) ? "http://localhost:5341" : seqUrl);
+});
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -105,6 +123,8 @@ options.KnownNetworks.Clear(); // 清掉預設 127.0.0.1/8
 options.KnownProxies.Clear();
 app.UseForwardedHeaders(options);
 app.UseHttpsRedirection();
+// 記錄每個 HTTP Request / Response（不含健康檢查等靜態路徑）
+app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseMiddleware<AuthenticationMiddleware>();
 app.UseMiddleware<UnitOfWorkMiddleware>();
