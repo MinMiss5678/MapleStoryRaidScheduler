@@ -253,7 +253,7 @@ export default function PlayerRaidTeamCard({
                                 </td>
                             </tr>
                         ))}
-                        {!isLoadingCharacters && teamSlot.characters.length === 0 && (
+                        {!isLoadingCharacters && filledCharacters.length === 0 && missingSlots.length === 0 && (
                             <tr>
                                 <td colSpan={4} className="py-8 text-center text-muted-foreground italic">
                                     尚無成員。

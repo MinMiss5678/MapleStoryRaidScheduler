@@ -41,11 +41,12 @@ export function useRaidValidation() {
         }
 
         // 4. 檢查該角色在所有隊伍中的總場數是否超過限制
+        // rounds = 0 代表玩家未透過報名流程（如 admin 直接開團），視為無場數限制
         const characterTotalRounds = allTeamSlots.reduce((acc, t) => {
             return acc + t.characters.filter(c => c.characterId === character.characterId).length;
         }, 0);
 
-        if (characterTotalRounds >= character.rounds) {
+        if (character.rounds > 0 && characterTotalRounds >= character.rounds) {
             errors.push(`角色「${character.characterName}」的場數已達上限 (${character.rounds} 場)。`);
         }
 
