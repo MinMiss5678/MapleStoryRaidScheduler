@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: maple-raid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: minqq/presentation.webapi:latest
+          env:
+            - name: TZ
+              value: Asia/Taipei
+            - name: ASPNETCORE_URLS
+              value: http://+:5230
+            - name: ConnectionStrings__DefaultConnectionFile
+              value: /run/secrets/db_connection
+            - name: Discord__BotTokenFile
+              value: /run/secrets/discord_bot_token
+            - name: Discord__ClientId
+              value: "836636705498595340"
+            - name: Discord__ClientSecretFile
+              value: /run/secrets/discord_client_secret
+            - name: Discord__RedirectUri
+              value: https://maplestory.paralleluniversegame.uk/callback
+            - name: Discord__GuildId
+              value: "840590742270771220"
+            - name: Jwt__SecretKeyFile
+              value: /run/secrets/jwt_secret_key
+            - name: Jwt-Issuer
+              value: https://maplestory.paralleluniversegame.uk
+            - name: Jwt-Audience
+              value: https://maplestory.paralleluniversegame.uk
+            - name: Seq__ServerUrl
+              value: http://seq:5341
+          ports:
+            - containerPort: 5230
+          volumeMounts:
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: secrets
+          secret:
+            secretName: maple-secrets
+            items:
+              - key: db_connection
+                path: db_connection
+              - key: discord_bot_token
+                path: discord_bot_token
+              - key: discord_client_secret
+                path: discord_client_secret
+              - key: jwt_secret_key
+                path: jwt_secret_key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: maple-raid
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 5230
+      targetPort: 5230

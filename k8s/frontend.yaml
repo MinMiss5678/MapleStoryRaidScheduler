@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: maple-raid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: minqq/frontend:latest
+          env:
+            - name: NEXT_PUBLIC_APP_URL
+              value: https://maplestory.paralleluniversegame.uk
+            - name: BACKEND_API_URL
+              value: http://backend:5230
+            - name: NEXT_PUBLIC_DISCORD_CLIENT_ID
+              value: "836636705498595340"
+          ports:
+            - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: maple-raid
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 3000
+      targetPort: 3000

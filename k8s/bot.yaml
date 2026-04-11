@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bot
+  namespace: maple-raid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bot
+  template:
+    metadata:
+      labels:
+        app: bot
+    spec:
+      containers:
+        - name: bot
+          image: minqq/presentation:latest
+          env:
+            - name: ConnectionStrings__DefaultConnectionFile
+              value: /run/secrets/db_connection
+            - name: Discord__BotTokenFile
+              value: /run/secrets/discord_bot_token
+            - name: Discord__ChannelId
+              value: "840590742270771223"
+            - name: App__AppUrl
+              value: https://maplestory.paralleluniversegame.uk
+          volumeMounts:
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: secrets
+          secret:
+            secretName: maple-secrets
+            items:
+              - key: db_connection
+                path: db_connection
+              - key: discord_bot_token
+                path: discord_bot_token
