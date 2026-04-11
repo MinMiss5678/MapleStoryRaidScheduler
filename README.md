@@ -1,11 +1,11 @@
-﻿# MapleStory Raid Scheduler
+# MapleStory Raid Scheduler
 
 > 一個為楓之谷玩家設計的 **Boss 副本排程管理系統**，整合 Discord OAuth2 登入、自動排程引擎與 Bot 通知，從零到部署完整實作。
 
 ## 技術亮點
 
 - **自製 SqlBuilder**：不依賴 EF Core，以 Lambda 表達式解析（`Expression<Func<T, bool>>`）實作型別安全的 SQL 建構工具，支援 CTE、條件群組（AND/OR）、NULL 比較，避免字串拼接錯誤。
-- **CQRS-Lite 讀寫分離**：寫入路徑走 Service + Repository，讀取路徑走獨立 Query 介面直接執行最佳化 SQL，避免 N+1 問題。
+- **CQRS-Lite 讀寫分離**：寫入路徑走 Service + Repository（逐筆操作、語意清晰），讀取路徑走獨立 Query 介面（不受寫入模型約束，可自由使用 JOIN 等最佳化 SQL 一次查回所需資料）。
 - **冪等性保護**：所有 POST/PUT/DELETE 請求強制帶 `X-Idempotency-Key`，由 Middleware 統一攔截並快取結果，防止網路重試造成重複操作。
 - **雙軌身分驗證**：一般玩家使用自定義 JWT，管理員使用 Session（儲存於 DB），兩者在同一 Middleware 中統一驗證，依 Discord 身分組自動分流。
 - **自動排程引擎**：玩家報名後即時觸發，根據可用時段比對現有隊伍空位，無匹配則建立新隊伍；管理員可手動觸發全局批次排程與隊伍合併優化。
