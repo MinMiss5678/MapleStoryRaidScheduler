@@ -46,8 +46,10 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
             
         await _dbContext.ExecuteAsync(deleteCharacters);
 
+        // 只清除系統自動分配的空團（IsTemporary=false），admin 手動開團不自動刪除
         var deleteEmptySlots = new DeleteBuilder<TeamSlotDbModel>()
             .Where(x => x.Id == teamSlotCharacter.TeamSlotId)
+            .Where(x => x.IsTemporary == false)
             .WhereRaw("""
                       NOT EXISTS (
                       SELECT 1
@@ -82,9 +84,10 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
 
         await _dbContext.ExecuteAsync(deleteCharacters);
 
-        // Step 3: 刪除空的 TeamSlot
+        // Step 3: 只刪除系統自動分配的空團（IsTemporary=false），admin 手動開團不自動刪除
         var deleteEmptySlots = new DeleteBuilder<TeamSlotDbModel>()
             .Where(x => targetSlotIds.Contains(x.Id))
+            .Where(x => x.IsTemporary == false)
             .WhereRaw("""
                       NOT EXISTS (
                       SELECT 1
