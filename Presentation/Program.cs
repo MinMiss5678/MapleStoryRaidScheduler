@@ -21,8 +21,6 @@ namespace Presentation;
 
 public class Program
 {
-    private IConfigurationRoot _config;
-    
     static async Task Main()
     {
        var host = Host.CreateDefaultBuilder()

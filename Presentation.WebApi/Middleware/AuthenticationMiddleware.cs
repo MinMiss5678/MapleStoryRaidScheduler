@@ -46,7 +46,7 @@ public class AuthenticationMiddleware : IMiddleware
                 return;
             }
 
-            var session = await _sessionService.GetAsync(sessionId, discordId);
+            var session = await _sessionService.GetAsync(sessionId, discordId!);
             if (session == null)
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -74,7 +74,7 @@ public class AuthenticationMiddleware : IMiddleware
         if (!identity.Claims.Any())
         {
             context.Request.Cookies.TryGetValue("jwtToken", out var token);
-            var validateTokenResult = _jwtService.ValidateToken(token);
+            var validateTokenResult = _jwtService.ValidateToken(token!);
             if (validateTokenResult.IsValid)
             {
                 var jwtPlayer = await _playerService.GetAsync(validateTokenResult.DiscordId);

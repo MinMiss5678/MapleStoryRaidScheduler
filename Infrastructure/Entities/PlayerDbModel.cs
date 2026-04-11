@@ -8,6 +8,6 @@ public class PlayerDbModel
 {
     [ExplicitKey]
     public long DiscordId { get; set; }
-    public string DiscordName { get; set; }
-    public string Role { get; set; }
+    public required string DiscordName { get; set; }
+    public required string Role { get; set; }
 }

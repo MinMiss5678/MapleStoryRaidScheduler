@@ -8,7 +8,7 @@ namespace Infrastructure.Dapper;
 public class DbContext
 {
     public IDbConnection Connection { get; }
-    public IDbTransaction Transaction { get; private set; }
+    public IDbTransaction? Transaction { get; private set; }
     private bool _completed;
 
     public DbContext(IDbConnection connection)

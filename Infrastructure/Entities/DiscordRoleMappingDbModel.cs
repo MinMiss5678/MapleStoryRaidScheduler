@@ -10,6 +10,6 @@ public class DiscordRoleMappingDbModel
     [ExplicitKey]
     public long DiscordRoleId { get; set; }
     [MaxLength(50)]
-    public string Role { get; set; }
+    public required string Role { get; set; }
     public int Priority { get; set; }
 }

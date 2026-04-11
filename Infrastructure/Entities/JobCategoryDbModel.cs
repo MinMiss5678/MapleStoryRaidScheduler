@@ -6,7 +6,7 @@ namespace Infrastructure.Entities;
 [Table("JobCategory")]
 public class JobCategoryDbModel
 {
-    public string CategoryName { get; set; }
+    public required string CategoryName { get; set; }
     [ExplicitKey]
-    public string JobName { get; set; }
+    public required string JobName { get; set; }
 }

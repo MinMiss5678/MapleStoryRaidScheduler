@@ -3,6 +3,6 @@
 public class TeamSlotUpdateRequest
 {
     public int BossId { get; set; }
-    public List<TeamSlotUpdateCommand> TeamSlots { get; set; }
-    public List<int> DeleteTeamSlotIds { get; set; }
+    public required List<TeamSlotUpdateCommand> TeamSlots { get; set; }
+    public required List<int> DeleteTeamSlotIds { get; set; }
 }

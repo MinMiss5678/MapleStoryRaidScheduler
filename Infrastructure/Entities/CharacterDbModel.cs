@@ -7,11 +7,11 @@ namespace Infrastructure.Entities;
 public class CharacterDbModel
 {
     [ExplicitKey]
-    public string Id { get; set; }
-    
+    public required string Id { get; set; }
+
     public long DiscordId { get; set; }
 
-    public string Name { get; set; }
-    public string Job { get; set; }
+    public required string Name { get; set; }
+    public required string Job { get; set; }
     public int AttackPower { get; set; }
 }

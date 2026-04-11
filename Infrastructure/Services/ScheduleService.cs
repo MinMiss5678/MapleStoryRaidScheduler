@@ -38,6 +38,7 @@ public class ScheduleService : IScheduleService
 
         var characterRegisters = await _playerRegisterQuery.GetByNowPeriodIdAsync(bossId);
         var period = await _periodQuery.GetByNowAsync();
+        if (period == null) return [];
         var schedules = new List<TeamSlot>();
 
         // 1. 取得所有報名的時段組合 (Day, StartTime)

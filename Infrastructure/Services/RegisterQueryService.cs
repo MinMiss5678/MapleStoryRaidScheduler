@@ -74,7 +74,7 @@ public class RegisterQueryService : IRegisterQueryService
 
     public async Task<IEnumerable<TeamSlotCharacter>> GetByQueryAsync(RegisterGetByQueryRequest request)
     {
-        var periodId = await _periodQuery.GetPeriodIdByDateAsync(request.SlotDateTime.Value);
+        var periodId = await _periodQuery.GetPeriodIdByDateAsync(request.SlotDateTime!.Value);
         var registers = await _playerRegisterQuery.GetByQueryAsync(request, periodId);
 
         return registers.Select(x => new TeamSlotCharacter

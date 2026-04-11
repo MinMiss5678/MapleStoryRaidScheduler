@@ -39,14 +39,14 @@ public class DapperRepository<T> : IRepository<T> where T : class
         _keyName = keyProp.Name;
     }
 
-    public async Task<IEnumerable<TResult>> GetAllAsync<TResult>(Expression<Func<T, object>> columns = null)
+    public async Task<IEnumerable<TResult>> GetAllAsync<TResult>(Expression<Func<T, object>>? columns = null)
     {
         string columnList;
         if (columns != null)
         {
             if (columns.Body is NewExpression newExp)
             {
-                var names = newExp.Members.Select(m => $"\"{m.Name}\"");
+                var names = newExp.Members!.Select(m => $"\"{m.Name}\"");
                 columnList = string.Join(",", names);
             }
             else if (columns.Body is MemberExpression m)

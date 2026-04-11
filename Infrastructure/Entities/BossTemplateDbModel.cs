@@ -9,5 +9,5 @@ public class BossTemplateDbModel
     [Key]
     public int Id { get; set; }
     public int BossId { get; set; }
-    public string Name { get; set; }
+    public required string Name { get; set; }
 }

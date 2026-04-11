@@ -27,6 +27,6 @@ public class TimeOnlyTypeHandler : SqlMapper.TypeHandler<TimeOnly>
             return TimeOnly.FromDateTime(dto.DateTime);
         }
 
-        return TimeOnly.Parse(value.ToString());
+        return TimeOnly.Parse(value.ToString()!);
     }
 }

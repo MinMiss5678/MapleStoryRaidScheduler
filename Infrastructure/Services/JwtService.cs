@@ -57,7 +57,7 @@ public class JwtService : IJwtService
         };
 
         var handler = new JsonWebTokenHandler();
-        var validateToken = handler.ValidateToken(token, parameters);
+        var validateToken = handler.ValidateTokenAsync(token, parameters).GetAwaiter().GetResult();
         if (!validateToken.IsValid)
         {
             return new JwtValidationResult()

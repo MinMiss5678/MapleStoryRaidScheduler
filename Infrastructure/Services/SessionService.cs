@@ -1,5 +1,4 @@
 ﻿using Application.Interface;
-using Application.Options;
 using Application.Queries;
 using Domain.Entities;
 using Domain.Repositories;
@@ -13,7 +12,6 @@ public class SessionService : ISessionService
     private readonly ISessionQuery _sessionQuery;
     private readonly IDiscordOAuthClient _discordClient;
     private readonly IMemoryCache _memoryCache;
-    private readonly DiscordOptions _discordOptions;
 
     public SessionService(ISessionRepository sessionRepository, ISessionQuery sessionQuery, IDiscordOAuthClient discordClient, IMemoryCache memoryCache)
     {

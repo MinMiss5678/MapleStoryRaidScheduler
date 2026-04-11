@@ -9,7 +9,7 @@ public class BossTemplateRequirementDbModel
     [Key]
     public int Id { get; set; }
     public int BossTemplateId { get; set; }
-    public string JobCategory { get; set; }
+    public required string JobCategory { get; set; }
     public int Count { get; set; }
     public int Priority { get; set; }
 }

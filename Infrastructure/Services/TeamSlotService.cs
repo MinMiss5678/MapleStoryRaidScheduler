@@ -26,6 +26,7 @@ public class TeamSlotService : ITeamSlotService
     public async Task<IEnumerable<TeamSlot>> GetByBossIdAsync(int bossId)
     {
         var period = await _periodQuery.GetByNowAsync();
+        if (period == null) return [];
         var teamSlotCharacters = await _teamSlotQuery.GetByPeriodAndBossIdAsync(period, bossId);
 
         return MapToTeamSlots(teamSlotCharacters, period, bossId);
@@ -34,6 +35,7 @@ public class TeamSlotService : ITeamSlotService
     public async Task<IEnumerable<TeamSlot>> GetByDiscordIdAsync(ulong discordId)
     {
         var period = await _periodQuery.GetByNowAsync();
+        if (period == null) return [];
         var teamSlotCharacters = await _teamSlotQuery.GetByPeriodAndDiscordIdAsync(period, discordId);
 
         return MapToTeamSlots(teamSlotCharacters, period);
@@ -51,18 +53,20 @@ public class TeamSlotService : ITeamSlotService
                 PeriodId = period?.Id ?? 0,
                 BossName = g.FirstOrDefault()?.BossName,
                 SlotDateTime = g.Key.SlotDateTime,
-                Characters = g.Select(x => new TeamSlotCharacter
-                {
-                    Id = x.TeamSlotCharacterId,
-                    DiscordId = x.DiscordId,
-                    DiscordName = x.DiscordName,
-                    CharacterId = x.CharacterId,
-                    CharacterName = x.CharacterName,
-                    Job = x.Job,
-                    AttackPower = x.AttackPower,
-                    Rounds = x.Rounds,
-                    TeamSlotId = x.TeamSlotId
-                }).ToList()
+                // LEFT JOIN 在隊伍無成員時會產生 TeamSlotCharacterId=0 的 ghost row，需過濾掉
+                Characters = g.Where(x => x.TeamSlotCharacterId != 0)
+                    .Select(x => new TeamSlotCharacter
+                    {
+                        Id = x.TeamSlotCharacterId,
+                        DiscordId = x.DiscordId,
+                        DiscordName = x.DiscordName,
+                        CharacterId = x.CharacterId,
+                        CharacterName = x.CharacterName,
+                        Job = x.Job,
+                        AttackPower = x.AttackPower,
+                        Rounds = x.Rounds,
+                        TeamSlotId = x.TeamSlotId
+                    }).ToList()
             })
             .ToList();
     }

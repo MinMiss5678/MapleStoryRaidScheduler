@@ -27,7 +27,7 @@ public class AuthController : ControllerBase
         var result = await _authAppService.LoginAsync(request.Code);
         if (result.IsSession)
         {
-            Response.Cookies.Append($"sessionId{result.DiscordId}", result.SessionId, new CookieOptions
+            Response.Cookies.Append($"sessionId{result.DiscordId}", result.SessionId!, new CookieOptions
             {
                 HttpOnly = true,
                 Secure = true,
@@ -47,7 +47,7 @@ public class AuthController : ControllerBase
         }
         else if (result.IsJwt)
         {
-            Response.Cookies.Append("jwtToken", result.JwtToken, new CookieOptions
+            Response.Cookies.Append("jwtToken", result.JwtToken!, new CookieOptions
             {
                 HttpOnly = true,
                 Secure = true,
@@ -72,7 +72,7 @@ public class AuthController : ControllerBase
 
         if (sessionId != null)
         {
-            var result = await _authAppService.LogoutAsync(sessionId, discordId);
+            var result = await _authAppService.LogoutAsync(sessionId, discordId!);
             if (!result)
                 return StatusCode(500, new { message = "Failed to delete session" });    
         }
