@@ -18,7 +18,7 @@ public class AuthAppServiceTests
     private readonly Mock<IOptions<DiscordOptions>> _discordOptionsMock;
     private readonly Mock<IDiscordRoleMappingRepository> _roleMappingRepositoryMock;
     private readonly AuthAppService _authAppService;
-    private readonly DiscordOptions _discordOptions;
+    private readonly DiscordOptions _discordOptions = new();
 
     public AuthAppServiceTests()
     {

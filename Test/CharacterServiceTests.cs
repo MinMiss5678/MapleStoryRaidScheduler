@@ -35,7 +35,7 @@ public class CharacterServiceTests
         ulong discordId = 12345;
         var dtos = new List<CharacterDto>
         {
-            new CharacterDto { Id = "c1", Name = "Hero", Job = "Warrior" }
+            new CharacterDto { Id = "c1", Name = "Hero", Job = "Warrior", DiscordName = "" }
         };
         _characterQueryMock.Setup(q => q.GetWithDiscordNameAsync(discordId, null)).ReturnsAsync(dtos);
 

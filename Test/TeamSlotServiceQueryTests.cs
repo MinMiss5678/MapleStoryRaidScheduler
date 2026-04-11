@@ -137,8 +137,8 @@ public class TeamSlotServiceQueryTests
 
         var dtos = new List<TeamSlotCharacterDto>
         {
-            new TeamSlotCharacterDto { TeamSlotId = 1, BossId = 5, BossName = "B1", SlotDateTime = slot1, TeamSlotCharacterId = 10, DiscordId = discordId },
-            new TeamSlotCharacterDto { TeamSlotId = 2, BossId = 6, BossName = "B2", SlotDateTime = slot2, TeamSlotCharacterId = 20, DiscordId = discordId }
+            new TeamSlotCharacterDto { TeamSlotId = 1, BossId = 5, BossName = "B1", SlotDateTime = slot1, TeamSlotCharacterId = 10, DiscordId = discordId, DiscordName = "", Job = "" },
+            new TeamSlotCharacterDto { TeamSlotId = 2, BossId = 6, BossName = "B2", SlotDateTime = slot2, TeamSlotCharacterId = 20, DiscordId = discordId, DiscordName = "", Job = "" }
         };
 
         _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);

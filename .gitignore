@@ -2,7 +2,7 @@
 *obj/
 *bin/
 appsettings.json
-
+.junie
 TestResults/
 Test/TestResults*/
 
