@@ -14,7 +14,6 @@ public class ScheduleServiceAutoScheduleTests
     private readonly Mock<IPeriodQuery> _periodQueryMock;
     private readonly Mock<IPlayerRegisterQuery> _playerRegisterQueryMock;
     private readonly Mock<IBossRepository> _bossRepositoryMock;
-    private readonly Mock<ITeamSlotRepository> _teamSlotRepositoryMock;
     private readonly Mock<IJobCategoryRepository> _jobCategoryRepositoryMock;
 
     public ScheduleServiceAutoScheduleTests()
@@ -22,14 +21,12 @@ public class ScheduleServiceAutoScheduleTests
         _periodQueryMock = new Mock<IPeriodQuery>();
         _playerRegisterQueryMock = new Mock<IPlayerRegisterQuery>();
         _bossRepositoryMock = new Mock<IBossRepository>();
-        _teamSlotRepositoryMock = new Mock<ITeamSlotRepository>();
         _jobCategoryRepositoryMock = new Mock<IJobCategoryRepository>();
 
         _scheduleService = new ScheduleService(
             _periodQueryMock.Object,
             _playerRegisterQueryMock.Object,
             _bossRepositoryMock.Object,
-            _teamSlotRepositoryMock.Object,
             _jobCategoryRepositoryMock.Object);
     }
 

@@ -11,20 +11,17 @@ public class ScheduleService : IScheduleService
     private readonly IPeriodQuery _periodQuery;
     private readonly IPlayerRegisterQuery _playerRegisterQuery;
     private readonly IBossRepository _bossRepository;
-    private readonly ITeamSlotRepository _teamSlotRepository;
     private readonly IJobCategoryRepository _jobCategoryRepository;
 
     public ScheduleService(
         IPeriodQuery periodQuery, 
         IPlayerRegisterQuery playerRegisterQuery,
         IBossRepository bossRepository,
-        ITeamSlotRepository teamSlotRepository,
         IJobCategoryRepository jobCategoryRepository)
     {
         _periodQuery = periodQuery;
         _playerRegisterQuery = playerRegisterQuery;
         _bossRepository = bossRepository;
-        _teamSlotRepository = teamSlotRepository;
         _jobCategoryRepository = jobCategoryRepository;
     }
 
