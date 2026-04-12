@@ -25,6 +25,12 @@
       <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.14.0" />
       <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
       <PackageReference Include="Npgsql" Version="9.0.3" />
+      <!-- EF Core：僅 design-time 使用，不進 runtime output -->
+      <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.4">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      </PackageReference>
     </ItemGroup>
 
     <ItemGroup>
