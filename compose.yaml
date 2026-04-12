@@ -1,11 +1,4 @@
-﻿services:
-  #  alpine:
-  #      image: alpine/curl:8.14.1
-  #      container_name: alpine
-  #      command: curl -fsSL http://api:5230
-  #      networks:
-  #        - frontend
-
+services:
   database:
     image: postgres:18
     container_name: presentation-db
@@ -21,7 +14,29 @@
       - db_data:/var/lib/postgresql
     networks:
       - bridge
-  
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d presentationdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate
+    container_name: migrate
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - ./db/migrations:/migrations
+    secrets:
+      - db_connection_url
+    # 從 secret 檔案讀取 postgres:// URL 後執行 migrate up
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/migrate -path=/migrations -database=\"$(cat /run/secrets/db_connection_url)\" up"]
+    networks:
+      - bridge
+    restart: on-failure
+
   seq:
     image: datalust/seq:latest
     container_name: seq
@@ -37,14 +52,13 @@
       - bridge
 
   backend:
-#    build:
-#      context: ./Presentation.WebApi
     image: minqq/presentation.webapi:latest
-#    image: presentation.webapi:latest
     container_name: backend
     depends_on:
-      - database
-      - seq
+      migrate:
+        condition: service_completed_successfully
+      seq:
+        condition: service_started
     environment:
       - TZ=Asia/Taipei
       - ASPNETCORE_URLS=http://+:5230
@@ -69,8 +83,6 @@
       - bridge
 
   frontend:
-#    build:
-#      context: ./web
     image: minqq/frontend:latest
     environment:
       - NEXT_PUBLIC_APP_URL=https://maplestory.paralleluniversegame.uk
@@ -80,18 +92,16 @@
     depends_on:
       - backend
     expose:
-      - "3000"  # 不需要對外開 port，Cloudflared 會在內部連
+      - "3000"
     networks:
       - bridge
 
   bot:
-#    build:
-#      context: ./Presentation
-#    image: presentation:latest
     image: minqq/presentation:latest
     container_name: bot
     depends_on:
-      - database
+      migrate:
+        condition: service_completed_successfully
     environment:
       - ConnectionStrings__DefaultConnectionFile=/run/secrets/db_connection
       - Discord:BotTokenFile=/run/secrets/discord_bot_token3
@@ -102,7 +112,7 @@
       - discord_bot_token
     networks:
       - bridge
-  
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
@@ -115,10 +125,14 @@
       - cloudflared_token
     networks:
       - bridge
-        
+
 secrets:
   db_connection:
     file: ./secrets/db_connection.txt
+  db_connection_url:
+    # postgres:// URL 格式，供 golang-migrate 使用
+    # 範例：postgres://postgres:PASSWORD@database:5432/presentationdb?sslmode=disable
+    file: ./secrets/db_connection_url.txt
   postgres_password:
     file: ./secrets/postgres_password.txt
   discord_bot_token:

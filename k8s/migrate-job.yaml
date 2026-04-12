@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: maple-raid
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          # 自製 image：migrate/migrate 基底 + migrations/ 目錄烤入
+          # 新增 migration 只需 docker build + push，此 YAML 不需動
+          # build: docker build -f db/Dockerfile.migrate -t minqq/migrate:latest db/
+          # push:  docker push minqq/migrate:latest
+          image: minqq/migrate:latest
+          command:
+            - /bin/sh
+            - -c
+            - /migrate -database="$(DB_URL)" up
+          env:
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: maple-secrets
+                  key: db_connection_url
