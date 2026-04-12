@@ -1,4 +1,4 @@
-﻿# 架構設計文件 — MapleStory Raid Scheduler
+# 架構設計文件 — MapleStory Raid Scheduler
 
 本文件說明系統的整體架構、關鍵設計決策與實作細節，適合快速了解系統設計思路。
 
@@ -51,7 +51,7 @@ Presentation.WebApi  →  Application  →  Domain
 
 ### 1. 不使用 EF Core，改用 Dapper + 自製 SqlBuilder
 
-**決策原因**：EF Core 的 LINQ 翻譯在複雜查詢（多層 JOIN、CTE、條件動態組合）下難以預測生成的 SQL，且效能調優困難。
+**決策原因**：刻意選擇手寫 SQL，目的是讓每條查詢的行為完全確定且可審計，同時作為自製 SqlBuilder 的技術展示——以 Expression Tree 解析 Lambda 表達式產生型別安全的 SQL，取代字串拼接。
 
 **實作方式**：自製 `Utils/SqlBuilder/`，以 C# Expression Tree 解析 Lambda 表達式為 SQL 條件：
 
@@ -77,22 +77,60 @@ Sql.Query<CharacterDbModel>()
 
 **實作方式**：
 - **寫入 (Command)**：`Application/Interface/` 定義介面 → `Infrastructure/Services/` 實作，走 `UnitOfWork` 事務。
-- **讀取 (Query)**：`Application/Queries/` 定義介面 → `Infrastructure/Query/` 實作，直接執行最佳化 SQL，不走事務。
+- **讀取 (Query)**：`Application/Queries/` 定義介面 → `Infrastructure/Query/` 實作，直接執行 JOIN SQL，不走事務。
 
-### 3. 雙軌身分驗證（JWT + Session）
+```
+寫入路徑：Controller → IXxxService → IRepository → DB（UnitOfWork 包裹）
+讀取路徑：Controller → IXxxQuery  → QueryBuilder → DB（無事務）
+```
 
-**決策原因**：一般玩家數量多且無狀態需求，適合 JWT；管理員需要強制登出能力（撤銷 Session），不適合純 JWT。
+### 3. Unit of Work 模式
 
-**實作方式**：
-- **玩家**：Discord OAuth2 → 核發自定義 JWT（含 DiscordId、Role）。
-- **管理員**：Discord OAuth2 → 建立 DB Session 紀錄，核發 `SessionId`。
-- 同一 `AuthenticationMiddleware` 依 Header 格式自動判斷驗證路徑。
+**決策原因**：一個 HTTP 請求可能涉及多個 Repository 操作，需保證原子性。
 
-### 4. 冪等性 Middleware
+**實作方式**：`UnitOfWorkMiddleware` 在請求進入前開啟 `NpgsqlConnection` + `NpgsqlTransaction`，成功後 commit，例外時 rollback。所有 Repository 共享同一連線。
 
-**決策原因**：前端在網路不穩時可能重試請求，若無冪等保護會造成重複報名、重複建立隊伍等問題。
+```csharp
+// UnitOfWorkMiddleware.cs
+await _unitOfWork.BeginTransactionAsync();
+await next(context);
+await _unitOfWork.CommitAsync();
+```
+
+### 4. 雙軌身分驗證
+
+**決策原因**：一般玩家與管理員的驗證需求不同——玩家走 Discord OAuth2 取得 JWT（無狀態），管理員需要更嚴格的 Session 控管（可強制登出）。
+
+**實作方式**：`AuthenticationMiddleware` 統一入口，依 Token 類型分流：
+
+| 類型 | 機制 | 儲存位置 |
+|---|---|---|
+| 一般玩家 | 自定義 JWT | 客戶端 Cookie |
+| 管理員 | SessionId | DB `session` 表 |
+
+Discord 身分組 → 系統角色的對應由 `DiscordRoleMapping` 表管理，可動態調整。
+
+### 5. 冪等性保護
+
+**決策原因**：前端重試或網路重送可能造成重複操作（如重複報名、重複補位）。
 
 **實作方式**：所有 POST/PUT/DELETE 請求必須帶 `X-Idempotency-Key`，`IdempotencyMiddleware` 以此 Key 為快取鍵，相同 Key 的重複請求直接回傳快取結果，不重新執行業務邏輯。
+
+### 6. Schema 版本管理（golang-migrate）
+
+**決策原因**：手寫 SQL 無 ORM migration 機制，多環境（dev / staging / prod）的 schema 需要有明確的版本追蹤與 rollback 能力，確保環境一致性與部署安全。
+
+**實作方式**：`db/migrations/` 存放有序號的 up/down SQL 檔，migrate service 在 backend 啟動前執行。
+
+```
+db/migrations/
+  000001_init_schema.up.sql    ← 建立全部資料表與索引
+  000001_init_schema.down.sql  ← DROP 全部資料表（反向 FK 順序）
+  000002_xxx.up.sql            ← 後續 schema 變更
+  000002_xxx.down.sql
+```
+
+Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL 烤入），新增 migration 只需 rebuild image，k8s YAML 不需改動。
 
 ---
 
@@ -121,7 +159,7 @@ Controller / Service
 
 ---
 
-## 自動排程引擎
+## 自動分配引擎
 
 這是系統最核心的業務邏輯，分為三個階段：
 
@@ -130,13 +168,13 @@ Controller / Service
 ```mermaid
 flowchart TD
     A[玩家報名] --> B[即時觸發 AutoAssignAsync]
-    B --> C{找到符合時段\n且有空位的隊伍？}
+    B --> C{找到符合時段\n且有空位的隊伍}
     C -->|是| D[加入現有隊伍]
     C -->|否| E[建立新隊伍草稿\nIsPublished = false]
-    D --> F[排程完成]
+    D --> F[分配完成]
     E --> F
 
-    G[管理員觸發批次排程] --> H[全局 AutoAssignAsync]
+    G[管理員觸發批次組隊] --> H[全局 AutoAssignAsync]
     H --> I[TeamSlotMergeService\n合併零散隊伍]
     I --> J[根據 BossTemplate 優化陣容]
     J --> K[尋找所有成員共同可用時間]
@@ -145,11 +183,20 @@ flowchart TD
 
 ### 補位保護機制
 
-發布後的隊伍允許玩家手動補位，補位成員標記 `IsManual = true`。批次排程執行時會跳過含有 `IsManual` 成員的隊伍，確保人工調整不被覆蓋。
+手動補位的成員標記 `IsManual = true`，批次重新排程時跳過含 `IsManual` 成員的隊伍，防止人工調整被覆蓋。
+
+### IsTemporary 語意
+
+| 值 | 來源 | 說明 |
+|---|---|---|
+| `false` | `TeamSlotAutoAssignService` | 玩家報名時系統自動建立，空時可自動清除 |
+| `true` | Admin 手動開團 / `ScheduleService` 批次組隊預覽 | Admin 建立，空時不自動刪除 |
 
 ---
 
-## 領域模型
+## 領域設計
+
+### 核心實體
 
 ```mermaid
 classDiagram
@@ -184,25 +231,15 @@ classDiagram
         +List~PlayerAvailability~ Availabilities
     }
     class CharacterRegister {
-        +int Id
+        +int? Id
         +int PlayerRegisterId
         +string CharacterId
         +int BossId
         +int Rounds
     }
-    class PlayerAvailability {
-        +int Id
-        +ulong DiscordId
-        +int PlayerRegisterId
-        +int Weekday
-        +TimeOnly StartTime
-        +TimeOnly EndTime
-    }
     class TeamSlot {
         +int Id
         +int BossId
-        +int PeriodId
-        +string? BossName
         +DateTimeOffset SlotDateTime
         +bool IsTemporary
         +bool IsPublished
@@ -213,13 +250,20 @@ classDiagram
         +int TeamSlotId
         +ulong DiscordId
         +string DiscordName
-        +string? CharacterId
-        +string? CharacterName
+        +string CharacterId
+        +string CharacterName
         +string Job
         +int AttackPower
         +int Level
         +int Rounds
         +bool IsManual
+    }
+    class PlayerAvailability {
+        +int Id
+        +int PlayerRegisterId
+        +int Weekday
+        +TimeOnly StartTime
+        +TimeOnly EndTime
     }
     class BossTemplate {
         +int Id
@@ -233,18 +277,20 @@ classDiagram
         +string JobCategory
         +int Count
         +int Priority
-        +int? MinLevel
-        +int? MinAttribute
-        +bool IsOptional
-        +string? Description
+    }
+    class JobCategory {
+        +string CategoryName
+        +string JobName
     }
 
-    Player "1" -- "*" Character : 擁有
-    Player "1" -- "0..1" Register : 報名
-    Register "*" -- "1" Period : 屬於
-    Register "1" -- "*" CharacterRegister : 包含
-    TeamSlot "*" -- "1" Boss : 屬於
-    TeamSlot "1" -- "*" TeamSlotCharacter : 包含
+    Player "1" -- "*" Character : 擁有多個
+    Player "1" -- "0..1" Register : 登記時段
+    Register "*" -- "1" Period : 屬於特定週期
+    Register "1" -- "*" CharacterRegister : 登記具體角色與王
+    CharacterRegister "*" -- "1" Boss : 關聯副本
+    CharacterRegister "*" -- "1" Character : 關聯角色
+    TeamSlot "*" -- "1" Boss : 屬於特定副本
+    TeamSlot "1" -- "*" TeamSlotCharacter : 包含多個成員
     Boss "1" -- "*" BossTemplate : 定義樣板
     BossTemplate "1" -- "*" BossTemplateRequirement : 包含需求
     TeamSlot "*" -- "0..1" BossTemplate : 基於樣板
@@ -254,115 +300,135 @@ classDiagram
 
 ## 資料庫設計 (ERD)
 
-使用 PostgreSQL 18，Dapper 手寫 SQL，無 ORM 自動 Migration。
+使用 PostgreSQL 18，Dapper 手寫 SQL；schema 版本由 golang-migrate 管理（`db/migrations/`）。
 
 ```mermaid
 erDiagram
-    Player ||--o{ Character : "owns"
-    Period ||--o{ PlayerRegister : "defines"
-    Player ||--o| PlayerRegister : "registers"
-    PlayerRegister ||--o{ CharacterRegister : "contains"
-    PlayerRegister ||--o{ PlayerAvailability : "has"
-    Boss ||--o{ CharacterRegister : "is target of"
-    Character ||--o{ CharacterRegister : "is assigned to"
-    Boss ||--o{ TeamSlot : "scheduled for"
-    TeamSlot ||--o{ TeamSlotCharacter : "contains"
-    Player ||--o{ Session : "has"
-    Boss ||--o{ BossTemplate : "defines"
-    BossTemplate ||--o{ BossTemplateRequirement : "contains"
-    TeamSlot ||--o| BossTemplate : "based on"
-
     Player {
-        bigint discord_id PK
-        varchar discord_name
-        text role
+        bigint DiscordId PK
+        string DiscordName
+        string Role
     }
-    Character {
-        char(5) id PK
-        bigint discord_id FK
-        varchar name
-        varchar job
-        integer attack_power
-    }
-    Boss {
-        integer id PK
-        varchar name
-        integer require_members
-        integer round_consumption
-    }
-    Period {
-        integer id PK
-        timestamptz start_date
-        timestamptz end_date
-    }
-    PlayerRegister {
-        integer id PK
-        bigint discord_id FK
-        integer period_id FK
-    }
-    PlayerAvailability {
-        integer id PK
-        bigint discord_id FK
-        integer player_register_id FK
-        integer weekday
-        time start_time
-        time end_time
-    }
-    CharacterRegister {
-        integer id PK
-        integer player_register_id FK
-        char(5) character_id FK
-        integer boss_id FK
-        integer rounds
-    }
-    TeamSlot {
-        integer id PK
-        integer boss_id FK
-        integer period_id FK
-        varchar boss_name
-        timestamptz slot_date_time
-        boolean is_temporary
-        boolean is_published
-        integer template_id FK
-    }
-    TeamSlotCharacter {
-        integer id PK
-        integer team_slot_id FK
-        bigint discord_id
-        varchar discord_name
-        text character_id FK
-        varchar character_name
-        text job
-        integer attack_power
-        integer level
-        integer rounds
-        boolean is_manual
-    }
-    Session {
-        varchar session_id PK
-        bigint discord_id FK
-        varchar access_token
-        varchar refresh_token
-        timestamptz expiry
-    }
-    BossTemplate {
-        integer id PK
-        integer boss_id FK
-        text name
-    }
-    BossTemplateRequirement {
-        integer id PK
-        integer boss_template_id FK
-        text job_category
-        integer count
-        integer priority
-        integer min_level
-        integer min_attribute
-        boolean is_optional
-        text description
-    }
-```
 
+    PlayerRegister {
+        int Id PK
+        bigint DiscordId FK
+        int PeriodId FK
+    }
+
+    PlayerAvailability {
+        int Id PK
+        int PlayerRegisterId FK
+        int Weekday
+        time StartTime
+        time EndTime
+    }
+
+    CharacterRegister {
+        int Id PK
+        int PlayerRegisterId FK
+        string CharacterId FK
+        int BossId FK
+        int Rounds
+    }
+
+    Character {
+        string Id PK
+        bigint DiscordId FK
+        string Name
+        string Job
+        int AttackPower
+    }
+
+    Boss {
+        int Id PK
+        string Name
+        int RequireMembers
+        int RoundConsumption
+    }
+
+    BossTemplate {
+        int Id PK
+        int BossId FK
+        string Name
+    }
+
+    BossTemplateRequirement {
+        int Id PK
+        int BossTemplateId FK
+        string JobCategory
+        int Count
+        int Priority
+    }
+
+    Period {
+        int Id PK
+        timestamptz StartDate
+        timestamptz EndDate
+    }
+
+    TeamSlot {
+        int Id PK
+        int BossId FK
+        timestamptz SlotDateTime
+        bool IsTemporary
+        bool IsPublished
+        int TemplateId FK
+    }
+
+    TeamSlotCharacter {
+        int Id PK
+        int TeamSlotId FK
+        bigint DiscordId
+        string DiscordName
+        string CharacterId FK
+        string CharacterName
+        string Job
+        int AttackPower
+        int Rounds
+        bool IsManual
+    }
+
+    JobCategory {
+        string JobName PK
+        string CategoryName
+    }
+
+    DiscordRoleMapping {
+        bigint DiscordRoleId PK
+        string Role
+        int Priority
+    }
+
+    Session {
+        string SessionId PK
+        bigint DiscordId
+        string AccessToken
+        string RefreshToken
+        timestamptz Expiry
+    }
+
+    SystemConfig {
+        int Id PK
+        int DeadlineDayOfWeek
+        interval DeadlineTime
+        timestamptz RegistrationDeadline
+        bool IsDeadlineNotified
+    }
+
+    Player ||--o{ PlayerRegister : ""
+    Period ||--o{ PlayerRegister : ""
+    PlayerRegister ||--o{ PlayerAvailability : ""
+    PlayerRegister ||--o{ CharacterRegister : ""
+    Character ||--o{ CharacterRegister : ""
+    Boss ||--o{ CharacterRegister : ""
+    Player ||--o{ Character : ""
+    Boss ||--o{ BossTemplate : ""
+    BossTemplate ||--o{ BossTemplateRequirement : ""
+    Boss ||--o{ TeamSlot : ""
+    BossTemplate ||--o{ TeamSlot : ""
+    TeamSlot ||--o{ TeamSlotCharacter : ""
+```
 ---
 
 ## Discord 整合
@@ -413,3 +479,29 @@ sequenceDiagram
 | `JwtService` / `SessionService` | JWT 核發驗證 / DB Session 管理 |
 | `DiscordOAuthClient` | Discord REST API 呼叫（token 兌換、身分組查詢） |
 | `ScheduleService` | 背景作業協調（每日提醒、截止提醒） |
+
+---
+
+## 部署
+
+### Docker Compose
+
+啟動順序由 health check 與 `depends_on` 控制：
+
+```
+database（healthcheck: pg_isready）
+  ↓
+migrate（golang-migrate up，完成後退出）
+  ↓
+backend / bot
+  ↓
+frontend → cloudflared
+```
+
+### Kubernetes
+
+`k8s/` 目錄包含各服務的 Deployment / Service / PVC，以及：
+- `k8s/migrate-job.yaml`：批次 Job，執行 migration 後完成
+- `k8s/secrets.yaml`：Secret template（真實值不入 git）
+
+Secrets 以 volume mount 方式掛載至 `/run/secrets/`，與 Docker secrets 路徑一致，應用程式設定無需因部署平台而異。
