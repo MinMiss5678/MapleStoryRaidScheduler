@@ -412,7 +412,6 @@ erDiagram
         int Id PK
         int DeadlineDayOfWeek
         interval DeadlineTime
-        timestamptz RegistrationDeadline
         bool IsDeadlineNotified
     }
 

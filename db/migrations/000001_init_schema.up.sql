@@ -109,7 +109,6 @@ CREATE TABLE "SystemConfig" (
     "Id"                   serial      PRIMARY KEY,
     "DeadlineDayOfWeek"    integer     NOT NULL DEFAULT 0,
     "DeadlineTime"         interval    NOT NULL DEFAULT '00:00:00',
-    "RegistrationDeadline" timestamptz NOT NULL DEFAULT now(),
     "IsDeadlineNotified"   boolean     NOT NULL DEFAULT false
 );
 

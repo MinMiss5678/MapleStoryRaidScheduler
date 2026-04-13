@@ -10,6 +10,5 @@ public class SystemConfigDbModel
     public int Id { get; set; }
     public int DeadlineDayOfWeek { get; set; }
     public TimeSpan DeadlineTime { get; set; }
-    public DateTimeOffset RegistrationDeadline { get; set; }
     public bool IsDeadlineNotified { get; set; }
 }
