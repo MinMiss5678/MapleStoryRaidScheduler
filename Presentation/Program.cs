@@ -1,4 +1,5 @@
-﻿using Application.Events;
+﻿using System.Data;
+using Application.Events;
 using Application.Interface;
 using Application.Options;
 using Application.Queries;
@@ -44,17 +45,40 @@ public class Program
                                   DiscordIntents.GuildMembers;
                     services.AddDiscordClient(token, intents);
                 }
+                else
+                {
+                    var token = config["Discord:BotToken"];
+                    var intents = DiscordIntents.AllUnprivileged |
+                                  DiscordIntents.MessageContents |
+                                  DiscordIntents.Guilds |
+                                  DiscordIntents.GuildMembers;
+                    services.AddDiscordClient(token, intents);
+                }
 
                 // 資料庫與 Repository 註冊
                 var defaultConnectionFile = config["ConnectionStrings:DefaultConnectionFile"];
                 if (!string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectionFile))
                 {
                     var defaultConnection = File.ReadAllText(defaultConnectionFile).Trim();
-                    services.AddSingleton<NpgsqlConnection>(_ =>
-                        new NpgsqlConnection(defaultConnection));
+                    services.AddSingleton<IDbConnection>(_ =>
+                    {
+                        var conn = new NpgsqlConnection(defaultConnection);
+                        conn.Open();
+                        return conn;
+                    });
+                }
+                else
+                {
+                    services.AddSingleton<IDbConnection>(_ =>
+                    {
+                        var conn = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
+                        conn.Open();
+                        return conn;
+                    });
                 }
                 
                 services.AddSingleton<IUnitOfWork, UnitOfWork>();
+                services.AddSingleton<DbContext>();
                 services.AddSingleton<IDiscordService, DiscordService>();
                 services.AddSingleton<ITeamSlotQuery, TeamSlotQuery>();
                 services.AddSingleton<ISessionService, SessionService>();

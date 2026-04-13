@@ -34,7 +34,6 @@ builder.Services.AddOpenApi();
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices();
 builder.Services.AddRepositories();
-builder.Services.AddHostedService<RegistrationDeadlineJob>();
 builder.Services.AddHostedService<WeeklyPeriodJob>();
 
 var defaultConnectionFile = builder.Configuration.GetConnectionString("DefaultConnectionFile");
