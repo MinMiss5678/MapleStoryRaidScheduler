@@ -18,16 +18,8 @@ spec:
           image: cloudflare/cloudflared:latest
           args: [tunnel, --no-autoupdate, run]
           env:
-            - name: TUNNEL_TOKEN_FILE
-              value: /run/secrets/cloudflared_token
-          volumeMounts:
-            - name: secrets
-              mountPath: /run/secrets
-              readOnly: true
-      volumes:
-        - name: secrets
-          secret:
-            secretName: maple-secrets
-            items:
-              - key: cloudflared_token
-                path: cloudflared_token
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: maple-secrets
+                  key: cloudflared_token

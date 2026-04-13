@@ -32,26 +32,20 @@ spec:
               value: postgres
             - name: POSTGRES_DB
               value: presentationdb
-            - name: POSTGRES_PASSWORD_FILE
-              value: /run/secrets/postgres_password
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: maple-secrets
+                  key: postgres_password
           ports:
             - containerPort: 5432
           volumeMounts:
             - name: db-data
               mountPath: /var/lib/postgresql
-            - name: secrets
-              mountPath: /run/secrets
-              readOnly: true
       volumes:
         - name: db-data
           persistentVolumeClaim:
             claimName: db-data
-        - name: secrets
-          secret:
-            secretName: maple-secrets
-            items:
-              - key: postgres_password
-                path: postgres_password
 ---
 apiVersion: v1
 kind: Service
