@@ -295,9 +295,6 @@ namespace Infrastructure.Migrations
                     b.Property<bool>("IsDeadlineNotified")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTimeOffset>("RegistrationDeadline")
-                        .HasColumnType("timestamp with time zone");
-
                     b.HasKey("Id");
 
                     b.ToTable("SystemConfig");
