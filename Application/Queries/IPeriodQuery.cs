@@ -8,5 +8,6 @@ public interface IPeriodQuery
     Task<int> GetPeriodIdByDateAsync(DateTimeOffset date);
     Task<int> GetLastPeriodIdAsync();
     Task<Period?> GetByNowAsync();
+    Task<Period?> GetNextPeriodAsync();
     Task<Period?> GetByIdAsync(int id);
 }

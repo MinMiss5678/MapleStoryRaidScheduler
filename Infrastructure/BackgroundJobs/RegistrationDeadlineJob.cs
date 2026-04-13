@@ -48,22 +48,23 @@ public class RegistrationDeadlineJob : BackgroundService
                 if (!config.IsDeadlineNotified)
                 {
                     var periodQuery = scope.ServiceProvider.GetRequiredService<IPeriodQuery>();
-                    var currentPeriod = await periodQuery.GetByNowAsync();
-                    
-                    if (currentPeriod == null)
+                    // 取得下一個（未來）raid period：截止日是該 period 開始前的星期幾
+                    var upcomingPeriod = await periodQuery.GetNextPeriodAsync();
+
+                    if (upcomingPeriod == null)
                     {
-                        // 沒週期，一分鐘後檢查
+                        // 尚未建立下一個週期，一分鐘後再檢查
                         delay = TimeSpan.FromMinutes(1);
                     }
                     else
                     {
-                        var deadline = config.GetDeadlineForPeriod(currentPeriod.StartDate);
-                        
+                        var deadline = config.GetDeadlineForPeriod(upcomingPeriod.StartDate);
+
                         if (now > deadline)
                         {
                             var discordService = scope.ServiceProvider.GetRequiredService<IDiscordService>();
-                            
-                            string periodInfo = $"{currentPeriod.StartDate:yyyy/MM/dd} ~ {currentPeriod.EndDate:yyyy/MM/dd}";
+
+                            string periodInfo = $"{upcomingPeriod.StartDate:yyyy/MM/dd} ~ {upcomingPeriod.EndDate:yyyy/MM/dd}";
 
                             string message = $"📢 **報名已截止**\n\n" +
                                              $"本次週期：{periodInfo}\n" +

@@ -29,14 +29,11 @@ public class SystemConfig
     /// <returns>該週期的報名截止日期時間</returns>
     public DateTimeOffset GetDeadlineForPeriod(DateTimeOffset periodStartDate)
     {
-        // 計算週期開始 (週四) 到目標星期幾的差距
-        // 例如：週期開始是週四 (4)，目標是週三 (3)
-        // (3 - 4 + 7) % 7 = 6 天後
-        int daysToAdd = ((int)DeadlineDayOfWeek - (int)periodStartDate.DayOfWeek + 7) % 7;
-        
-        // 如果截止日就是開始日且截止時間已過，通常代表截止日是下一週的同一天
-        // 但在我們的系統中，週期是一週一次 (週四到下週三)，所以 daysToAdd 0~6 是合理的
-        
+        // 截止日永遠在週期開始之前（上一週）
+        // 例如：週期開始是週四 04/16，截止是上週日 04/12
+        // (0 - 4 + 7) % 7 = 3，再 -7 = -4 天 → 04/16 - 4 = 04/12
+        int daysToAdd = ((int)DeadlineDayOfWeek - (int)periodStartDate.DayOfWeek + 7) % 7 - 7;
+
         return periodStartDate.Date.AddDays(daysToAdd).Add(DeadlineTime);
     }
 }

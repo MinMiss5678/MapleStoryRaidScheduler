@@ -1,4 +1,5 @@
-﻿using Domain.Entities;
+﻿using Application.Interface;
+using Domain.Entities;
 using Domain.Repositories;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -45,6 +46,13 @@ public class WeeklyPeriodJob : BackgroundService
                         EndDate = periodEnd
                     });
                     _logger.LogInformation($"Inserted missing period: {periodStart:yyyy-MM-dd} ~ {periodEnd:yyyy-MM-dd}");
+
+                    // 新週期建立後，重置截止通知旗標，讓 RegistrationDeadlineJob 為新週期發送通知
+                    var configService = scope.ServiceProvider.GetRequiredService<ISystemConfigService>();
+                    var config = await configService.GetAsync();
+                    config.IsDeadlineNotified = false;
+                    await configService.UpdateAsync(config);
+                    _logger.LogInformation("Reset IsDeadlineNotified for new period.");
                 }
                 else
                 {

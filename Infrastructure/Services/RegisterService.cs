@@ -113,11 +113,11 @@ public class RegisterService : IRegisterService
     private async Task EnsureRegistrationOpen()
     {
         var config = await _systemConfigService.GetAsync();
-        var currentPeriod = await _periodQuery.GetByNowAsync();
-        if (currentPeriod != null)
+        var latestPeriod = await _periodQuery.GetByNowAsync();
+        if (latestPeriod != null)
         {
-            var deadline = config.GetDeadlineForPeriod(currentPeriod.StartDate);
-            if (DateTimeOffset.Now > deadline)
+            var deadline = config.GetDeadlineForPeriod(latestPeriod.StartDate);
+            if (DateTimeOffset.UtcNow > deadline)
             {
                 throw new InvalidOperationException("目前已超過報名截止時間。");
             }

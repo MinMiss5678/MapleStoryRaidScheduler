@@ -23,7 +23,8 @@ public class PeriodQuery : IPeriodQuery
 
     public async Task<int> GetPeriodIdByDateAsync(DateTimeOffset date)
     {
-        var targetDate = new DateTimeOffset(date.Date, TimeSpan.Zero);
+        // 使用 UTC 日期，避免帶 offset 的輸入（如 +08:00）導致日期偏移一天
+        var targetDate = new DateTimeOffset(date.UtcDateTime.Date, TimeSpan.Zero);
         var sql = new QueryBuilder();
         sql.Select<PeriodDbModel>(x => new { x.Id })
             .From<PeriodDbModel>()
@@ -48,6 +49,24 @@ public class PeriodQuery : IPeriodQuery
 
     public async Task<Period?> GetByNowAsync()
     {
+        // 永遠回傳 DB 最新建立的 period（即玩家正在報名或即將出戰的那週）
+        // WeeklyPeriodJob 每週四建立下一個 period，建立後自動切換
+        var sql = new QueryBuilder();
+        sql.Select<PeriodDbModel>(x => new
+            {
+                x.Id,
+                x.StartDate,
+                x.EndDate
+            })
+            .From<PeriodDbModel>()
+            .OrderByDescending<PeriodDbModel>(x => x.StartDate)
+            .Limit(1);
+
+        return await _dbContext.QuerySingleOrDefaultAsync<Period>(sql);
+    }
+
+    public async Task<Period?> GetNextPeriodAsync()
+    {
         var now = DateTimeOffset.UtcNow;
         var sql = new QueryBuilder();
         sql.Select<PeriodDbModel>(x => new
@@ -57,11 +76,11 @@ public class PeriodQuery : IPeriodQuery
                 x.EndDate
             })
             .From<PeriodDbModel>()
-            .Where<PeriodDbModel>(x => x.StartDate <= now)
-            .OrderByDescending<PeriodDbModel>(x => x.StartDate)
+            .Where<PeriodDbModel>(x => x.StartDate > now)
+            .OrderBy<PeriodDbModel>(x => x.StartDate)
             .Limit(1);
-        
-        return  await _dbContext.QuerySingleOrDefaultAsync<Period>(sql);
+
+        return await _dbContext.QuerySingleOrDefaultAsync<Period>(sql);
     }
 
     public async Task<Period?> GetByIdAsync(int id)
