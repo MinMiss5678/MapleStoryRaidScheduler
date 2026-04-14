@@ -49,9 +49,11 @@ Presentation.WebApi  →  Application  →  Domain
 
 ## 關鍵設計決策
 
-### 1. 不使用 EF Core，改用 Dapper + 自製 SqlBuilder
+### 1. 不使用 EF Core（Runtime），改用 Dapper + 自製 SqlBuilder
 
 **決策原因**：刻意選擇手寫 SQL，目的是讓每條查詢的行為完全確定且可審計，同時作為自製 SqlBuilder 的技術展示——以 Expression Tree 解析 Lambda 表達式產生型別安全的 SQL，取代字串拼接。
+
+> **注意**：`Infrastructure/Migrations/MigrationDbContext` 僅供 design-time 使用（詳見第 6 點），不注冊到 DI，不影響 runtime 行為。
 
 **實作方式**：自製 `Utils/SqlBuilder/`，以 C# Expression Tree 解析 Lambda 表達式為 SQL 條件：
 
@@ -129,6 +131,28 @@ db/migrations/
   000002_xxx.up.sql            ← 後續 schema 變更
   000002_xxx.down.sql
 ```
+
+**新增 Migration 工作流程**：
+
+```bash
+# 1. 修改 Infrastructure/Entities/*DbModel.cs
+
+# 2. 執行草稿產生器（自動完成 ef diff → SQL 輸出 → 清理 .cs）
+bash db/create-migration.sh <MigrationName>
+
+# 3. 審閱並補齊產出的 SQL 草稿：
+#    db/migrations/000002_<name>.up.sql   ← 補 FK constraints / indexes
+#    db/migrations/000002_<name>.down.sql ← 確認 rollback 正確性
+```
+
+`db/create-migration.sh` 流程說明（Zero DB、Zero State File）：
+- `ef migrations add <Name>` → rebuild 專案、產生 C# diff、更新 Snapshot
+- `ef migrations script 0 <new>` → up SQL 草稿
+- `ef migrations script <new> 0` → down SQL 草稿
+- 過濾 `__EFMigrationsHistory`、`START TRANSACTION`、`COMMIT`
+- 刪除 .cs migration 檔（保留 Snapshot 作為下次 diff 基線）
+
+> **為何 `from=0` 可行**：rebuild 後的 DLL 只含剛加入的那一個 migration（舊的 .cs 均已刪除），因此 `script 0 NewMig` 恰好只產生該次的增量 SQL，不含歷史。無需本機 state file，多人環境可重建。
 
 Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL 烤入），新增 migration 只需 rebuild image，k8s YAML 不需改動。
 
