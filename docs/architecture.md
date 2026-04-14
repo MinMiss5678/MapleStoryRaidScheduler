@@ -152,7 +152,9 @@ bash db/create-migration.sh <MigrationName>
 - 過濾 `__EFMigrationsHistory`、`START TRANSACTION`、`COMMIT`
 - 刪除 .cs migration 檔（保留 Snapshot 作為下次 diff 基線）
 
-> **為何 `from=0` 可行**：rebuild 後的 DLL 只含剛加入的那一個 migration（舊的 .cs 均已刪除），因此 `script 0 NewMig` 恰好只產生該次的增量 SQL，不含歷史。無需本機 state file，多人環境可重建。
+> **為何 `from=0` 可行**：`ef migrations add` 強制 rebuild，新 DLL 只含剛加入的 migration（舊 .cs 已刪），`script 0 NewMig` 因此只產生該次的增量 SQL。此行為依賴 assembly-based（非 file-based）的 migration 掃描機制。
+
+> **版本鎖定要求**：EF Core 的 SQL 生成行為依賴具體版本。升版前需重新驗證 script 輸出。目前鎖定版本：`Npgsql.EntityFrameworkCore.PostgreSQL 9.0.4`、`Microsoft.EntityFrameworkCore.Design 9.0.4`。
 
 Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL 烤入），新增 migration 只需 rebuild image，k8s YAML 不需改動。
 

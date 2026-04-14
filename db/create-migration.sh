@@ -74,8 +74,19 @@ echo "==> Removing EF migration .cs files..."
 rm -f "$PROJECT/Migrations/${EF_FULL_NAME}.cs" \
       "$PROJECT/Migrations/${EF_FULL_NAME}.Designer.cs"
 
+# ── Sanity check: warn if SQL looks wrong ────────────────────────────────────
+UP_LINES=$(wc -l < "$UP_FILE")
+if [ "$UP_LINES" -eq 0 ]; then
+  echo "ERROR: up.sql is empty — model may have no changes." >&2
+  exit 1
+fi
+if grep -q "^CREATE TABLE" "$UP_FILE" && [ "$UP_LINES" -gt 50 ]; then
+  echo "WARNING: up.sql contains CREATE TABLE and is large (${UP_LINES} lines)."
+  echo "         This may include historical migrations. Verify the output carefully."
+fi
+
 echo ""
-echo "✅ Draft generated:"
+echo "✅ Draft generated (${UP_LINES} lines up / $(wc -l < "$DOWN_FILE") lines down):"
 echo "   $UP_FILE"
 echo "   $DOWN_FILE"
 echo ""
