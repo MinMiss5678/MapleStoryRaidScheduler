@@ -14,6 +14,10 @@ services:
       - db_data:/var/lib/postgresql
     networks:
       - bridge
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d presentationdb"]
       interval: 5s
@@ -52,11 +56,13 @@ services:
       - bridge
 
   backend:
-    image: minqq/presentation.webapi:latest
+    build:
+      context: ./Presentation.WebApi
+#    image: minqq/presentation.webapi:latest
     container_name: backend
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+#      migrate:
+#        condition: service_completed_successfully
       seq:
         condition: service_started
     environment:
@@ -67,7 +73,6 @@ services:
       - Discord:ClientId=836636705498595340
       - Discord:ClientSecretFile=/run/secrets/discord_client_secret
       - Discord:RedirectUri=https://maplestory.paralleluniversegame.uk/callback
-      - Discord:GuildId=840590742270771220
       - Jwt:SecretKeyFile=/run/secrets/jwt_secret_key
       - Jwt-Issuer=https://maplestory.paralleluniversegame.uk
       - Jwt-Audience=https://maplestory.paralleluniversegame.uk
@@ -83,7 +88,9 @@ services:
       - bridge
 
   frontend:
-    image: minqq/frontend:latest
+    build:
+      context: ./web
+#    image: minqq/frontend:latest
     environment:
       - NEXT_PUBLIC_APP_URL=https://maplestory.paralleluniversegame.uk
       - BACKEND_API_URL=http://backend:5230
@@ -97,15 +104,16 @@ services:
       - bridge
 
   bot:
-    image: minqq/presentation:latest
+    build:
+      context: ./Presentation
+#    image: minqq/presentation:latest
     container_name: bot
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
+#    depends_on:
+#      migrate:
+#        condition: service_completed_successfully
     environment:
       - ConnectionStrings__DefaultConnectionFile=/run/secrets/db_connection
-      - Discord:BotTokenFile=/run/secrets/discord_bot_token3
-      - Discord:ChannelId=840590742270771223
+      - Discord:BotTokenFile=/run/secrets/discord_bot_token
       - App:AppUrl=https://maplestory.paralleluniversegame.uk
     secrets:
       - db_connection
