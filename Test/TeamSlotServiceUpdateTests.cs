@@ -74,7 +74,7 @@ public class TeamSlotServiceUpdateTests
         int newTeamSlotId = 55;
         _teamSlotRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<TeamSlot>())).ReturnsAsync(newTeamSlotId);
 
-        var character = new TeamSlotCharacter { CharacterId = "c1", DiscordId = 12345 };
+        var character = new TeamSlotMemberDto { CharacterId = "c1", DiscordId = 12345 };
         var request = new TeamSlotUpdateRequest
         {
             DeleteTeamSlotIds = new List<int>(),
@@ -87,7 +87,7 @@ public class TeamSlotServiceUpdateTests
                     SlotDateTime = DateTimeOffset.UtcNow,
                     IsTemporary = true,
                     IsPublished = false,
-                    Characters = new List<TeamSlotCharacter> { character },
+                    Characters = new List<TeamSlotMemberDto> { character },
                     DeleteTeamSlotCharacterIds = new List<int>()
                 }
             }
@@ -114,7 +114,7 @@ public class TeamSlotServiceUpdateTests
                 new TeamSlotUpdateCommand
                 {
                     IsTemporary = true,
-                    Characters = new List<TeamSlotCharacter>(),
+                    Characters = new List<TeamSlotMemberDto>(),
                     DeleteTeamSlotCharacterIds = new List<int>()
                 }
             }
@@ -140,7 +140,7 @@ public class TeamSlotServiceUpdateTests
                 {
                     Id = 99,
                     IsTemporary = false,
-                    Characters = new List<TeamSlotCharacter>(),
+                    Characters = new List<TeamSlotMemberDto>(),
                     DeleteTeamSlotCharacterIds = new List<int>()
                 }
             }
@@ -179,7 +179,7 @@ public class TeamSlotServiceUpdateTests
                     Id = teamSlotId,
                     IsTemporary = false,
                     DeleteTeamSlotCharacterIds = new List<int> { charSlotId },
-                    Characters = new List<TeamSlotCharacter>()
+                    Characters = new List<TeamSlotMemberDto>()
                 }
             }
         };
@@ -215,9 +215,9 @@ public class TeamSlotServiceUpdateTests
                     IsTemporary = false,
                     DeleteTeamSlotCharacterIds = new List<int>(),
                     // Id == null → new character, but DiscordId != currentDiscordId
-                    Characters = new List<TeamSlotCharacter>
+                    Characters = new List<TeamSlotMemberDto>
                     {
-                        new TeamSlotCharacter { Id = null, DiscordId = otherDiscordId, CharacterId = "other" }
+                        new TeamSlotMemberDto { Id = null, DiscordId = otherDiscordId, CharacterId = "other" }
                     }
                 }
             }
@@ -244,7 +244,7 @@ public class TeamSlotServiceUpdateTests
         };
         _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
 
-        var updatedChar = new TeamSlotCharacter { Id = charSlotId, DiscordId = discordId, CharacterId = "c1-updated" };
+        var updatedChar = new TeamSlotMemberDto { Id = charSlotId, DiscordId = discordId, CharacterId = "c1-updated" };
         var request = new TeamSlotUpdateRequest
         {
             DeleteTeamSlotIds = new List<int>(),
@@ -255,7 +255,7 @@ public class TeamSlotServiceUpdateTests
                     Id = teamSlotId,
                     IsTemporary = false,
                     DeleteTeamSlotCharacterIds = new List<int>(),
-                    Characters = new List<TeamSlotCharacter> { updatedChar }
+                    Characters = new List<TeamSlotMemberDto> { updatedChar }
                 }
             }
         };
@@ -264,6 +264,6 @@ public class TeamSlotServiceUpdateTests
         await _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 0);
 
         // Assert
-        _teamSlotCharacterRepositoryMock.Verify(r => r.UpdateAsync(updatedChar), Times.Once);
+        _teamSlotCharacterRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<TeamSlotCharacter>()), Times.Once);
     }
 }

@@ -1,4 +1,5 @@
-﻿using Application.Exceptions;
+﻿using Application.DTOs;
+using Application.Exceptions;
 using Application.Interface;
 using Domain.Entities;
 using Domain.Repositories;
@@ -69,11 +70,11 @@ public class BossServiceTests
     public async Task CreateTemplateAsync_ShouldReturnId()
     {
         // Arrange
-        var template = new BossTemplate { BossId = 1 };
-        _bossRepositoryMock.Setup(r => r.CreateTemplateAsync(template)).ReturnsAsync(123);
+        var request = new BossTemplateRequest { BossId = 1, Name = "Template" };
+        _bossRepositoryMock.Setup(r => r.CreateTemplateAsync(It.IsAny<BossTemplate>())).ReturnsAsync(123);
 
         // Act
-        var result = await _bossService.CreateTemplateAsync(template);
+        var result = await _bossService.CreateTemplateAsync(request);
 
         // Assert
         Assert.Equal(123, result);
@@ -83,22 +84,22 @@ public class BossServiceTests
     public async Task UpdateTemplateAsync_ShouldComplete_WhenTemplateExists()
     {
         // Arrange
-        var template = new BossTemplate { Id = 1 };
-        _bossRepositoryMock.Setup(r => r.UpdateTemplateAsync(template)).ReturnsAsync(true);
+        var request = new BossTemplateRequest { BossId = 1, Name = "Template" };
+        _bossRepositoryMock.Setup(r => r.UpdateTemplateAsync(It.IsAny<BossTemplate>())).ReturnsAsync(true);
 
         // Act & Assert (no exception)
-        await _bossService.UpdateTemplateAsync(template);
+        await _bossService.UpdateTemplateAsync(1, request);
     }
 
     [Fact]
     public async Task UpdateTemplateAsync_ShouldThrowNotFoundException_WhenTemplateNotFound()
     {
         // Arrange
-        var template = new BossTemplate { Id = 99 };
-        _bossRepositoryMock.Setup(r => r.UpdateTemplateAsync(template)).ReturnsAsync(false);
+        var request = new BossTemplateRequest { BossId = 1, Name = "Template" };
+        _bossRepositoryMock.Setup(r => r.UpdateTemplateAsync(It.IsAny<BossTemplate>())).ReturnsAsync(false);
 
         // Act & Assert
-        await Assert.ThrowsAsync<NotFoundException>(() => _bossService.UpdateTemplateAsync(template));
+        await Assert.ThrowsAsync<NotFoundException>(() => _bossService.UpdateTemplateAsync(99, request));
     }
 
     [Fact]
@@ -125,11 +126,11 @@ public class BossServiceTests
     public async Task CreateBossAsync_ShouldReturnId()
     {
         // Arrange
-        var boss = new Boss { Name = "Horntail" };
-        _bossRepositoryMock.Setup(r => r.CreateBossAsync(boss)).ReturnsAsync(42);
+        var request = new BossRequest { Name = "Horntail", RequireMembers = 6 };
+        _bossRepositoryMock.Setup(r => r.CreateBossAsync(It.IsAny<Boss>())).ReturnsAsync(42);
 
         // Act
-        var result = await _bossService.CreateBossAsync(boss);
+        var result = await _bossService.CreateBossAsync(request);
 
         // Assert
         Assert.Equal(42, result);
@@ -139,22 +140,22 @@ public class BossServiceTests
     public async Task UpdateBossAsync_ShouldComplete_WhenBossExists()
     {
         // Arrange
-        var boss = new Boss { Id = 1, Name = "Horntail" };
-        _bossRepositoryMock.Setup(r => r.UpdateBossAsync(boss)).ReturnsAsync(true);
+        var request = new BossRequest { Name = "Horntail", RequireMembers = 6 };
+        _bossRepositoryMock.Setup(r => r.UpdateBossAsync(It.IsAny<Boss>())).ReturnsAsync(true);
 
         // Act & Assert (no exception)
-        await _bossService.UpdateBossAsync(boss);
+        await _bossService.UpdateBossAsync(1, request);
     }
 
     [Fact]
     public async Task UpdateBossAsync_ShouldThrowNotFoundException_WhenBossNotFound()
     {
         // Arrange
-        var boss = new Boss { Id = 99 };
-        _bossRepositoryMock.Setup(r => r.UpdateBossAsync(boss)).ReturnsAsync(false);
+        var request = new BossRequest { Name = "Horntail", RequireMembers = 6 };
+        _bossRepositoryMock.Setup(r => r.UpdateBossAsync(It.IsAny<Boss>())).ReturnsAsync(false);
 
         // Act & Assert
-        await Assert.ThrowsAsync<NotFoundException>(() => _bossService.UpdateBossAsync(boss));
+        await Assert.ThrowsAsync<NotFoundException>(() => _bossService.UpdateBossAsync(99, request));
     }
 
     [Fact]

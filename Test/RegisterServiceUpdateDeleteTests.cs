@@ -64,17 +64,17 @@ public class RegisterServiceUpdateDeleteTests
             Id = 10,
             DiscordId = 12345,
             PeriodId = 1,
-            Availabilities = new List<PlayerAvailability>
+            Availabilities = new List<PlayerAvailabilityDto>
             {
-                new PlayerAvailability { Weekday = 2, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) }
+                new PlayerAvailabilityDto { Weekday = 2, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) }
             },
             DeleteCharacterRegisterIds = new List<int> { 99 },
-            CharacterRegisters = new List<CharacterRegister>
+            CharacterRegisters = new List<CharacterRegisterDto>
             {
                 // existing register (has Id → update)
-                new CharacterRegister { Id = 1, CharacterId = "char1", BossId = 1, Rounds = 1 },
+                new CharacterRegisterDto { Id = 1, CharacterId = "char1", BossId = 1, Rounds = 1 },
                 // new register (no Id → create)
-                new CharacterRegister { CharacterId = "char2", BossId = 2, Rounds = 1 }
+                new CharacterRegisterDto { CharacterId = "char2", BossId = 2, Rounds = 1 }
             }
         };
 

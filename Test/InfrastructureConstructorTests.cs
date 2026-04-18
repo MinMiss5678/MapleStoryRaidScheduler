@@ -116,7 +116,8 @@ public class InfrastructureConstructorTests
     [Fact]
     public void CharacterQuery_Constructor_InitializesCorrectly()
     {
-        var query = new CharacterQuery(CreateDbContext());
+        var periodQueryMock = new Mock<IPeriodQuery>();
+        var query = new CharacterQuery(CreateDbContext(), periodQueryMock.Object);
         Assert.NotNull(query);
     }
 

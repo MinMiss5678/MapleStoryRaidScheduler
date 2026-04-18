@@ -67,11 +67,11 @@ public class CharacterServiceTests
     public async Task CreateAsync_ShouldReturnId()
     {
         // Arrange
-        var character = new Character { Id = "c1", DiscordId = 12345, Name = "Hero", Job = "Warrior" };
-        _characterRepositoryMock.Setup(r => r.CreateAsync(character)).ReturnsAsync(1);
+        var request = new CharacterRequest { Id = "c1", DiscordId = 12345, Name = "Hero", Job = "Warrior" };
+        _characterRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<Character>())).ReturnsAsync(1);
 
         // Act
-        var result = await _characterService.CreateAsync(character);
+        var result = await _characterService.CreateAsync(request);
 
         // Assert
         Assert.Equal(1, result);
@@ -81,22 +81,22 @@ public class CharacterServiceTests
     public async Task UpdateAsync_ShouldComplete_WhenCharacterExists()
     {
         // Arrange
-        var character = new Character { Id = "c1" };
-        _characterRepositoryMock.Setup(r => r.UpdateAsync(character)).ReturnsAsync(1);
+        var request = new CharacterRequest { Id = "c1" };
+        _characterRepositoryMock.Setup(r => r.UpdateAsync(It.IsAny<Character>())).ReturnsAsync(1);
 
         // Act & Assert (no exception)
-        await _characterService.UpdateAsync(character);
+        await _characterService.UpdateAsync(request);
     }
 
     [Fact]
     public async Task UpdateAsync_ShouldThrowNotFoundException_WhenCharacterNotFound()
     {
         // Arrange
-        var character = new Character { Id = "missing" };
-        _characterRepositoryMock.Setup(r => r.UpdateAsync(character)).ReturnsAsync(0);
+        var request = new CharacterRequest { Id = "missing" };
+        _characterRepositoryMock.Setup(r => r.UpdateAsync(It.IsAny<Character>())).ReturnsAsync(0);
 
         // Act & Assert
-        await Assert.ThrowsAsync<NotFoundException>(() => _characterService.UpdateAsync(character));
+        await Assert.ThrowsAsync<NotFoundException>(() => _characterService.UpdateAsync(request));
     }
 
     [Fact]

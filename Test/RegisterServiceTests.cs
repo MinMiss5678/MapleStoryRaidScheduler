@@ -1,4 +1,5 @@
-﻿using Application.Interface;
+﻿using Application.DTOs;
+using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
 using Domain.Repositories;
@@ -52,14 +53,14 @@ public class RegisterServiceTests
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
         _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
 
-        var register = new Register
+        var command = new RegisterCreateCommand
         {
-            Availabilities = new List<PlayerAvailability>(),
-            CharacterRegisters = new List<CharacterRegister>()
+            Availabilities = new List<PlayerAvailabilityDto>(),
+            CharacterRegisters = new List<CharacterRegisterDto>()
         };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => _registerService.CreateAsync(register));
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => _registerService.CreateAsync(command));
         Assert.Equal("目前已超過報名截止時間。", exception.Message);
     }
 
@@ -76,28 +77,28 @@ public class RegisterServiceTests
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
         _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
 
-        var register = new Register
+        var command = new RegisterCreateCommand
         {
-            Availabilities = new List<PlayerAvailability>
+            Availabilities = new List<PlayerAvailabilityDto>
             {
-                new PlayerAvailability { Weekday = 1, StartTime = new TimeOnly(10, 0), EndTime = new TimeOnly(12, 0) }
+                new PlayerAvailabilityDto { Weekday = 1, StartTime = new TimeOnly(10, 0), EndTime = new TimeOnly(12, 0) }
             },
-            CharacterRegisters = new List<CharacterRegister>
+            CharacterRegisters = new List<CharacterRegisterDto>
             {
-                new CharacterRegister { CharacterId = "char1", BossId = 1, Rounds = 1 }
+                new CharacterRegisterDto { CharacterId = "char1", BossId = 1, Rounds = 1 }
             }
         };
 
-        _playerRegisterRepositoryMock.Setup(r => r.CreateAsync(register)).ReturnsAsync(100);
+        _playerRegisterRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<Register>())).ReturnsAsync(100);
 
         // Act
-        await _registerService.CreateAsync(register);
+        await _registerService.CreateAsync(command);
 
         // Assert
-        _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(register), Times.Once);
+        _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<Register>()), Times.Once);
         _playerAvailabilityRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<PlayerAvailability>()), Times.Once);
         _characterRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<CharacterRegister>()), Times.Once);
-        _autoAssignServiceMock.Verify(t => t.AutoAssignAsync(register), Times.Once);
+        _autoAssignServiceMock.Verify(t => t.AutoAssignAsync(It.IsAny<Register>()), Times.Once);
     }
 
     [Fact]
@@ -113,21 +114,21 @@ public class RegisterServiceTests
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
         _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
 
-        var register = new Register
+        var command = new RegisterCreateCommand
         {
             DiscordId = 123456789UL,
             PeriodId = 1,
-            Availabilities = new List<PlayerAvailability>(),
-            CharacterRegisters = new List<CharacterRegister>()
+            Availabilities = new List<PlayerAvailabilityDto>(),
+            CharacterRegisters = new List<CharacterRegisterDto>()
         };
 
         _playerRegisterRepositoryMock
-            .Setup(r => r.ExistAsync(register.DiscordId, register.PeriodId))
+            .Setup(r => r.ExistAsync(command.DiscordId, command.PeriodId))
             .ReturnsAsync(true);
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _registerService.CreateAsync(register));
+            () => _registerService.CreateAsync(command));
         Assert.Equal("您已完成本期報名，請勿重複提交。", exception.Message);
         _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<Register>()), Times.Never);
     }
