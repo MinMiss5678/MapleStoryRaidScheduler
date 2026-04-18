@@ -1,8 +1,6 @@
 ﻿using Application.Interface;
-using Application.Options;
 using Domain.Entities;
 using Domain.Repositories;
-using Microsoft.Extensions.Options;
 
 namespace Infrastructure.Services;
 
@@ -10,15 +8,13 @@ public class AuthService : IAuthService
 {
     private readonly IDiscordOAuthClient _discordClient;
     private readonly ISessionService _sessionService;
-    private readonly IDiscordRoleMappingRepository _roleMappingRepository;
     private readonly IJwtService _jwtService;
     private readonly IPlayerRepository _playerRepository;
 
-    public AuthService(IDiscordOAuthClient discordClient, ISessionService sessionService, IDiscordRoleMappingRepository roleMappingRepository, IJwtService jwtService, IPlayerRepository playerRepository)
+    public AuthService(IDiscordOAuthClient discordClient, ISessionService sessionService, IJwtService jwtService, IPlayerRepository playerRepository)
     {
         _discordClient = discordClient;
         _sessionService = sessionService;
-        _roleMappingRepository = roleMappingRepository;
         _jwtService = jwtService;
         _playerRepository = playerRepository;
     }
@@ -54,28 +50,15 @@ public class AuthService : IAuthService
 
     public async Task<string?> RefreshToken(ulong discordId)
     {
-        var roles = await _discordClient.GetUserRolesAsync(discordId);
-        var roleIds = roles
-            .Select(r =>
-            {
-                if (ulong.TryParse(r, out var id)) return (ulong?)id;
-                return null;
-            })
-            .Where(id => id.HasValue)
-            .Select(id => id!.Value);
-        
-        var role = await _roleMappingRepository.ResolveRoleAsync(roleIds);
-        
-        if (role != null)
-        {
-            var player = await _playerRepository.GetAsync(discordId);
-            return CreateJwt(new DiscordUser()
-            {
-                Id = discordId,
-                Name = player?.DiscordName ?? string.Empty,
-            });
-        }
+        // Player.Role 已透過 MemberUpdatedHandler 即時同步，直接讀 DB 即可
+        var player = await _playerRepository.GetAsync(discordId);
+        if (string.IsNullOrEmpty(player?.Role))
+            return null;
 
-        return null;
+        return CreateJwt(new DiscordUser
+        {
+            Id = discordId,
+            Name = player.DiscordName ?? string.Empty,
+        });
     }
 }
