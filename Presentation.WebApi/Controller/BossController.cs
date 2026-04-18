@@ -1,5 +1,5 @@
-﻿using Application.Interface;
-using Domain.Entities;
+﻿using Application.DTOs;
+using Application.Interface;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Presentation.WebApi.Controller;
@@ -14,19 +14,17 @@ public class BossController : ControllerBase
     {
         _bossService = bossService;
     }
-    
+
     [HttpGet("GetAll")]
     public async Task<IActionResult> GetAllAsync()
     {
-        var result = await _bossService.GetAllAsync();
-        return Ok(result);
+        return Ok(await _bossService.GetAllAsync());
     }
 
     [HttpGet("{bossId}/Templates")]
     public async Task<IActionResult> GetTemplatesAsync(int bossId)
     {
-        var result = await _bossService.GetTemplatesByBossIdAsync(bossId);
-        return Ok(result);
+        return Ok(await _bossService.GetTemplatesByBossIdAsync(bossId));
     }
 
     [HttpGet("Templates/{templateId}")]
@@ -36,17 +34,16 @@ public class BossController : ControllerBase
     }
 
     [HttpPost("Templates")]
-    public async Task<IActionResult> CreateTemplateAsync([FromBody] BossTemplate template)
+    public async Task<IActionResult> CreateTemplateAsync([FromBody] BossTemplateRequest request)
     {
-        var id = await _bossService.CreateTemplateAsync(template);
+        var id = await _bossService.CreateTemplateAsync(request);
         return Ok(id);
     }
 
     [HttpPut("Templates/{templateId}")]
-    public async Task<IActionResult> UpdateTemplateAsync(int templateId, [FromBody] BossTemplate template)
+    public async Task<IActionResult> UpdateTemplateAsync(int templateId, [FromBody] BossTemplateRequest request)
     {
-        template.Id = templateId;
-        await _bossService.UpdateTemplateAsync(template);
+        await _bossService.UpdateTemplateAsync(templateId, request);
         return Ok();
     }
 
@@ -58,17 +55,16 @@ public class BossController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> CreateBossAsync([FromBody] Boss boss)
+    public async Task<IActionResult> CreateBossAsync([FromBody] BossRequest request)
     {
-        var id = await _bossService.CreateBossAsync(boss);
+        var id = await _bossService.CreateBossAsync(request);
         return Ok(id);
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateBossAsync(int id, [FromBody] Boss boss)
+    public async Task<IActionResult> UpdateBossAsync(int id, [FromBody] BossRequest request)
     {
-        boss.Id = id;
-        await _bossService.UpdateBossAsync(boss);
+        await _bossService.UpdateBossAsync(id, request);
         return Ok();
     }
 

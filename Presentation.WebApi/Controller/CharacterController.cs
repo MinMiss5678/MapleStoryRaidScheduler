@@ -1,6 +1,7 @@
-﻿using Application.Interface;
-using Domain.Entities;
+﻿using Application.DTOs;
+using Application.Interface;
 using Microsoft.AspNetCore.Mvc;
+using Presentation.WebApi.Extensions;
 
 namespace Presentation.WebApi.Controller;
 
@@ -18,46 +19,42 @@ public class CharacterController : ControllerBase
     [HttpGet("GetWithDiscordName")]
     public async Task<IActionResult> GetWithDiscordNameAsync([FromQuery] int? bossId)
     {
-        var discordId = User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value;
-        if (discordId == null)
-        {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
             return Unauthorized(new { error = "NotAuthenticated" });
-        }
 
-        var characters = await _characterService.GetWithDiscordNameAsync(Convert.ToUInt64(discordId), bossId);
-
-        return Ok(characters);
+        return Ok(await _characterService.GetWithDiscordNameAsync(discordId, bossId));
     }
 
     [HttpPost]
-    public async Task<IActionResult> CreateAsync([FromBody] Character character)
+    public async Task<IActionResult> CreateAsync([FromBody] CharacterRequest request)
     {
-        var discordId = User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value;
-        if (discordId == null)
-        {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
             return Unauthorized(new { error = "NotAuthenticated" });
-        }
 
-        character.DiscordId = Convert.ToUInt64(discordId);
-        
-        await _characterService.CreateAsync(character);
-        
-        return Ok(character);
+        request.DiscordId = discordId;
+        await _characterService.CreateAsync(request);
+
+        return Ok(request);
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateAsync(string id, [FromBody] Character character)
+    public async Task<IActionResult> UpdateAsync(string id, [FromBody] CharacterRequest request)
     {
-        character.Id = id;
-        character.DiscordId = Convert.ToUInt64(User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value);
-        await _characterService.UpdateAsync(character);
-        return Ok(character);
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        request.Id = id;
+        request.DiscordId = discordId;
+        await _characterService.UpdateAsync(request);
+        return Ok(request);
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteAsync(string id)
     {
-        var discordId = Convert.ToUInt64(User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value);
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
         await _characterService.DeleteAsync(discordId, id);
         return Ok();
     }

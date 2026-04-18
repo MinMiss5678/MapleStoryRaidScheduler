@@ -2,6 +2,7 @@
 using Application.Interface;
 using Microsoft.AspNetCore.Mvc;
 using Presentation.WebApi.Attributes;
+using Presentation.WebApi.Extensions;
 
 namespace Presentation.WebApi.Controller;
 
@@ -15,7 +16,7 @@ public class TeamSlotController : ControllerBase
     {
         _teamSlotService = teamSlotService;
     }
-    
+
     [HttpGet]
     public async Task<IActionResult> GetAsync([FromQuery] int bossId)
     {
@@ -25,23 +26,22 @@ public class TeamSlotController : ControllerBase
     [HttpGet("GetByDiscordId")]
     public async Task<IActionResult> GetByDiscordIdAsync()
     {
-        var discordId = User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value;
-        if (discordId == null)
-        {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
             return Unauthorized(new { error = "NotAuthenticated" });
-        }
 
-        return Ok(await _teamSlotService.GetByDiscordIdAsync(Convert.ToUInt64(discordId)));
+        return Ok(await _teamSlotService.GetByDiscordIdAsync(discordId));
     }
-    
+
     [HttpPut]
     public async Task<IActionResult> UpdateAsync([FromBody] TeamSlotUpdateRequest teamSlotUpdateRequest)
     {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
         var isAdmin = User.IsInRole("admin");
-        var discordId = Convert.ToUInt64(User.Claims.FirstOrDefault(c => c.Type == "discordId")?.Value);
         await _teamSlotService.UpdateAsync(teamSlotUpdateRequest, isAdmin, discordId);
         var teamSlots = await _teamSlotService.GetByBossIdAsync(teamSlotUpdateRequest.BossId);
-        
+
         return Ok(teamSlots);
     }
 }
