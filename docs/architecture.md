@@ -158,6 +158,16 @@ bash db/create-migration.sh <MigrationName>
 
 Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL 烤入），新增 migration 只需 rebuild image，k8s YAML 不需改動。
 
+**Rollback 策略**：
+
+| 情境 | 做法 |
+|---|---|
+| 本機開發 reset | `migrate down 1` → `migrate up` |
+| Production 出問題 | PostgreSQL PITR / DB snapshot restore |
+| Schema 寫錯 | 補一版 forward fix migration（`000003_fix_xxx.up.sql`） |
+
+`down.sql` 是開發工具，不是 production rollback 機制。Production 回滾依賴 infrastructure 層（DB snapshot），而非應用層 migration。
+
 ---
 
 ## Middleware 管線
@@ -209,7 +219,7 @@ flowchart TD
 
 ### 補位保護機制
 
-手動補位的成員標記 `IsManual = true`，批次重新排程時跳過含 `IsManual` 成員的隊伍，防止人工調整被覆蓋。
+手動補位的成員標記 `IsManual = true`，批次重新分配時跳過含 `IsManual` 成員的隊伍，防止人工調整被覆蓋。
 
 ### IsTemporary 語意
 

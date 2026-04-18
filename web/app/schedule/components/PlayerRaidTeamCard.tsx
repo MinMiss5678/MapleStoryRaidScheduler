@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import {formatDateTime} from "@/utils/dateTimeUtil";
@@ -21,10 +21,10 @@ interface PlayerRaidTeamCardProps {
     templates: BossTemplate[];
 }
 
-export default function PlayerRaidTeamCard({ 
-    bossId, 
-    teamSlot, 
-    allTeamSlots, 
+export default function PlayerRaidTeamCard({
+    bossId,
+    teamSlot,
+    allTeamSlots,
     onTeamSlotUpdate,
     myCharacters,
     isLoadingCharacters,
@@ -39,69 +39,60 @@ export default function PlayerRaidTeamCard({
     const filledCharacters = teamSlot.characters.filter(c => c.characterId !== null);
     const memberCount = filledCharacters.length;
     const isFull = memberCount >= requireMembers;
-    
-    // 由第一個排進來的角色決定該隊伍的限制場數
+
     const teamRounds = filledCharacters[0]?.rounds;
 
-    // 檢查玩家是否已有任何角色在該隊伍中
-    const myCharacterInTeam = !isLoadingCharacters && filledCharacters.some(c => 
+    const myCharacterInTeam = !isLoadingCharacters && filledCharacters.some(c =>
         myCharacters.some(myChar => myChar.id === c.characterId)
     );
 
-    // 計算缺少的範本職業
+    const availableCharacters = myCharacters.filter(char => {
+        if (!char.rounds || char.rounds <= 0) return true;
+        const usedRounds = allTeamSlots.reduce((acc, t) =>
+            acc + t.characters.filter(c => c.characterId === char.id).length, 0);
+        return usedRounds < char.rounds;
+    });
+
     const getMissingSlots = () => {
         if (isFull) return [];
-        
+
         const template = templates.length > 0 ? templates[0] : null;
         const missing: { category: string, count: number }[] = [];
-        
+
         if (template) {
-            // 複製一份成員職業，用於比對
             const currentJobs = filledCharacters.map(c => c.job);
-            
-            // 建立職業與分類的對照 (Job -> Category)
-            // jobMap: { "英雄": "打手", "聖騎士": "打手", ... }
-            
+
             template.requirements.sort((a, b) => a.priority - b.priority).forEach(req => {
                 let fulfilledCount = 0;
-                // 找出目前成員中屬於此 category 的人
                 for (let i = currentJobs.length - 1; i >= 0; i--) {
                     const job = currentJobs[i];
                     const category = jobMap[job] || job;
                     if (category === req.jobCategory) {
                         fulfilledCount++;
-                        currentJobs.splice(i, 1); // 標記已佔用
+                        currentJobs.splice(i, 1);
                         if (fulfilledCount >= req.count) break;
                     }
                 }
-                
+
                 if (fulfilledCount < req.count) {
-                    missing.push({
-                        category: req.jobCategory,
-                        count: req.count - fulfilledCount
-                    });
+                    missing.push({ category: req.jobCategory, count: req.count - fulfilledCount });
                 }
             });
         }
-        
-        // 剩餘的人數（不限職業）
+
         const totalMissing = requireMembers - memberCount;
         const templateMissingCount = missing.reduce((sum, m) => sum + m.count, 0);
-        
+
         if (totalMissing > templateMissingCount) {
-            missing.push({
-                category: "補位",
-                count: totalMissing - templateMissingCount
-            });
+            missing.push({ category: "補位", count: totalMissing - templateMissingCount });
         }
-        
+
         return missing;
     };
 
     const missingSlots = getMissingSlots();
 
     const handleJoinTeam = async (category: string, character: Character) => {
-        // 檢查報名時段
         if (teamSlot.periodId && character.registeredPeriodIds && !character.registeredPeriodIds.includes(teamSlot.periodId)) {
             const confirmed = window.confirm("您並未報名此時段，確定要補位嗎？");
             if (!confirmed) return;
@@ -124,7 +115,7 @@ export default function PlayerRaidTeamCard({
             ...teamSlot,
             characters: [...teamSlot.characters, teamSlotCharacter]
         };
-        
+
         setShowCharPicker(null);
 
         try {
@@ -140,7 +131,6 @@ export default function PlayerRaidTeamCard({
         <div className={`relative bg-card p-6 rounded-2xl shadow-sm border transition-all hover:shadow-md ${
             isFull ? "border-green-500/50 dark:border-green-500/30 bg-green-50/10" : "border-border"
         }`}>
-            {/* Header: DateTime */}
             <div className="flex justify-between items-start mb-4">
                 <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -160,7 +150,6 @@ export default function PlayerRaidTeamCard({
                 </div>
             </div>
 
-            {/* Members List */}
             <div>
                 <table className="w-full text-sm">
                     <thead>
@@ -181,13 +170,9 @@ export default function PlayerRaidTeamCard({
                                     </div>
                                 </td>
                                 <td className="py-2.5 hidden sm:table-cell">
-                                    <span className="px-2 py-0.5 rounded text-xs bg-muted">
-                                        {m.job}
-                                    </span>
+                                    <span className="px-2 py-0.5 rounded text-xs bg-muted">{m.job}</span>
                                 </td>
-                                <td className="py-2.5 text-right font-mono text-xs">
-                                    {m.attackPower.toLocaleString()}
-                                </td>
+                                <td className="py-2.5 text-right font-mono text-xs">{m.attackPower.toLocaleString()}</td>
                                 <td className="py-2.5 text-right"></td>
                             </tr>
                         ))}
@@ -209,9 +194,9 @@ export default function PlayerRaidTeamCard({
                                     {!isLoadingCharacters && !myCharacterInTeam && (
                                         <div className="relative inline-block text-left">
                                             <button
-                                                onClick={() => {
-                                                    setShowCharPicker(showCharPicker === `${slot.category}-${index}` ? null : `${slot.category}-${index}`);
-                                                }}
+                                                onClick={() => setShowCharPicker(
+                                                    showCharPicker === `${slot.category}-${index}` ? null : `${slot.category}-${index}`
+                                                )}
                                                 className="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition-colors flex items-center gap-1 ml-auto whitespace-nowrap"
                                             >
                                                 補位 <ChevronDown size={12} />
@@ -222,27 +207,24 @@ export default function PlayerRaidTeamCard({
                                                         <div className="px-3 py-1 text-xs font-semibold text-muted-foreground border-b border-border mb-1">
                                                             選擇您的角色 ({slot.category})
                                                         </div>
-                                                        {myCharacters
-                                                            .map((char) => (
-                                                                <button
-                                                                    key={char.id}
-                                                                    onClick={() => {
-                                                                        handleJoinTeam(slot.category, char);
-                                                                    }}
-                                                                    className="flex flex-col w-full px-4 py-2 text-sm text-left hover:bg-muted transition-colors border-b last:border-0 border-border/50"
-                                                                >
-                                                                    <div className="flex justify-between items-center w-full">
-                                                                        <span className="font-medium text-foreground">{char.name}</span>
-                                                                        <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded font-bold">
-                                                                            {char.rounds} 場
-                                                                        </span>
-                                                                    </div>
-                                                                    <span className="text-xs text-muted-foreground">{char.job} / {char.attackPower.toLocaleString()}</span>
-                                                                </button>
-                                                            ))}
-                                                        {myCharacters.length === 0 && (
+                                                        {availableCharacters.map((char) => (
+                                                            <button
+                                                                key={char.id}
+                                                                onClick={() => handleJoinTeam(slot.category, char)}
+                                                                className="flex flex-col w-full px-4 py-2 text-sm text-left hover:bg-muted transition-colors border-b last:border-0 border-border/50"
+                                                            >
+                                                                <div className="flex justify-between items-center w-full">
+                                                                    <span className="font-medium text-foreground">{char.name}</span>
+                                                                    <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded font-bold">
+                                                                        {char.rounds} 場
+                                                                    </span>
+                                                                </div>
+                                                                <span className="text-xs text-muted-foreground">{char.job} / {char.attackPower.toLocaleString()}</span>
+                                                            </button>
+                                                        ))}
+                                                        {availableCharacters.length === 0 && (
                                                             <div className="px-4 py-3 text-xs text-muted-foreground text-center">
-                                                                尚未建立角色
+                                                                {myCharacters.length === 0 ? "尚未建立角色" : "所有角色場數已滿"}
                                                             </div>
                                                         )}
                                                     </div>

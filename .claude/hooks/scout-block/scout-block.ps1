@@ -7,8 +7,9 @@
 #   - Blocked: cd node_modules, ls build/, cat dist/file.js
 #   - Allowed: npm build, pnpm build, yarn build, npm run build
 
-# Read JSON input from stdin
-$inputJson = $input | Out-String
+# Read JSON input from stdin with explicit UTF-8 encoding to handle CJK file content
+$reader = New-Object System.IO.StreamReader([System.Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8)
+$inputJson = $reader.ReadToEnd()
 
 # Validate input not empty
 if ([string]::IsNullOrWhiteSpace($inputJson)) {
