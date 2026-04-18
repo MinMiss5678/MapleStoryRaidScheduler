@@ -23,30 +23,30 @@ public class TeamSlotService : ITeamSlotService
         _periodQuery = periodQuery;
     }
 
-    public async Task<IEnumerable<TeamSlot>> GetByBossIdAsync(int bossId)
+    public async Task<IEnumerable<TeamSlotDto>> GetByBossIdAsync(int bossId)
     {
         var period = await _periodQuery.GetByNowAsync();
         if (period == null) return [];
         var teamSlotCharacters = await _teamSlotQuery.GetByPeriodAndBossIdAsync(period, bossId);
 
-        return MapToTeamSlots(teamSlotCharacters, period, bossId);
+        return MapToTeamSlotDtos(teamSlotCharacters, period, bossId);
     }
 
-    public async Task<IEnumerable<TeamSlot>> GetByDiscordIdAsync(ulong discordId)
+    public async Task<IEnumerable<TeamSlotDto>> GetByDiscordIdAsync(ulong discordId)
     {
         var period = await _periodQuery.GetByNowAsync();
         if (period == null) return [];
         var teamSlotCharacters = await _teamSlotQuery.GetByPeriodAndDiscordIdAsync(period, discordId);
 
-        return MapToTeamSlots(teamSlotCharacters, period);
+        return MapToTeamSlotDtos(teamSlotCharacters, period);
     }
 
-    private static List<TeamSlot> MapToTeamSlots(
+    private static List<TeamSlotDto> MapToTeamSlotDtos(
         IEnumerable<TeamSlotCharacterDto> teamSlotCharacters, Period? period, int? defaultBossId = null)
     {
         return teamSlotCharacters
             .GroupBy(r => new { r.SlotDateTime, r.TeamSlotId })
-            .Select(g => new TeamSlot
+            .Select(g => new TeamSlotDto
             {
                 Id = g.Key.TeamSlotId,
                 BossId = defaultBossId ?? g.FirstOrDefault()?.BossId ?? 0,
@@ -55,7 +55,7 @@ public class TeamSlotService : ITeamSlotService
                 SlotDateTime = g.Key.SlotDateTime,
                 // LEFT JOIN 在隊伍無成員時會產生 TeamSlotCharacterId=0 的 ghost row，需過濾掉
                 Characters = g.Where(x => x.TeamSlotCharacterId != 0)
-                    .Select(x => new TeamSlotCharacter
+                    .Select(x => new TeamSlotMemberDto
                     {
                         Id = x.TeamSlotCharacterId,
                         DiscordId = x.DiscordId,
@@ -102,10 +102,11 @@ public class TeamSlotService : ITeamSlotService
                     TemplateId = teamSlot.TemplateId
                 };
                 var teamSlotId = await _teamSlotRepository.CreateAsync(entity);
-                foreach (var character in teamSlot.Characters)
+                foreach (var member in teamSlot.Characters)
                 {
-                    character.TeamSlotId = teamSlotId;
-                    await _teamSlotCharacterRepository.CreateAsync(character);
+                    var newChar = MapToEntity(member);
+                    newChar.TeamSlotId = teamSlotId;
+                    await _teamSlotCharacterRepository.CreateAsync(newChar);
                 }
 
                 continue;
@@ -124,33 +125,32 @@ public class TeamSlotService : ITeamSlotService
                         throw new UnauthorizedAccessException("您不能移除他人的角色。");
                 }
 
-                var teamSlotCharacter = new TeamSlotCharacter()
+                await _teamSlotCharacterRepository.DeleteCharacterAsync(new TeamSlotCharacter
                 {
                     Id = teamSlotCharacterId,
-                    TeamSlotId = teamSlot.Id,
-                };
-
-                await _teamSlotCharacterRepository.DeleteCharacterAsync(teamSlotCharacter);
+                    TeamSlotId = teamSlot.Id
+                });
             }
 
-            foreach (var character in teamSlot.Characters)
+            foreach (var member in teamSlot.Characters)
             {
-                if (character.Id == null)
+                if (member.Id == null)
                 {
-                    if (!isAdmin && character.DiscordId != currentDiscordId)
+                    if (!isAdmin && member.DiscordId != currentDiscordId)
                         throw new UnauthorizedAccessException("不能替他人新增角色");
 
                     // 防止同一角色重複加入同一隊伍
-                    if (character.CharacterId != null &&
-                        originalTeam.Characters.Any(c => c.CharacterId == character.CharacterId))
+                    if (member.CharacterId != null &&
+                        originalTeam.Characters.Any(c => c.CharacterId == member.CharacterId))
                         throw new InvalidOperationException("該角色已在此隊伍中，不可重複加入。");
 
-                    character.TeamSlotId = teamSlot.Id;
-                    await _teamSlotCharacterRepository.CreateAsync(character);
+                    var newChar = MapToEntity(member);
+                    newChar.TeamSlotId = teamSlot.Id;
+                    await _teamSlotCharacterRepository.CreateAsync(newChar);
                 }
                 else
                 {
-                    var originalCharacter = originalTeam.Characters.FirstOrDefault(c => c.Id == character.Id);
+                    var originalCharacter = originalTeam.Characters.FirstOrDefault(c => c.Id == member.Id);
                     if (!isAdmin)
                     {
                         if (originalCharacter == null)
@@ -162,14 +162,29 @@ public class TeamSlotService : ITeamSlotService
                             throw new UnauthorizedAccessException("不能修改他人的角色");
 
                         // 確保填補空位時，填入的是自己的角色
-                        if (originalCharacter.CharacterId == null && character.DiscordId != currentDiscordId &&
-                            character.DiscordId != 0)
+                        if (originalCharacter.CharacterId == null && member.DiscordId != currentDiscordId &&
+                            member.DiscordId != 0)
                             throw new UnauthorizedAccessException("填補空位時，必須填入自己的角色。");
                     }
 
-                    await _teamSlotCharacterRepository.UpdateAsync(character);
+                    await _teamSlotCharacterRepository.UpdateAsync(MapToEntity(member));
                 }
             }
         }
     }
+
+    private static TeamSlotCharacter MapToEntity(TeamSlotMemberDto dto) => new()
+    {
+        Id = dto.Id,
+        TeamSlotId = dto.TeamSlotId,
+        DiscordId = dto.DiscordId,
+        DiscordName = dto.DiscordName,
+        CharacterId = dto.CharacterId,
+        CharacterName = dto.CharacterName,
+        Job = dto.Job,
+        AttackPower = dto.AttackPower,
+        Level = dto.Level,
+        Rounds = dto.Rounds,
+        IsManual = dto.IsManual
+    };
 }

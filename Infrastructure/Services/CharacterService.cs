@@ -25,15 +25,31 @@ public class CharacterService : ICharacterService
         return await _characterQuery.GetWithDiscordNameAsync(discordId, bossId);
     }
 
-    public async Task<int> CreateAsync(Character character)
+    public async Task<int> CreateAsync(CharacterRequest request)
     {
+        var character = new Character
+        {
+            Id = request.Id,
+            DiscordId = request.DiscordId,
+            Name = request.Name,
+            Job = request.Job,
+            AttackPower = request.AttackPower
+        };
         return await _characterRepository.CreateAsync(character);
     }
 
-    public async Task UpdateAsync(Character character)
+    public async Task UpdateAsync(CharacterRequest request)
     {
+        var character = new Character
+        {
+            Id = request.Id,
+            DiscordId = request.DiscordId,
+            Name = request.Name,
+            Job = request.Job,
+            AttackPower = request.AttackPower
+        };
         var rows = await _characterRepository.UpdateAsync(character);
-        if (rows == 0) throw new NotFoundException($"Character {character.Id} not found");
+        if (rows == 0) throw new NotFoundException($"Character {request.Id} not found");
     }
 
     public async Task DeleteAsync(ulong discordId, string id)

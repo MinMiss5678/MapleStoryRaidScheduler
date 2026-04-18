@@ -2,7 +2,6 @@ using Application.DTOs;
 using Application.Exceptions;
 using Application.Interface;
 using Application.Queries;
-using Domain.Entities;
 using Domain.Repositories;
 
 namespace Infrastructure.Services;
@@ -53,7 +52,7 @@ public class RegisterQueryService : IRegisterQueryService
         {
             Id = first.Id,
             PeriodId = first.PeriodId,
-            Availabilities = availabilities.Select(a => new PlayerAvailability
+            Availabilities = availabilities.Select(a => new PlayerAvailabilityDto
             {
                 Weekday = a.Weekday,
                 StartTime = a.StartTime,
@@ -72,12 +71,12 @@ public class RegisterQueryService : IRegisterQueryService
         };
     }
 
-    public async Task<IEnumerable<TeamSlotCharacter>> GetByQueryAsync(RegisterGetByQueryRequest request)
+    public async Task<IEnumerable<TeamSlotMemberDto>> GetByQueryAsync(RegisterGetByQueryRequest request)
     {
         var periodId = await _periodQuery.GetPeriodIdByDateAsync(request.SlotDateTime!.Value);
         var registers = await _playerRegisterQuery.GetByQueryAsync(request, periodId);
 
-        return registers.Select(x => new TeamSlotCharacter
+        return registers.Select(x => new TeamSlotMemberDto
         {
             DiscordId = x.DiscordId,
             DiscordName = x.DiscordName,

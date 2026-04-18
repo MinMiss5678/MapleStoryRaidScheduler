@@ -8,6 +8,7 @@ namespace Infrastructure.Services;
 
 public class RegisterService : IRegisterService
 {
+
     private readonly IPeriodQuery _periodQuery;
     private readonly IPlayerRegisterRepository _playerRegisterRepository;
     private readonly ICharacterRegisterRepository _characterRegisterRepository;
@@ -34,12 +35,31 @@ public class RegisterService : IRegisterService
         _systemConfigService = systemConfigService;
     }
 
-    public async Task CreateAsync(Register register)
+    public async Task CreateAsync(RegisterCreateCommand command)
     {
         await EnsureRegistrationOpen();
 
-        if (await _playerRegisterRepository.ExistAsync(register.DiscordId, register.PeriodId))
+        if (await _playerRegisterRepository.ExistAsync(command.DiscordId, command.PeriodId))
             throw new InvalidOperationException("您已完成本期報名，請勿重複提交。");
+
+        // DTO → Entity mapping 在 Infrastructure 層完成
+        var register = new Register
+        {
+            DiscordId = command.DiscordId,
+            PeriodId = command.PeriodId,
+            CharacterRegisters = command.CharacterRegisters.Select(c => new CharacterRegister
+            {
+                CharacterId = c.CharacterId ?? string.Empty,
+                BossId = c.BossId ?? 0,
+                Rounds = c.Rounds ?? 0
+            }).ToList(),
+            Availabilities = command.Availabilities.Select(a => new PlayerAvailability
+            {
+                Weekday = a.Weekday,
+                StartTime = a.StartTime,
+                EndTime = a.EndTime
+            }).ToList()
+        };
 
         var playRegisterId = await _playerRegisterRepository.CreateAsync(register);
 
@@ -67,19 +87,33 @@ public class RegisterService : IRegisterService
     {
         await EnsureRegistrationOpen();
 
+        // DTO → Entity mapping 在 Infrastructure 層完成
+        var charRegisters = command.CharacterRegisters.Select(c => new CharacterRegister
+        {
+            Id = c.Id,
+            CharacterId = c.CharacterId ?? string.Empty,
+            BossId = c.BossId ?? 0,
+            Rounds = c.Rounds ?? 0
+        }).ToList();
+
         var register = new Register
         {
             Id = command.Id,
             DiscordId = command.DiscordId,
             PeriodId = command.PeriodId,
-            CharacterRegisters = command.CharacterRegisters,
-            Availabilities = command.Availabilities
+            CharacterRegisters = charRegisters,
+            Availabilities = command.Availabilities.Select(a => new PlayerAvailability
+            {
+                Weekday = a.Weekday,
+                StartTime = a.StartTime,
+                EndTime = a.EndTime
+            }).ToList()
         };
 
         await _playerRegisterRepository.UpdateAsync(register);
 
         await _playerAvailabilityRepository.DeleteByPlayerRegisterIdAsync(command.Id);
-        foreach (var availability in command.Availabilities)
+        foreach (var availability in register.Availabilities)
         {
             await _playerAvailabilityRepository.CreateAsync(new PlayerAvailability
             {
@@ -95,7 +129,7 @@ public class RegisterService : IRegisterService
             await _characterRegisterRepository.DeleteAsync(c);
         }
 
-        foreach (var characterRegister in command.CharacterRegisters)
+        foreach (var characterRegister in charRegisters)
         {
             if (characterRegister.Id != null)
             {
@@ -104,7 +138,6 @@ public class RegisterService : IRegisterService
             else
             {
                 characterRegister.PlayerRegisterId = command.Id;
-
                 await _characterRegisterRepository.CreateAsync(characterRegister);
             }
         }

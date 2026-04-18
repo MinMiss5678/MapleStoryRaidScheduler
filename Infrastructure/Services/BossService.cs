@@ -1,4 +1,5 @@
-﻿using Application.Exceptions;
+﻿using Application.DTOs;
+using Application.Exceptions;
 using Application.Interface;
 using Domain.Entities;
 using Domain.Repositories;
@@ -13,7 +14,7 @@ public class BossService : IBossService
     {
         _bossRepository = bossRepository;
     }
-    
+
     public async Task<IEnumerable<Boss>> GetAllAsync()
     {
         return await _bossRepository.GetAllAsync();
@@ -31,15 +32,46 @@ public class BossService : IBossService
         return template;
     }
 
-    public async Task<int> CreateTemplateAsync(BossTemplate template)
+    public async Task<int> CreateTemplateAsync(BossTemplateRequest request)
     {
+        var template = new BossTemplate
+        {
+            BossId = request.BossId,
+            Name = request.Name,
+            Requirements = request.Requirements.Select(r => new BossTemplateRequirement
+            {
+                JobCategory = r.JobCategory,
+                Count = r.Count,
+                Priority = r.Priority,
+                MinLevel = r.MinLevel,
+                MinAttribute = r.MinAttribute,
+                IsOptional = r.IsOptional,
+                Description = r.Description
+            }).ToList()
+        };
         return await _bossRepository.CreateTemplateAsync(template);
     }
 
-    public async Task UpdateTemplateAsync(BossTemplate template)
+    public async Task UpdateTemplateAsync(int id, BossTemplateRequest request)
     {
+        var template = new BossTemplate
+        {
+            Id = id,
+            BossId = request.BossId,
+            Name = request.Name,
+            Requirements = request.Requirements.Select(r => new BossTemplateRequirement
+            {
+                JobCategory = r.JobCategory,
+                Count = r.Count,
+                Priority = r.Priority,
+                MinLevel = r.MinLevel,
+                MinAttribute = r.MinAttribute,
+                IsOptional = r.IsOptional,
+                Description = r.Description
+            }).ToList()
+        };
         var ok = await _bossRepository.UpdateTemplateAsync(template);
-        if (!ok) throw new NotFoundException($"BossTemplate {template.Id} not found");
+        if (!ok) throw new NotFoundException($"BossTemplate {id} not found");
     }
 
     public async Task DeleteTemplateAsync(int templateId)
@@ -48,15 +80,28 @@ public class BossService : IBossService
         if (!ok) throw new NotFoundException($"BossTemplate {templateId} not found");
     }
 
-    public async Task<int> CreateBossAsync(Boss boss)
+    public async Task<int> CreateBossAsync(BossRequest request)
     {
+        var boss = new Boss
+        {
+            Name = request.Name,
+            RequireMembers = request.RequireMembers,
+            RoundConsumption = request.RoundConsumption
+        };
         return await _bossRepository.CreateBossAsync(boss);
     }
 
-    public async Task UpdateBossAsync(Boss boss)
+    public async Task UpdateBossAsync(int id, BossRequest request)
     {
+        var boss = new Boss
+        {
+            Id = id,
+            Name = request.Name,
+            RequireMembers = request.RequireMembers,
+            RoundConsumption = request.RoundConsumption
+        };
         var ok = await _bossRepository.UpdateBossAsync(boss);
-        if (!ok) throw new NotFoundException($"Boss {boss.Id} not found");
+        if (!ok) throw new NotFoundException($"Boss {id} not found");
     }
 
     public async Task DeleteBossAsync(int bossId)

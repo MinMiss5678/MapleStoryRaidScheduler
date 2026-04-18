@@ -1,12 +1,11 @@
-﻿using Application.DTOs;
-using Domain.Entities;
+using Application.DTOs;
 
 namespace Application.Interface;
 
 public interface ICharacterService
 {
     Task<IEnumerable<CharacterDto>> GetWithDiscordNameAsync(ulong discordId, int? bossId = null);
-    Task<int> CreateAsync(Character character);
-    Task UpdateAsync(Character character);
+    Task<int> CreateAsync(CharacterRequest request);
+    Task UpdateAsync(CharacterRequest request);
     Task DeleteAsync(ulong discordId, string id);
 }

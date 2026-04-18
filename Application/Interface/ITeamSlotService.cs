@@ -1,11 +1,10 @@
-﻿using Application.DTOs;
-using Domain.Entities;
+using Application.DTOs;
 
 namespace Application.Interface;
 
 public interface ITeamSlotService
 {
-    Task<IEnumerable<TeamSlot>> GetByBossIdAsync(int bossId);
-    Task<IEnumerable<TeamSlot>> GetByDiscordIdAsync(ulong discord);
+    Task<IEnumerable<TeamSlotDto>> GetByBossIdAsync(int bossId);
+    Task<IEnumerable<TeamSlotDto>> GetByDiscordIdAsync(ulong discordId);
     Task UpdateAsync(TeamSlotUpdateRequest teamSlotUpdateRequest, bool isAdmin, ulong currentDiscordId);
 }
