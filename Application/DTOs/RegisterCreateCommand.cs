@@ -1,11 +1,9 @@
 namespace Application.DTOs;
 
-public class RegisterUpdateCommand
+public class RegisterCreateCommand
 {
-    public int Id { get; set; }
-    public ulong DiscordId { get; set; }
+    public ulong DiscordId { get; set; } // 由 Controller 從 Claims 注入
     public int PeriodId { get; set; }
     public List<CharacterRegisterDto> CharacterRegisters { get; set; } = [];
     public List<PlayerAvailabilityDto> Availabilities { get; set; } = [];
-    public List<int> DeleteCharacterRegisterIds { get; set; } = [];
 }
