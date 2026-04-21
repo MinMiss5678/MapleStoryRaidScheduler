@@ -12,6 +12,7 @@ public class AuthServiceTests
 {
     private readonly Mock<IDiscordOAuthClient> _discordClientMock = new();
     private readonly Mock<ISessionService> _sessionServiceMock = new();
+    private readonly Mock<IDiscordRoleMappingRepository> _roleMappingRepoMock = new();
     private readonly Mock<IJwtService> _jwtServiceMock = new();
     private readonly Mock<IPlayerRepository> _playerRepoMock = new();
     private readonly AuthService _authService;
@@ -21,6 +22,7 @@ public class AuthServiceTests
         _authService = new AuthService(
             _discordClientMock.Object,
             _sessionServiceMock.Object,
+            _roleMappingRepoMock.Object,
             _jwtServiceMock.Object,
             _playerRepoMock.Object);
     }
@@ -78,11 +80,15 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task RefreshToken_WhenPlayerHasRole_ReturnsJwt()
+    public async Task RefreshToken_WhenRoleExists_ReturnsJwt()
     {
         ulong discordId = 555UL;
+        _discordClientMock.Setup(c => c.GetUserRolesAsync(discordId))
+            .ReturnsAsync(new List<string> { "123456789" });
+        _roleMappingRepoMock.Setup(r => r.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
+            .ReturnsAsync("Admin");
         _playerRepoMock.Setup(p => p.GetAsync(discordId))
-            .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "AdminUser", Role = "Admin" });
+            .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "AdminUser" });
         _jwtServiceMock.Setup(j => j.CreateToken(It.IsAny<DiscordUser>(), It.IsAny<int>()))
             .Returns("new-jwt");
 
@@ -92,11 +98,13 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task RefreshToken_WhenPlayerHasNoRole_ReturnsNull()
+    public async Task RefreshToken_WhenNoRole_ReturnsNull()
     {
         ulong discordId = 666UL;
-        _playerRepoMock.Setup(p => p.GetAsync(discordId))
-            .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "User", Role = "" });
+        _discordClientMock.Setup(c => c.GetUserRolesAsync(discordId))
+            .ReturnsAsync(new List<string> { "not-a-number" });
+        _roleMappingRepoMock.Setup(r => r.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
+            .ReturnsAsync((string?)null);
 
         var result = await _authService.RefreshToken(discordId);
 
@@ -104,11 +112,13 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task RefreshToken_WhenPlayerNotFound_ReturnsNull()
+    public async Task RefreshToken_WithNonNumericRole_FilteredOut()
     {
         ulong discordId = 777UL;
-        _playerRepoMock.Setup(p => p.GetAsync(discordId))
-            .ReturnsAsync((Player?)null);
+        _discordClientMock.Setup(c => c.GetUserRolesAsync(discordId))
+            .ReturnsAsync(new List<string> { "abc", "def" }); // 全部非數字
+        _roleMappingRepoMock.Setup(r => r.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
+            .ReturnsAsync((string?)null);
 
         var result = await _authService.RefreshToken(discordId);
 

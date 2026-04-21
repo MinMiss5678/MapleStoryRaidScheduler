@@ -25,7 +25,7 @@ public class AuthAppService : IAuthAppService
     {
         var (user, token) = await _authService.ExchangeCodeAsync(code);
         var existingPlayer = await _playerService.GetAsync(user.Id);
-        var roles = await _discordOAuthClient.GetUserRolesAsync(token.AccessToken);
+        var roles = await _discordOAuthClient.GetUserRolesAsync(user.Id);
 
         // 角色來源改為 DB 映射：
         // 1) 若玩家已存在，沿用 DB 中的 Player.Role

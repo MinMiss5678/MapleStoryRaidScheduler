@@ -48,7 +48,7 @@ public class AuthAppServiceTests
 
         _authServiceMock.Setup(x => x.ExchangeCodeAsync(code))
             .ReturnsAsync((user, token));
-        _discordOAuthClientMock.Setup(x => x.GetUserRolesAsync(token.AccessToken))
+        _discordOAuthClientMock.Setup(x => x.GetUserRolesAsync(user.Id))
             .ReturnsAsync(roles);
         _roleMappingRepositoryMock
             .Setup(x => x.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
@@ -76,7 +76,7 @@ public class AuthAppServiceTests
 
         _authServiceMock.Setup(x => x.ExchangeCodeAsync(code))
             .ReturnsAsync((user, token));
-        _discordOAuthClientMock.Setup(x => x.GetUserRolesAsync(token.AccessToken))
+        _discordOAuthClientMock.Setup(x => x.GetUserRolesAsync(user.Id))
             .ReturnsAsync(roles);
         _roleMappingRepositoryMock
             .Setup(x => x.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))

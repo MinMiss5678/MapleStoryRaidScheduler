@@ -65,10 +65,10 @@ public class DiscordOAuthClient: IDiscordOAuthClient
         return JsonSerializer.Deserialize<DiscordTokenResponse>(json);
     }
 
-    public async Task<IEnumerable<string>> GetUserRolesAsync(string accessToken)
+    public async Task<IEnumerable<string>> GetUserRolesAsync(ulong discordId)
     {
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        var resp = await _http.GetAsync($"https://discord.com/api/users/@me/guilds/{_discordOptions.GuildId}/member");
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bot", _discordOptions.BotToken);
+        var resp = await _http.GetAsync($"https://discord.com/api/guilds/{_discordOptions.GuildId}/members/{discordId}");
         resp.EnsureSuccessStatusCode();
 
         var json = await resp.Content.ReadAsStringAsync();
