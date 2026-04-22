@@ -17,7 +17,7 @@ export type TeamSlot = {
     periodId?: number;
     slotDateTime: Date;
     characters: TeamSlotCharacter[];
-    deleteTeamSlotCharacterIds: number[];
+    deleteTeamSlotCharacterIds?: number[]; // 前端暫存，不在 API 回應中
     isTemporary?: boolean;
     isPublished?: boolean;
     templateId?: number;

@@ -224,7 +224,7 @@ export default function TemplateAdminPage() {
                                             type="text"
                                             value={editingTemplate.name}
                                             onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
-                                            className="w-full p-2.5 rounded-lg bg-background border border-border focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full p-2.5 rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none"
                                             placeholder="例如：傳統團、拓荒團"
                                         />
                                     </div>
@@ -254,21 +254,21 @@ export default function TemplateAdminPage() {
                                                                         newReqs[idx].jobCategory = e.target.value;
                                                                         setEditingTemplate({ ...editingTemplate, requirements: newReqs });
                                                                     }}
-                                                                    className="w-full p-2 bg-background dark:bg-zinc-800 border border-border rounded-md text-sm text-foreground focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                    className="w-full p-2 bg-[var(--background)] text-[var(--foreground)] border border-border rounded-md text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                                                                 >
                                                                     <optgroup label="職業類別">
                                                                         {jobCategories.map(cat => (
-                                                                            <option key={cat} value={cat} className="bg-background dark:bg-zinc-800">{cat}</option>
+                                                                            <option key={cat} value={cat} className="bg-[var(--background)] text-[var(--foreground)]">{cat}</option>
                                                                         ))}
                                                                     </optgroup>
                                                                     <optgroup label="單一職業">
                                                                         {jobs.map(j => (
-                                                                            <option key={j} value={j} className="bg-background dark:bg-zinc-800">{j}</option>
+                                                                            <option key={j} value={j} className="bg-[var(--background)] text-[var(--foreground)]">{j}</option>
                                                                         ))}
                                                                     </optgroup>
                                                                     {!jobCategories.includes(req.jobCategory) && !jobs.includes(req.jobCategory) && req.jobCategory && (
                                                                         <optgroup label="自定義">
-                                                                            <option value={req.jobCategory} className="bg-background dark:bg-zinc-800">{req.jobCategory}</option>
+                                                                            <option value={req.jobCategory} className="bg-[var(--background)] text-[var(--foreground)]">{req.jobCategory}</option>
                                                                         </optgroup>
                                                                     )}
                                                                 </select>
@@ -286,7 +286,7 @@ export default function TemplateAdminPage() {
                                                                         newReqs[idx].count = Number(e.target.value);
                                                                         setEditingTemplate({ ...editingTemplate, requirements: newReqs });
                                                                     }}
-                                                                    className="w-full p-2 bg-background dark:bg-zinc-800 border border-border rounded-md text-sm text-center text-foreground focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                    className="w-full p-2 bg-[var(--background)] text-[var(--foreground)] border border-border rounded-md text-sm text-center focus:ring-1 focus:ring-blue-500 outline-none"
                                                                 />
                                                             </div>
                                                         </div>
@@ -301,7 +301,7 @@ export default function TemplateAdminPage() {
                                                                         newReqs[idx].priority = Number(e.target.value);
                                                                         setEditingTemplate({ ...editingTemplate, requirements: newReqs });
                                                                     }}
-                                                                    className="w-full p-2 bg-background dark:bg-zinc-800 border border-border rounded-md text-sm text-center text-foreground focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                    className="w-full p-2 bg-[var(--background)] text-[var(--foreground)] border border-border rounded-md text-sm text-center focus:ring-1 focus:ring-blue-500 outline-none"
                                                                 />
                                                             </div>
                                                         </div>
@@ -339,7 +339,7 @@ export default function TemplateAdminPage() {
                                                                         newReqs[idx].minLevel = e.target.value ? Number(e.target.value) : undefined;
                                                                         setEditingTemplate({ ...editingTemplate, requirements: newReqs });
                                                                     }}
-                                                                    className="w-full p-2 bg-background dark:bg-zinc-800 border border-border rounded-md text-sm text-center text-foreground focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                    className="w-full p-2 bg-[var(--background)] text-[var(--foreground)] border border-border rounded-md text-sm text-center focus:ring-1 focus:ring-blue-500 outline-none"
                                                                     placeholder="無"
                                                                 />
                                                             </div>
@@ -355,7 +355,7 @@ export default function TemplateAdminPage() {
                                                                         newReqs[idx].minAttribute = e.target.value ? Number(e.target.value) : undefined;
                                                                         setEditingTemplate({ ...editingTemplate, requirements: newReqs });
                                                                     }}
-                                                                    className="w-full p-2 bg-background dark:bg-zinc-800 border border-border rounded-md text-sm text-center text-foreground focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                    className="w-full p-2 bg-[var(--background)] text-[var(--foreground)] border border-border rounded-md text-sm text-center focus:ring-1 focus:ring-blue-500 outline-none"
                                                                     placeholder="無"
                                                                 />
                                                             </div>
@@ -371,7 +371,7 @@ export default function TemplateAdminPage() {
                                                                         newReqs[idx].description = e.target.value;
                                                                         setEditingTemplate({ ...editingTemplate, requirements: newReqs });
                                                                     }}
-                                                                    className="w-full p-2 bg-background dark:bg-zinc-800 border border-border rounded-md text-sm text-foreground focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                    className="w-full p-2 bg-[var(--background)] text-[var(--foreground)] border border-border rounded-md text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                                                                     placeholder="例如：若等級 < 120 則需 2 位"
                                                                 />
                                                             </div>

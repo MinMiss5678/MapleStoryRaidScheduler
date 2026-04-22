@@ -1,32 +1,29 @@
 ﻿"use client";
 
-import {useSearchParams, useRouter} from "next/navigation";
+import {useSearchParams} from "next/navigation";
 import {useEffect} from "react";
-import {useRole, Role} from "../providers/RolesProvider";
 import { authService } from "@/services/authService";
 import toast from "react-hot-toast";
 
 export default function CallbackPage() {
-    const router = useRouter();
     const searchParams = useSearchParams();
     const code = searchParams.get("code");
-    const {setRole} = useRole();
 
     useEffect(() => {
         if (!code) return;
 
         const loginWithCode = async () => {
             try {
-                const data = await authService.login(code);
-                setRole(data.role as Role);
-                router.push("/");
+                await authService.login(code);
+                // 使用 hard redirect 確保 server 重新讀取 cookie，RolesProvider 以正確 role 初始化
+                window.location.href = "/";
             } catch (e) {
                 toast.error("登入失敗");
             }
         };
 
         loginWithCode();
-    }, [code, router, setRole]);
+    }, [code]);
 
 
     return <p>Logging in...</p>;

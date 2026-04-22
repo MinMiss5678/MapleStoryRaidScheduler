@@ -39,8 +39,8 @@ export default function NavBar() {
     const filteredCommonItems = commonItems.filter((item) => item.roles.includes(role));
     const showAdminMenu = role === "admin";
 
-    const handleLogin = async () => {
-        router.push("/api/auth/discord");
+    const handleLogin = () => {
+        window.location.href = "/api/auth/discord";
     };
 
     const handleLogout = async () => {

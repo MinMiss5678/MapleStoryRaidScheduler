@@ -23,15 +23,16 @@ export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, 
     const joinedMembers = teamSlot.characters.filter(m => m.characterId !== null);
     const memberCount = joinedMembers.length;
     const isFull = memberCount >= requireMembers;
+    const teamRounds = joinedMembers[0]?.rounds;
 
     const handleRemoveCharacter = (id: number | undefined) => {
         if (id === undefined) return;
         const updatedTeam = {
             ...teamSlot,
             characters: teamSlot.characters.filter((c) => c.id !== id),
-            deleteTeamSlotCharacterIds: !teamSlot.isTemporary 
-                ? [...teamSlot.deleteTeamSlotCharacterIds, id]
-                : teamSlot.deleteTeamSlotCharacterIds
+            deleteTeamSlotCharacterIds: !teamSlot.isTemporary
+                ? [...(teamSlot.deleteTeamSlotCharacterIds ?? []), id]
+                : (teamSlot.deleteTeamSlotCharacterIds ?? [])
         };
         onTeamSlotUpdate(updatedTeam);
     }
@@ -56,6 +57,11 @@ export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, 
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Users size={14} />
                         <span>成員: {memberCount} / {requireMembers}</span>
+                        {teamRounds && (
+                            <span className="ml-2 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-md font-bold border border-amber-200">
+                                {teamRounds} 場
+                            </span>
+                        )}
                     </div>
                 </div>
 

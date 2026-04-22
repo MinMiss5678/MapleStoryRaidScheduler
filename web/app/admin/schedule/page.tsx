@@ -21,6 +21,7 @@ export default function RaidSchedulerPage() {
     const [originalTeamSlots, setOriginalTeamSlots] = useState<string>(""); // 用於檢索是否有變更
     const { setLoading } = useLoading();
     const { validateAddCharacter } = useRaidValidation();
+    const [tempIdCounter, setTempIdCounter] = useState(-1);
     const [manualSlotDateTime, setManualSlotDateTime] = useState<string>(() => {
         const now = new Date();
         now.setMinutes(0, 0, 0); // 強制整點
@@ -37,7 +38,8 @@ export default function RaidSchedulerPage() {
         async function loadTeamSlots() {
             if (!selectedBoss) return;
             try {
-                const data = await scheduleService.getTeamSlots(selectedBoss.id);
+                const raw = await scheduleService.getTeamSlots(selectedBoss.id);
+                const data = raw.map(t => ({ ...t, deleteTeamSlotCharacterIds: t.deleteTeamSlotCharacterIds ?? [] }));
                 setTeamSlots(prev => {
                     const tempSlots = prev.filter(t => t.isTemporary && t.bossId === selectedBoss.id);
                     const allSlots = [...data, ...tempSlots];
@@ -97,7 +99,7 @@ export default function RaidSchedulerPage() {
         slotDate.setHours(hour, 0, 0, 0);
 
         const newTeamSlot: TeamSlot = {
-            id: -Date.now(),
+            id: tempIdCounter,
             bossId: selectedBoss.id,
             slotDateTime: slotDate,
             characters: [],
@@ -106,6 +108,7 @@ export default function RaidSchedulerPage() {
         };
 
         setTeamSlots(prev => [...prev, newTeamSlot]);
+        setTempIdCounter(prev => prev - 1); // 每次遞減，確保唯一且在 Int32 範圍內
         // setManualSlotDateTime(""); // 清空輸入，或保留方便連續新增
     };
 
@@ -115,11 +118,12 @@ export default function RaidSchedulerPage() {
 
         try {
             await scheduleService.saveSchedule(selectedBoss.id, teamSlots, deleteTeamSlotIds);
-            const data = await scheduleService.getTeamSlots(selectedBoss.id);
+            const raw = await scheduleService.getTeamSlots(selectedBoss.id);
             toast.success("排團已儲存！");
             setDeleteTeamSlotIds([]);
-            setTeamSlots(data);
-            setOriginalTeamSlots(JSON.stringify(data));
+            const refreshed = raw.map(t => ({ ...t, deleteTeamSlotCharacterIds: t.deleteTeamSlotCharacterIds ?? [] }));
+            setTeamSlots(refreshed);
+            setOriginalTeamSlots(JSON.stringify(refreshed));
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "儲存失敗");
         } finally {

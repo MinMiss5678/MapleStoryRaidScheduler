@@ -118,9 +118,9 @@ export default function BossAdminPage() {
                     <div>
                         {editingBoss ? (
                             <div className="bg-card p-6 rounded-2xl border border-border shadow-sm sticky top-8">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-xl font-bold">編輯 Boss: {editingBoss.name}</h2>
-                                    <div className="flex gap-2">
+                                <div className="flex justify-between items-center mb-6 gap-2">
+                                    <h2 className="text-xl font-bold min-w-0 truncate">編輯 Boss: {editingBoss.name}</h2>
+                                    <div className="flex gap-2 shrink-0">
                                         <button
                                             onClick={() => setEditingBoss(null)}
                                             className="px-4 py-2 text-muted-foreground hover:bg-muted rounded-xl transition-all"
@@ -144,7 +144,7 @@ export default function BossAdminPage() {
                                             type="text"
                                             value={editingBoss.name}
                                             onChange={(e) => setEditingBoss({ ...editingBoss, name: e.target.value })}
-                                            className="w-full p-2.5 rounded-lg bg-background border border-border focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full p-2.5 rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none"
                                             placeholder="例如：賽蓮、卡洛斯"
                                         />
                                     </div>
@@ -155,7 +155,7 @@ export default function BossAdminPage() {
                                             type="number"
                                             value={editingBoss.requireMembers}
                                             onChange={(e) => setEditingBoss({ ...editingBoss, requireMembers: Number(e.target.value) })}
-                                            className="w-full p-2.5 rounded-lg bg-background border border-border focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full p-2.5 rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none"
                                             min={1}
                                             max={200}
                                         />
@@ -167,7 +167,7 @@ export default function BossAdminPage() {
                                             type="number"
                                             value={editingBoss.roundConsumption}
                                             onChange={(e) => setEditingBoss({ ...editingBoss, roundConsumption: Number(e.target.value) })}
-                                            className="w-full p-2.5 rounded-lg bg-background border border-border focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full p-2.5 rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none"
                                             min={0}
                                         />
                                         <p className="text-xs text-muted-foreground mt-1">此 Boss 會消耗角色的每週排程次數。</p>

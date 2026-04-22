@@ -1,6 +1,7 @@
 ﻿"use client";
 import { useState, useEffect } from "react";
 import { Save, Clock, ShieldCheck, AlertCircle } from "lucide-react";
+import { Select } from "@/components/ui/FormControls";
 import toast from "react-hot-toast";
 import { useLoading } from "@/app/providers/LoadingContext";
 import { systemConfigService } from "@/services/systemConfigService";
@@ -84,17 +85,17 @@ export default function AdminConfigPage() {
                                     <label className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
                                         截止星期
                                     </label>
-                                    <select
-                                        className="w-full p-3 rounded-xl border border-input bg-background focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    <Select
                                         value={config.deadlineDayOfWeek}
                                         onChange={(e) => setConfig({ ...config, deadlineDayOfWeek: parseInt(e.target.value) })}
+                                        className="w-full p-3 rounded-xl"
                                     >
                                         {DAYS_OF_WEEK.map((day) => (
-                                            <option key={day.value} value={day.value}>
+                                            <option key={day.value} value={day.value} className="bg-[var(--background)] text-[var(--foreground)]">
                                                 {day.label}
                                             </option>
                                         ))}
-                                    </select>
+                                    </Select>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
