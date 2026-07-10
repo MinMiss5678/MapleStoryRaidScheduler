@@ -16,7 +16,7 @@ public class ScheduleController : ControllerBase
         _scheduleService = scheduleService;
     }
     
-    [AuthorizeRole]
+    [AuthorizeRole("admin")]
     [HttpPost("AutoScheduleWithTemplate")]
     public async Task<IActionResult> AutoScheduleWithTemplateAsync([FromBody] AutoScheduleWithTemplateRequest request)
     {

@@ -104,23 +104,22 @@ public class AuthenticationMiddleware : IMiddleware
                         new Claim("discordId", jwtTokenClaims.DiscordId.ToString()),
                         new Claim(ClaimTypes.Role, refreshedPlayer?.Role ?? "")
                     }, "jwt");
-
-                    context.User = new ClaimsPrincipal(identity);
-                    await next(context);
-                    return;
                 }
             }
         }
 
-        if (roleAttribute != null && identity.AuthenticationType != "session")
-        {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return;
-        }
-
+        // 先確認有沒有登入（沒身分 → 401：連你是誰都不知道）
         if (!identity.Claims.Any())
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+
+        // 再確認角色：比對 role claim（不再綁認證方式），角色不符 → 403
+        if (roleAttribute != null && roleAttribute.Roles.Length > 0
+            && !roleAttribute.Roles.Contains(identity.FindFirst(ClaimTypes.Role)?.Value))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return;
         }
 
