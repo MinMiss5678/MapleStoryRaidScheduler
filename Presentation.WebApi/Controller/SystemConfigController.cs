@@ -1,6 +1,7 @@
 ﻿using Application.Interface;
 using Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
+using Presentation.WebApi.Attributes;
 
 namespace Presentation.WebApi.Controller;
 
@@ -22,6 +23,7 @@ public class SystemConfigController : ControllerBase
         return Ok(result);
     }
 
+    [AuthorizeRole("admin")]
     [HttpPost]
     public async Task<IActionResult> UpdateAsync([FromBody] SystemConfig config)
     {

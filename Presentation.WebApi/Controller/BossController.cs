@@ -1,6 +1,7 @@
 ﻿using Application.DTOs;
 using Application.Interface;
 using Microsoft.AspNetCore.Mvc;
+using Presentation.WebApi.Attributes;
 
 namespace Presentation.WebApi.Controller;
 
@@ -33,6 +34,7 @@ public class BossController : ControllerBase
         return Ok(await _bossService.GetTemplateByIdAsync(templateId));
     }
 
+    [AuthorizeRole("admin")]
     [HttpPost("Templates")]
     public async Task<IActionResult> CreateTemplateAsync([FromBody] BossTemplateRequest request)
     {
@@ -40,6 +42,7 @@ public class BossController : ControllerBase
         return Ok(id);
     }
 
+    [AuthorizeRole("admin")]
     [HttpPut("Templates/{templateId}")]
     public async Task<IActionResult> UpdateTemplateAsync(int templateId, [FromBody] BossTemplateRequest request)
     {
@@ -47,6 +50,7 @@ public class BossController : ControllerBase
         return Ok();
     }
 
+    [AuthorizeRole("admin")]
     [HttpDelete("Templates/{templateId}")]
     public async Task<IActionResult> DeleteTemplateAsync(int templateId)
     {
@@ -54,6 +58,7 @@ public class BossController : ControllerBase
         return Ok();
     }
 
+    [AuthorizeRole("admin")]
     [HttpPost]
     public async Task<IActionResult> CreateBossAsync([FromBody] BossRequest request)
     {
@@ -61,6 +66,7 @@ public class BossController : ControllerBase
         return Ok(id);
     }
 
+    [AuthorizeRole("admin")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateBossAsync(int id, [FromBody] BossRequest request)
     {
@@ -68,6 +74,7 @@ public class BossController : ControllerBase
         return Ok();
     }
 
+    [AuthorizeRole("admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteBossAsync(int id)
     {
