@@ -68,7 +68,7 @@ public class RegisterServiceTests
     public async Task CreateAsync_ShouldCallRepositories_WhenWithinDeadline()
     {
         // Arrange
-        var period = new Period { StartDate = DateTimeOffset.Now.AddDays(1) };
+        var period = new Period { StartDate = DateTimeOffset.Now.AddDays(10) };
         var config = new SystemConfig
         {
             DeadlineDayOfWeek = DayOfWeek.Wednesday,
@@ -105,7 +105,7 @@ public class RegisterServiceTests
     public async Task CreateAsync_ShouldThrowException_WhenAlreadyRegistered()
     {
         // Arrange
-        var period = new Period { StartDate = DateTimeOffset.Now.AddDays(1) };
+        var period = new Period { StartDate = DateTimeOffset.Now.AddDays(10) };
         var config = new SystemConfig
         {
             DeadlineDayOfWeek = DayOfWeek.Wednesday,
@@ -131,6 +131,71 @@ public class RegisterServiceTests
             () => _registerService.CreateAsync(command));
         Assert.Equal("您已完成本期報名，請勿重複提交。", exception.Message);
         _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<Register>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldUseServerResolvedRegisterId_NotClientProvidedId()
+    {
+        // Arrange：報名開放中
+        _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(new SystemConfig
+        {
+            DeadlineDayOfWeek = DayOfWeek.Wednesday,
+            DeadlineTime = new TimeSpan(23, 59, 59)
+        });
+        _periodQueryMock.Setup(p => p.GetByNowAsync())
+            .ReturnsAsync(new Period { StartDate = DateTimeOffset.Now.AddDays(10) });
+
+        const int realRegisterId = 5;    // 伺服器由 (discordId, periodId) 查出的、呼叫者自己的 id
+        const int fakeRegisterId = 999;  // 前端亂傳的（可能是別人的）
+        _playerRegisterRepositoryMock
+            .Setup(r => r.GetIdAsync(It.IsAny<ulong>(), It.IsAny<int>()))
+            .ReturnsAsync(realRegisterId);
+
+        var command = new RegisterUpdateCommand
+        {
+            Id = fakeRegisterId,            // ← 攻擊者傳別人的 id
+            DiscordId = 123456789UL,
+            PeriodId = 1,
+            Availabilities = new List<PlayerAvailabilityDto>
+            {
+                new PlayerAvailabilityDto { Weekday = 1, StartTime = new TimeOnly(10, 0), EndTime = new TimeOnly(12, 0) }
+            },
+            DeleteCharacterRegisterIds = new List<int> { 42 }
+        };
+
+        // Act
+        await _registerService.UpdateAsync(command);
+
+        // Assert：全程用 realRegisterId(5)，完全不碰 fakeRegisterId(999)
+        _playerRegisterRepositoryMock.Verify(r => r.GetIdAsync(command.DiscordId, command.PeriodId), Times.Once);
+        _playerAvailabilityRepositoryMock.Verify(r => r.DeleteByPlayerRegisterIdAsync(realRegisterId), Times.Once);
+        _playerAvailabilityRepositoryMock.Verify(r => r.DeleteByPlayerRegisterIdAsync(fakeRegisterId), Times.Never);
+        _characterRegisterRepositoryMock.Verify(r => r.DeleteAsync(42, realRegisterId), Times.Once);
+        _playerAvailabilityRepositoryMock.Verify(
+            r => r.CreateAsync(It.Is<PlayerAvailability>(a => a.PlayerRegisterId == realRegisterId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldThrow_WhenNoRegistrationFound()
+    {
+        // Arrange：報名開放，但查不到呼叫者的 registerId
+        _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(new SystemConfig
+        {
+            DeadlineDayOfWeek = DayOfWeek.Wednesday,
+            DeadlineTime = new TimeSpan(23, 59, 59)
+        });
+        _periodQueryMock.Setup(p => p.GetByNowAsync())
+            .ReturnsAsync(new Period { StartDate = DateTimeOffset.Now.AddDays(10) });
+        _playerRegisterRepositoryMock
+            .Setup(r => r.GetIdAsync(It.IsAny<ulong>(), It.IsAny<int>()))
+            .ReturnsAsync((int?)null);
+
+        var command = new RegisterUpdateCommand { Id = 999, DiscordId = 1UL, PeriodId = 1 };
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _registerService.UpdateAsync(command));
+        Assert.Equal("找不到本期報名，無法更新。", ex.Message);
+        _playerAvailabilityRepositoryMock.Verify(r => r.DeleteByPlayerRegisterIdAsync(It.IsAny<int>()), Times.Never);
     }
 
 }

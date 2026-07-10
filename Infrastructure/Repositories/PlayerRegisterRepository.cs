@@ -61,6 +61,17 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
             .ExistAsync(x => x.DiscordId == (long)discordId && x.PeriodId == periodId);
     }
 
+    // 由 (discordId, periodId) 查出呼叫者自己的 registerId，供 Update 用（不信任前端傳的 Id）
+    public async Task<int?> GetIdAsync(ulong discordId, int periodId)
+    {
+        var sql = new QueryBuilder();
+        sql.Select<PlayerRegisterDbModel>(x => new { x.Id })
+            .From<PlayerRegisterDbModel>()
+            .Where<PlayerRegisterDbModel>(x => x.DiscordId == (long)discordId && x.PeriodId == periodId);
+
+        return await _dbContext.QuerySingleOrDefaultAsync<int?>(sql);
+    }
+
     public async Task<int> CreateAsync(Register register)
     {
         var sql = new InsertBuilder<PlayerRegisterDbModel>();
@@ -82,12 +93,13 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
         return await _dbContext.ExecuteAsync(sql);
     }
 
-    public async Task<bool> DeleteAsync(ulong discordId, int id)
+    public async Task DeleteAsync(ulong discordId, int id)
     {
         // 同時用 Id + DiscordId 過濾，避免玩家刪掉別人的報名（IDOR）
         var sql = new DeleteBuilder<PlayerRegisterDbModel>();
         sql.Where(x => x.Id == id)
             .Where(x => x.DiscordId == (long)discordId);
-        return await _dbContext.ExecuteAsync(sql) > 0;
+        
+        await _dbContext.ExecuteAsync(sql);
     }
 }

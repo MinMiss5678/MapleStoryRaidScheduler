@@ -44,7 +44,7 @@ public class RegisterServiceUpdateDeleteTests
 
     private void SetupDeadlineNotPassed()
     {
-        var period = new Period { StartDate = DateTimeOffset.Now.AddDays(1) };
+        var period = new Period { StartDate = DateTimeOffset.Now.AddDays(10) };
         var config = new SystemConfig
         {
             DeadlineDayOfWeek = DayOfWeek.Wednesday,
@@ -59,6 +59,8 @@ public class RegisterServiceUpdateDeleteTests
     {
         // Arrange
         SetupDeadlineNotPassed();
+        // 伺服器由 (discordId, periodId) 查出的 registerId（本測試用與 command.Id 相同的值，維持原斷言）
+        _playerRegisterRepositoryMock.Setup(r => r.GetIdAsync(It.IsAny<ulong>(), It.IsAny<int>())).ReturnsAsync(10);
         var command = new RegisterUpdateCommand
         {
             Id = 10,
@@ -85,7 +87,7 @@ public class RegisterServiceUpdateDeleteTests
         _playerRegisterRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<Register>()), Times.Once);
         _playerAvailabilityRepositoryMock.Verify(r => r.DeleteByPlayerRegisterIdAsync(10), Times.Once);
         _playerAvailabilityRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<PlayerAvailability>()), Times.Once);
-        _characterRegisterRepositoryMock.Verify(r => r.DeleteAsync(99), Times.Once);
+        _characterRegisterRepositoryMock.Verify(r => r.DeleteAsync(99, 10), Times.Once);
         _characterRegisterRepositoryMock.Verify(r => r.UpdateAsync(It.Is<CharacterRegister>(c => c.Id == 1)), Times.Once);
         _characterRegisterRepositoryMock.Verify(r => r.CreateAsync(It.Is<CharacterRegister>(c => c.CharacterId == "char2")), Times.Once);
     }

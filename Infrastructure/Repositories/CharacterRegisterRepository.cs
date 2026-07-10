@@ -32,14 +32,20 @@ public class CharacterRegisterRepository : ICharacterRegisterRepository
         updateSql.Set(x => x.CharacterId, characterRegister.CharacterId)
             .Set(x => x.BossId, characterRegister.BossId)
             .Set(x => x.Rounds, characterRegister.Rounds)
-            .Where(x=> x.Id == characterRegister.Id);
+            .Where(x=> x.Id == characterRegister.Id)
+            // 一併過濾 PlayerRegisterId，避免改到別人報名底下的角色（IDOR）
+            .Where(x => x.PlayerRegisterId == characterRegister.PlayerRegisterId);
 
         await _dbContext.ExecuteAsync(updateSql);
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, int playerRegisterId)
     {
-        return await _dbContext.Repository<CharacterRegisterDbModel>().DeleteAsync(id);
+        // 一併過濾 PlayerRegisterId，避免刪到別人報名底下的角色（IDOR）
+        var sql = new DeleteBuilder<CharacterRegisterDbModel>();
+        sql.Where(x => x.Id == id)
+            .Where(x => x.PlayerRegisterId == playerRegisterId);
+        return await _dbContext.ExecuteAsync(sql) > 0;
     }
 
     public async Task<int> DeleteByPlayerRegisterIdAsync(int playerRegisterId)

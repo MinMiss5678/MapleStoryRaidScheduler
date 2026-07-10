@@ -87,10 +87,17 @@ public class RegisterService : IRegisterService
     {
         await EnsureRegistrationOpen();
 
+        // 不信任前端傳的 command.Id：改由 (discordId, periodId) 查出呼叫者自己的 registerId，
+        // 後面所有子資源都用這個 id，避免玩家傳別人的 registerId 竄改/刪除別人的資料（IDOR）
+        var registerId = await _playerRegisterRepository.GetIdAsync(command.DiscordId, command.PeriodId);
+        if (registerId == null)
+            throw new InvalidOperationException("找不到本期報名，無法更新。");
+
         // DTO → Entity mapping 在 Infrastructure 層完成
         var charRegisters = command.CharacterRegisters.Select(c => new CharacterRegister
         {
             Id = c.Id,
+            PlayerRegisterId = registerId.Value,
             CharacterId = c.CharacterId ?? string.Empty,
             BossId = c.BossId ?? 0,
             Rounds = c.Rounds ?? 0
@@ -98,7 +105,7 @@ public class RegisterService : IRegisterService
 
         var register = new Register
         {
-            Id = command.Id,
+            Id = registerId.Value,
             DiscordId = command.DiscordId,
             PeriodId = command.PeriodId,
             CharacterRegisters = charRegisters,
@@ -112,12 +119,12 @@ public class RegisterService : IRegisterService
 
         await _playerRegisterRepository.UpdateAsync(register);
 
-        await _playerAvailabilityRepository.DeleteByPlayerRegisterIdAsync(command.Id);
+        await _playerAvailabilityRepository.DeleteByPlayerRegisterIdAsync(registerId.Value);
         foreach (var availability in register.Availabilities)
         {
             await _playerAvailabilityRepository.CreateAsync(new PlayerAvailability
             {
-                PlayerRegisterId = command.Id,
+                PlayerRegisterId = registerId.Value,
                 Weekday = availability.Weekday,
                 StartTime = availability.StartTime,
                 EndTime = availability.EndTime
@@ -126,7 +133,7 @@ public class RegisterService : IRegisterService
 
         foreach (var c in command.DeleteCharacterRegisterIds)
         {
-            await _characterRegisterRepository.DeleteAsync(c);
+            await _characterRegisterRepository.DeleteAsync(c, registerId.Value);
         }
 
         foreach (var characterRegister in charRegisters)
@@ -137,7 +144,6 @@ public class RegisterService : IRegisterService
             }
             else
             {
-                characterRegister.PlayerRegisterId = command.Id;
                 await _characterRegisterRepository.CreateAsync(characterRegister);
             }
         }
