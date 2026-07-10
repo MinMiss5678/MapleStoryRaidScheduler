@@ -84,8 +84,10 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
 
     public async Task<bool> DeleteAsync(ulong discordId, int id)
     {
+        // 同時用 Id + DiscordId 過濾，避免玩家刪掉別人的報名（IDOR）
         var sql = new DeleteBuilder<PlayerRegisterDbModel>();
-        sql.Where(x => x.DiscordId == (long)discordId);
-        return await _dbContext.Repository<PlayerRegisterDbModel>().DeleteAsync(id);
+        sql.Where(x => x.Id == id)
+            .Where(x => x.DiscordId == (long)discordId);
+        return await _dbContext.ExecuteAsync(sql) > 0;
     }
 }
