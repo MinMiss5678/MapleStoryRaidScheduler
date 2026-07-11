@@ -10,14 +10,16 @@
 
 ```mermaid
 graph TD
-    User["玩家 (Player)"] -->|HTTPS| Frontend["Next.js 15 前端"]
-    Frontend -->|REST API| Backend["ASP.NET Core Web API"]
+    User["玩家 (Player)"] -->|HTTPS / TLS 終結| Cloudflare["Cloudflare Edge"]
+    Cloudflare -->|Tunnel HTTP + X-Forwarded-*| Cloudflared["cloudflared"]
 
     subgraph "Docker 容器環境"
+        Cloudflared -->|HTTP| Frontend["Next.js 15 前端"]
+        Frontend -->|REST API| Backend["ASP.NET Core Web API"]
         Backend --> Middleware["Middleware 管線\n(Auth / UnitOfWork / Idempotency / ExceptionHandler)"]
         Middleware --> Application["Application Layer\n(DTOs, Interfaces, CQRS-Lite)"]
         Application --> Domain["Domain Layer\n(Entities, Repository Interfaces)"]
-        Domain --> Infrastructure["Infrastructure Layer\n(Dapper, Discord, Background Jobs)"]
+        Infrastructure["Infrastructure Layer\n(Dapper, Discord, Background Jobs)"] --> Domain
 
         Infrastructure --> DB[("PostgreSQL 18")]
         Infrastructure --> DiscordBot["Discord Bot (DSharpPlus)"]
@@ -206,12 +208,12 @@ flowchart TD
     A[玩家報名] --> B[即時觸發 AutoAssignAsync]
     B --> C{找到符合時段\n且有空位的隊伍}
     C -->|是| D[加入現有隊伍]
-    C -->|否| E[建立新隊伍草稿\nIsPublished = false]
+    C -->|否| E[建立新隊伍]
     D --> F[分配完成]
     E --> F
 
     G[管理員觸發批次組隊] --> H[全局 AutoAssignAsync]
-    H --> I[TeamSlotMergeService\n合併零散隊伍]
+    H --> I[TeamSlotMergeService\n合併零散隊伍\n（含 IsManual 成員的隊伍不參與合併）]
     I --> J[根據 BossTemplate 優化陣容]
     J --> K[尋找所有成員共同可用時間]
     K --> L[更新隊伍草稿]
@@ -481,8 +483,10 @@ sequenceDiagram
     Frontend->>Discord: 跳轉 OAuth2 授權頁
     Discord-->>Frontend: 回傳 code
     Frontend->>API: POST /api/Auth/Login { code }
-    API->>Discord: 兌換 access_token
-    Discord-->>API: token + 使用者資訊
+    API->>Discord: POST /oauth2/token（code → access_token）
+    Discord-->>API: access_token
+    API->>Discord: GET /users/@me（用 access_token）
+    Discord-->>API: 使用者 id / name
     API->>Discord: 查詢 Guild Member 身分組 (Bot Token)
     Discord-->>API: roles[]
     alt 身分組 = Admin
