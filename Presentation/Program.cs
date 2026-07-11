@@ -92,7 +92,9 @@ public class Program
                 services.AddSingleton<IPlayerRepository, PlayerRepository>();
                 services.AddSingleton<IPlayerService, PlayerService>();
                 services.AddSingleton<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();
-                services.ConfigureEventHandlers(b => b.AddEventHandlers<MemberUpdatedHandler>());
+                services.ConfigureEventHandlers(b => b
+                    .AddEventHandlers<MemberUpdatedHandler>()
+                    .AddEventHandlers<MemberRemovedHandler>());
                 
                 services.AddMemoryCache();
 
