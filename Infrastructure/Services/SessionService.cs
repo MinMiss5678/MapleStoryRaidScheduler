@@ -76,13 +76,13 @@ public class SessionService : ISessionService
 
     public async Task<bool> DeleteAsync(string sessionId, string discordId)
     {
-        _memoryCache.Remove( $"session{discordId}");
+        _memoryCache.Remove($"sessionId{discordId}");
         return await _sessionRepository.DeleteAsync(sessionId);
     }
-    
+
     public async Task DeleteByDiscordAsync(ulong discordId)
     {
-        _memoryCache.Remove( $"session{discordId}");
+        _memoryCache.Remove($"sessionId{discordId}");
         await _sessionRepository.DeleteByDiscordAsync(discordId);
     }
 }
