@@ -14,10 +14,11 @@ spec:
           # build: docker build -f db/Dockerfile.migrate -t minqq/migrate:latest db/
           # push:  docker push minqq/migrate:latest
           image: minqq/migrate:latest
-          command:
-            - /bin/sh
-            - -c
-            - /migrate -database="$(DB_URL)" up
+          command: ["/migrate"]
+          args:
+            - -path=/migrations
+            - -database=$(DB_URL)
+            - up
           env:
             - name: DB_URL
               valueFrom:
