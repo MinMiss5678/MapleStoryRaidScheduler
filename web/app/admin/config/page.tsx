@@ -1,7 +1,6 @@
 ﻿"use client";
 import { useState, useEffect } from "react";
 import { Save, Clock, ShieldCheck, AlertCircle } from "lucide-react";
-import { Select } from "@/components/ui/FormControls";
 import toast from "react-hot-toast";
 import { useLoading } from "@/app/providers/LoadingContext";
 import { systemConfigService } from "@/services/systemConfigService";
@@ -85,17 +84,17 @@ export default function AdminConfigPage() {
                                     <label className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
                                         截止星期
                                     </label>
-                                    <Select
+                                    <select
                                         value={config.deadlineDayOfWeek}
                                         onChange={(e) => setConfig({ ...config, deadlineDayOfWeek: parseInt(e.target.value) })}
-                                        className="w-full p-3 rounded-xl"
+                                        className="w-full h-10 px-3 text-sm rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                     >
                                         {DAYS_OF_WEEK.map((day) => (
                                             <option key={day.value} value={day.value} className="bg-[var(--background)] text-[var(--foreground)]">
                                                 {day.label}
                                             </option>
                                         ))}
-                                    </Select>
+                                    </select>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
@@ -103,7 +102,7 @@ export default function AdminConfigPage() {
                                     </label>
                                     <input
                                         type="time"
-                                        className="w-full p-3 rounded-xl border border-input bg-background focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        className="w-full h-10 px-3 text-sm rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                         value={config.deadlineTime}
                                         onChange={(e) => setConfig({ ...config, deadlineTime: e.target.value })}
                                     />
