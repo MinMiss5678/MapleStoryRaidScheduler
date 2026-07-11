@@ -77,11 +77,11 @@ public class AuthenticationMiddleware : IMiddleware
             var validateTokenResult = _jwtService.ValidateToken(token!);
             if (validateTokenResult.IsValid)
             {
-                var jwtPlayer = await _playerService.GetAsync(validateTokenResult.DiscordId);
+                // Role 從 JWT claim 讀取，不查 DB（真無狀態）
                 identity = new ClaimsIdentity(new[]
                 {
                     new Claim("discordId", validateTokenResult.DiscordId.ToString()),
-                    new Claim(ClaimTypes.Role, jwtPlayer?.Role ?? "")
+                    new Claim(ClaimTypes.Role, validateTokenResult.Role ?? "")
                 }, "jwt");
             }
             else if (validateTokenResult.Exception is SecurityTokenExpiredException)
@@ -98,24 +98,27 @@ public class AuthenticationMiddleware : IMiddleware
                         Expires = DateTimeOffset.UtcNow.AddDays(30)
                     });
 
-                    var refreshedPlayer = await _playerService.GetAsync(jwtTokenClaims.DiscordId);
+                    // 從新 JWT 讀取重新查詢後的 role
+                    var newValidationResult = _jwtService.ValidateToken(newJwt);
                     identity = new ClaimsIdentity(new[]
                     {
                         new Claim("discordId", jwtTokenClaims.DiscordId.ToString()),
-                        new Claim(ClaimTypes.Role, refreshedPlayer?.Role ?? "")
+                        new Claim(ClaimTypes.Role, newValidationResult.Role ?? "")
                     }, "jwt");
+
+                    context.User = new ClaimsPrincipal(identity);
+                    await next(context);
+                    return;
                 }
             }
         }
 
-        // 先確認有沒有登入（沒身分 → 401：連你是誰都不知道）
         if (!identity.Claims.Any())
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
 
-        // 再確認角色：比對 role claim（不再綁認證方式），角色不符 → 403
         if (roleAttribute != null && roleAttribute.Roles.Length > 0
             && !roleAttribute.Roles.Contains(identity.FindFirst(ClaimTypes.Role)?.Value))
         {

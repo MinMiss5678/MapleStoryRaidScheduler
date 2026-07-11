@@ -46,8 +46,8 @@ public class AuthService : IAuthService
     public async Task<string> CreateSessionAsync(ulong discordId, DiscordToken discordToken)
         => await _sessionService.CreateAsync(discordId, discordToken);
 
-    public string CreateJwt(DiscordUser discordUser)
-        => _jwtService.CreateToken(discordUser);
+    public string CreateJwt(DiscordUser discordUser, string role)
+        => _jwtService.CreateToken(discordUser, role);
 
     public async Task<bool> DeleteSessionAsync(string sessionId, string discordId)
         => await _sessionService.DeleteAsync(sessionId, discordId);
@@ -73,7 +73,7 @@ public class AuthService : IAuthService
             {
                 Id = discordId,
                 Name = player?.DiscordName ?? string.Empty,
-            });
+            }, role);
         }
 
         return null;

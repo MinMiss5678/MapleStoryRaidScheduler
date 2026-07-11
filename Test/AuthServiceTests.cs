@@ -62,9 +62,9 @@ public class AuthServiceTests
     public void CreateJwt_DelegatesToJwtService()
     {
         var user = new DiscordUser { Id = 999UL, Name = "admin" };
-        _jwtServiceMock.Setup(j => j.CreateToken(user, It.IsAny<int>())).Returns("jwt-token");
+        _jwtServiceMock.Setup(j => j.CreateToken(user, It.IsAny<string>(), It.IsAny<int>())).Returns("jwt-token");
 
-        var result = _authService.CreateJwt(user);
+        var result = _authService.CreateJwt(user, "user");
 
         Assert.Equal("jwt-token", result);
     }
@@ -89,7 +89,7 @@ public class AuthServiceTests
             .ReturnsAsync("Admin");
         _playerRepoMock.Setup(p => p.GetAsync(discordId))
             .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "AdminUser" });
-        _jwtServiceMock.Setup(j => j.CreateToken(It.IsAny<DiscordUser>(), It.IsAny<int>()))
+        _jwtServiceMock.Setup(j => j.CreateToken(It.IsAny<DiscordUser>(), It.IsAny<string>(), It.IsAny<int>()))
             .Returns("new-jwt");
 
         var result = await _authService.RefreshToken(discordId);

@@ -35,7 +35,7 @@ public class JwtServiceTests
         var user = new DiscordUser { Id = 12345, Name = "TestUser" };
 
         // Act
-        var token = _jwtService.CreateToken(user);
+        var token = _jwtService.CreateToken(user, "user");
 
         // Assert
         Assert.NotNull(token);
@@ -49,7 +49,7 @@ public class JwtServiceTests
         var user = new DiscordUser { Id = 99999, Name = "TestUser" };
 
         // Act
-        var token = _jwtService.CreateToken(user);
+        var token = _jwtService.CreateToken(user, "user");
         var claims = _jwtService.ReadJsonWebToken(token);
 
         // Assert
@@ -61,7 +61,7 @@ public class JwtServiceTests
     {
         // Arrange
         var user = new DiscordUser { Id = 12345, Name = "TestUser" };
-        var token = _jwtService.CreateToken(user, expireMinutes: 15);
+        var token = _jwtService.CreateToken(user, "user", expireMinutes: 15);
 
         // Act
         var result = _jwtService.ValidateToken(token);
@@ -77,7 +77,7 @@ public class JwtServiceTests
     {
         // Arrange - create token that expires immediately (negative minutes = already expired)
         var user = new DiscordUser { Id = 12345, Name = "TestUser" };
-        var token = _jwtService.CreateToken(user, expireMinutes: -1);
+        var token = _jwtService.CreateToken(user, "user", expireMinutes: -1);
 
         // Act
         var result = _jwtService.ValidateToken(token);
@@ -103,7 +103,7 @@ public class JwtServiceTests
     {
         // Arrange
         var user = new DiscordUser { Id = 777777, Name = "TestUser" };
-        var token = _jwtService.CreateToken(user);
+        var token = _jwtService.CreateToken(user, "user");
 
         // Act
         var claims = _jwtService.ReadJsonWebToken(token);

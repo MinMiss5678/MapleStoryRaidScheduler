@@ -18,11 +18,12 @@ public class JwtService : IJwtService
         _jwtOptions = jwtOptions.Value;
     }
 
-    public string CreateToken(DiscordUser discordUser, int expireMinutes = 15)
+    public string CreateToken(DiscordUser discordUser, string role, int expireMinutes = 15)
     {
         var claims = new List<Claim>
         {
             new Claim("discordId", discordUser.Id.ToString()),
+            new Claim(ClaimTypes.Role, role),
         };
 
         var expiration = DateTime.UtcNow.AddMinutes(expireMinutes);
@@ -71,6 +72,7 @@ public class JwtService : IJwtService
             return new JwtValidationResult()
             {
                 DiscordId = Convert.ToUInt64(validateToken.Claims.FirstOrDefault(c => c.Key == "discordId").Value),
+                Role = validateToken.Claims.FirstOrDefault(c => c.Key == ClaimTypes.Role).Value?.ToString(),
                 IsValid = validateToken.IsValid,
                 Exception = validateToken.Exception
             };

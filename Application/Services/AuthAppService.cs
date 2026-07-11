@@ -73,7 +73,7 @@ public class AuthAppService : IAuthAppService
         }
         else
         {
-            var jwt = _authService.CreateJwt(user);
+            var jwt = _authService.CreateJwt(user, role);
             return new LoginResult
             {
                 IsSuccess = true,

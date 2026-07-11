@@ -81,7 +81,7 @@ public class AuthAppServiceTests
         _roleMappingRepositoryMock
             .Setup(x => x.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
             .ReturnsAsync("User");
-        _authServiceMock.Setup(x => x.CreateJwt(user))
+        _authServiceMock.Setup(x => x.CreateJwt(user, It.IsAny<string>()))
             .Returns(jwtToken);
 
         // Act
