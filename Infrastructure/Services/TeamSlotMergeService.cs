@@ -100,10 +100,8 @@ public class TeamSlotMergeService : ITeamSlotMergeService
                     if (allMembers.GroupBy(x => x.DiscordId).Any(g => g.Count() > 1))
                         continue;
 
-                    // ❗避免動到手動隊伍
-                    if (teamA.Characters.Any(c => c.IsManual) ||
-                        teamB.Characters.Any(c => c.IsManual))
-                        continue;
+                    // 手動成員（補位/微調）可參與合併：合併只會把兩隊併成一隊、不會拆散，
+                    // 認識的人仍在同隊。範本比對仍嚴格，湊不齊會在下方 TryMatchTemplate 回 null 取消。
 
                     var period = await _periodQuery.GetByIdAsync(periodId);
                     if (period == null) continue;

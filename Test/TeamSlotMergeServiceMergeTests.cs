@@ -78,15 +78,16 @@ public class TeamSlotMergeServiceMergeTests
     }
 
     [Fact]
-    public async Task MergeTeamsAsync_ShouldSkipMerge_WhenTeamsHaveManualMembers()
+    public async Task MergeTeamsAsync_ShouldMergeTeams_EvenWithManualMembers()
     {
-        // Arrange
+        // 手動成員（補位/微調）不再擋合併：合併只會併隊、不會拆散認識的人
+        ulong discordId1 = 111, discordId2 = 222;
         var teamA = new TeamSlot
         {
             Id = 1, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c1", DiscordId = 111, IsManual = true } // manual!
+                new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, IsManual = true } // manual!
             }
         };
         var teamB = new TeamSlot
@@ -94,8 +95,15 @@ public class TeamSlotMergeServiceMergeTests
             Id = 2, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c2", DiscordId = 222 }
+                new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, IsManual = false }
             }
+        };
+
+        var period = new Period
+        {
+            Id = 1,
+            StartDate = new DateTimeOffset(2026, 4, 2, 0, 0, 0, TimeSpan.Zero), // 週四
+            EndDate = new DateTimeOffset(2026, 4, 8, 23, 59, 59, TimeSpan.Zero)
         };
 
         _teamSlotRepositoryMock.Setup(r => r.GetIncompleteTeamsAsync(5, 1))
@@ -103,9 +111,16 @@ public class TeamSlotMergeServiceMergeTests
         _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(5)).ReturnsAsync(new List<BossTemplate>());
         _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss> { new Boss { Id = 5, RequireMembers = 6 } });
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<JobCategory>());
+        _periodQueryMock.Setup(q => q.GetByIdAsync(1)).ReturnsAsync(period);
+
+        // 兩人皆週四 20:00-22:00 有空 → 有共同時段
         _playerAvailabilityRepositoryMock.Setup(r =>
             r.GetByDiscordIdsAndPeriodIdAsync(It.IsAny<List<ulong>>(), 1))
-            .ReturnsAsync(new List<PlayerAvailability>());
+            .ReturnsAsync(new List<PlayerAvailability>
+            {
+                new PlayerAvailability { DiscordId = discordId1, Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) },
+                new PlayerAvailability { DiscordId = discordId2, Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) }
+            });
 
         var register = new Register
         {
@@ -119,8 +134,10 @@ public class TeamSlotMergeServiceMergeTests
         // Act
         await _mergeService.MergeTeamsAsync(register);
 
-        // Assert - no merge should happen (team A has manual member)
-        _teamSlotRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<TeamSlot>()), Times.Never);
+        // Assert - 合併應發生：手動成員不再擋合併
+        _teamSlotRepositoryMock.Verify(r => r.UpdateAsync(teamA), Times.Once);
+        _teamSlotCharacterRepositoryMock.Verify(r => r.DeleteByTeamSlotIdAsync(teamB.Id), Times.Once);
+        _teamSlotRepositoryMock.Verify(r => r.DeleteAsync(teamB.Id), Times.Once);
     }
 
     [Fact]
