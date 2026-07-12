@@ -265,4 +265,78 @@ public class TeamSlotServiceUpdateTests
         // Assert
         _teamSlotCharacterRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<TeamSlotCharacter>()), Times.Once);
     }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldThrow_WhenAddingDuplicateCharacterToTeam()
+    {
+        // 隊伍已有 c1，再新增 c1 → 應擋下重複加入（admin 也擋）
+        int teamSlotId = 1;
+        var existingTeamSlot = new TeamSlot
+        {
+            Id = teamSlotId,
+            Characters = new List<TeamSlotCharacter>
+            {
+                new TeamSlotCharacter { Id = 1, CharacterId = "c1", DiscordId = 111 }
+            }
+        };
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
+
+        var request = new TeamSlotUpdateRequest
+        {
+            DeleteTeamSlotIds = new List<int>(),
+            TeamSlots = new List<TeamSlotUpdateCommand>
+            {
+                new TeamSlotUpdateCommand
+                {
+                    Id = teamSlotId,
+                    DeleteTeamSlotCharacterIds = new List<int>(),
+                    Characters = new List<TeamSlotMemberDto>
+                    {
+                        new TeamSlotMemberDto { Id = null, CharacterId = "c1", DiscordId = 111 } // Id==null → 新增，且 c1 重複
+                    }
+                }
+            }
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 111));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NonAdmin_ShouldThrow_WhenFillingEmptySlotWithOthersCharacter()
+    {
+        // 一般玩家填空位，卻填入「別人的」角色（DiscordId 非本人、非 0）→ 應擋下
+        ulong currentDiscordId = 111;
+        int teamSlotId = 1;
+        int emptySlotId = 5;
+        var existingTeamSlot = new TeamSlot
+        {
+            Id = teamSlotId,
+            Characters = new List<TeamSlotCharacter>
+            {
+                new TeamSlotCharacter { Id = emptySlotId, CharacterId = null, DiscordId = 0 } // 空位
+            }
+        };
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
+
+        var request = new TeamSlotUpdateRequest
+        {
+            DeleteTeamSlotIds = new List<int>(),
+            TeamSlots = new List<TeamSlotUpdateCommand>
+            {
+                new TeamSlotUpdateCommand
+                {
+                    Id = teamSlotId,
+                    DeleteTeamSlotCharacterIds = new List<int>(),
+                    Characters = new List<TeamSlotMemberDto>
+                    {
+                        new TeamSlotMemberDto { Id = emptySlotId, DiscordId = 99999, CharacterId = "cX" }
+                    }
+                }
+            }
+        };
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: currentDiscordId));
+    }
 }

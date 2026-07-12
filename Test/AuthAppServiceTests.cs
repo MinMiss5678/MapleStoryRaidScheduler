@@ -92,4 +92,28 @@ public class AuthAppServiceTests
         Assert.Equal(user.Id, result.DiscordId);
         _playerServiceMock.Verify(x => x.CreateAsync(It.Is<Player>(p => p.DiscordId == user.Id)), Times.Once);
     }
+
+    [Fact]
+    public async Task LoginAsync_WhenRoleCannotResolve_ReturnsFailure()
+    {
+        // Arrange：非既有玩家、Discord 身分組也映射不到系統角色 → 登入失敗、不建 session/jwt
+        var code = "test-code";
+        var user = new DiscordUser { Id = 12345, Name = "user-name" };
+        var token = new DiscordToken { AccessToken = "access-token" };
+
+        _authServiceMock.Setup(x => x.ExchangeCodeAsync(code)).ReturnsAsync((user, token));
+        _discordOAuthClientMock.Setup(x => x.GetUserRolesAsync(user.Id)).ReturnsAsync(new List<string>());
+        _roleMappingRepositoryMock
+            .Setup(x => x.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
+            .ReturnsAsync((string?)null);
+        // _playerServiceMock.GetAsync 預設回 null（非既有玩家）
+
+        // Act
+        var result = await _authAppService.LoginAsync(code);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        _authServiceMock.Verify(x => x.CreateSessionAsync(It.IsAny<ulong>(), It.IsAny<DiscordToken>()), Times.Never);
+        _authServiceMock.Verify(x => x.CreateJwt(It.IsAny<DiscordUser>(), It.IsAny<string>()), Times.Never);
+    }
 }

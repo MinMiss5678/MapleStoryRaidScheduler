@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
@@ -88,6 +89,48 @@ public class SessionServiceTests
         Assert.NotNull(result2);
         // 快取後第二次不再呼叫 DB
         _sessionQueryMock.Verify(q => q.GetAsync("sid-cache"), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAsync_ExpiredSession_RefreshesToken_AndReturnsNewSession()
+    {
+        // 已過期 → 應以 RefreshToken 換新 token、更新 DB、回傳新 session
+        var expired = new Session
+        {
+            DiscordId = 555UL,
+            AccessToken = "old",
+            RefreshToken = "old-refresh",
+            Expiry = DateTimeOffset.UtcNow.AddMinutes(-5)
+        };
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-exp")).ReturnsAsync(expired);
+        _discordClientMock.Setup(c => c.RefreshTokenAsync("old-refresh"))
+            .ReturnsAsync(new DiscordTokenResponse { AccessToken = "new", RefreshToken = "new-refresh", ExpiresIn = 3600 });
+        _sessionRepoMock.Setup(r => r.UpdateAsync(It.IsAny<Session>())).ReturnsAsync(1);
+
+        var result = await _sessionService.GetAsync("sid-exp", "555");
+
+        Assert.NotNull(result);
+        Assert.Equal("new", result.AccessToken);
+        _sessionRepoMock.Verify(r => r.UpdateAsync(It.Is<Session>(s => s.AccessToken == "new")), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAsync_ExpiredSession_RefreshFails_ReturnsNull()
+    {
+        // 已過期但 refresh 失敗（回 null）→ 視為無效 session
+        var expired = new Session
+        {
+            DiscordId = 666UL,
+            AccessToken = "old",
+            RefreshToken = "bad",
+            Expiry = DateTimeOffset.UtcNow.AddMinutes(-5)
+        };
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-exp2")).ReturnsAsync(expired);
+        _discordClientMock.Setup(c => c.RefreshTokenAsync("bad")).ReturnsAsync((DiscordTokenResponse?)null);
+
+        var result = await _sessionService.GetAsync("sid-exp2", "666");
+
+        Assert.Null(result);
     }
 
     [Fact]
