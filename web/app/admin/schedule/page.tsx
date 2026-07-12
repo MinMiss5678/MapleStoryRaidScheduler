@@ -78,12 +78,21 @@ export default function RaidSchedulerPage() {
 
         try {
             const data = await scheduleService.autoSchedule(selectedBoss.id, selectedTemplate);
-            // 在自動排程時，也保留手動新增的隊伍
+            // 重排回傳：保留隊（正 Id，含 Admin/補位隊，已自動補位）+ 新隊（負 Id）。
             setTeamSlots(prev => {
-                const tempSlots = prev.filter(t => t.id < 0 && t.bossId === selectedBoss?.id);
-                return [...data, ...tempSlots];
+                // 目前已存檔、但不在保留集內的舊自動隊 → 標記刪除（全替換）
+                const keptIds = new Set(data.filter(t => t.id > 0).map(t => t.id));
+                const toDelete = prev
+                    .filter(t => t.id > 0 && t.bossId === selectedBoss.id && !keptIds.has(t.id))
+                    .map(t => t.id);
+                if (toDelete.length > 0) {
+                    setDeleteTeamSlotIds(prevDel => Array.from(new Set([...prevDel, ...toDelete])));
+                }
+                // 保留尚未存檔的手動新增隊
+                const unsavedManual = prev.filter(t => t.id < 0 && t.bossId === selectedBoss.id);
+                return [...data, ...unsavedManual];
             });
-            toast.success("自動排團完成");
+            toast.success("重排完成（已保留補位／管理員隊伍）");
         } catch {
             toast.error("自動排團失敗");
         }

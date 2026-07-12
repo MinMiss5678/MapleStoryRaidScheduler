@@ -15,6 +15,7 @@ public class ScheduleServiceTests
     private readonly Mock<IPlayerRegisterQuery> _playerRegisterQueryMock;
     private readonly Mock<IBossRepository> _bossRepositoryMock;
     private readonly Mock<IJobCategoryRepository> _jobCategoryRepositoryMock;
+    private readonly Mock<ITeamSlotRepository> _teamSlotRepositoryMock;
 
     public ScheduleServiceTests()
     {
@@ -22,12 +23,19 @@ public class ScheduleServiceTests
         _playerRegisterQueryMock = new Mock<IPlayerRegisterQuery>();
         _bossRepositoryMock = new Mock<IBossRepository>();
         _jobCategoryRepositoryMock = new Mock<IJobCategoryRepository>();
+        _teamSlotRepositoryMock = new Mock<ITeamSlotRepository>();
+
+        _teamSlotRepositoryMock.Setup(r => r.GetByPeriodIdAsync(It.IsAny<int>()))
+            .ReturnsAsync(new List<TeamSlot>());
+        _teamSlotRepositoryMock.Setup(r => r.GetTemporaryByPeriodIdAsync(It.IsAny<int>()))
+            .ReturnsAsync(new List<TeamSlot>());
 
         _scheduleService = new ScheduleService(
             _periodQueryMock.Object,
             _playerRegisterQueryMock.Object,
             _bossRepositoryMock.Object,
-            _jobCategoryRepositoryMock.Object);
+            _jobCategoryRepositoryMock.Object,
+            _teamSlotRepositoryMock.Object);
     }
 
     [Theory]

@@ -12,17 +12,20 @@ public class ScheduleService : IScheduleService
     private readonly IPlayerRegisterQuery _playerRegisterQuery;
     private readonly IBossRepository _bossRepository;
     private readonly IJobCategoryRepository _jobCategoryRepository;
+    private readonly ITeamSlotRepository _teamSlotRepository;
 
     public ScheduleService(
-        IPeriodQuery periodQuery, 
+        IPeriodQuery periodQuery,
         IPlayerRegisterQuery playerRegisterQuery,
         IBossRepository bossRepository,
-        IJobCategoryRepository jobCategoryRepository)
+        IJobCategoryRepository jobCategoryRepository,
+        ITeamSlotRepository teamSlotRepository)
     {
         _periodQuery = periodQuery;
         _playerRegisterQuery = playerRegisterQuery;
         _bossRepository = bossRepository;
         _jobCategoryRepository = jobCategoryRepository;
+        _teamSlotRepository = teamSlotRepository;
     }
 
     public async Task<IEnumerable<TeamSlot>> AutoScheduleWithTemplateAsync(int bossId, int templateId)
@@ -32,11 +35,56 @@ public class ScheduleService : IScheduleService
 
         var boss = await _bossRepository.GetByIdAsync(bossId);
         var roundConsumption = boss?.RoundConsumption ?? 1;
+        var requireMembers = boss?.RequireMembers ?? 6;
 
-        var characterRegisters = await _playerRegisterQuery.GetByNowPeriodIdAsync(bossId);
+        var characterRegisters = (await _playerRegisterQuery.GetByNowPeriodIdAsync(bossId)).ToList();
         var period = await _periodQuery.GetByNowAsync();
         if (period == null) return [];
+
+        var jobCategories = (await _jobCategoryRepository.GetAllAsync())
+            .GroupBy(x => x.CategoryName)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.JobName).ToHashSet());
+
         var schedules = new List<TeamSlot>();
+        var scheduledPlayersByDay = new Dictionary<int, HashSet<int>>();
+
+        // === 保留隊：Admin 建立的隊 或 含 IsManual 成員的隊，重排時整隊保留、只自動補滿空位 ===
+        var autoTeams = (await _teamSlotRepository.GetByPeriodIdAsync(period.Id))
+            .Where(t => t.BossId == bossId).ToList();
+        var adminTeams = (await _teamSlotRepository.GetTemporaryByPeriodIdAsync(period.Id))
+            .Where(t => t.BossId == bossId).ToList();
+        var protectedTeams = adminTeams
+            .Concat(autoTeams.Where(t => t.Characters.Any(c => c.IsManual)))
+            .ToList();
+
+        // 角色 → 報名資料對照（供扣場數 / 去重）
+        var regByCharId = characterRegisters
+            .Where(r => r.CharacterId != null)
+            .GroupBy(r => r.CharacterId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        // 先扣除保留隊既有成員占用的場數，並標記當日已排（避免重排重複指派同一角色）
+        foreach (var pt in protectedTeams)
+        {
+            var day = TaiwanWeekday(pt.SlotDateTime);
+            if (!scheduledPlayersByDay.ContainsKey(day)) scheduledPlayersByDay[day] = new HashSet<int>();
+            foreach (var m in pt.Characters.Where(c => c.CharacterId != null))
+            {
+                if (regByCharId.TryGetValue(m.CharacterId!, out var reg))
+                {
+                    reg.Rounds -= roundConsumption;
+                    scheduledPlayersByDay[day].Add(reg.Id);
+                }
+            }
+        }
+
+        // 再自動補滿保留隊空位（嚴格職業比對；補入者 IsManual=false，之後重排仍可調整）
+        foreach (var pt in protectedTeams)
+        {
+            FillTeamFromPool(pt, template, characterRegisters, jobCategories,
+                scheduledPlayersByDay, requireMembers, roundConsumption);
+            schedules.Add(pt);
+        }
 
         // 1. 取得所有報名的時段組合 (Day, StartTime)
         var allDaySlots = characterRegisters
@@ -45,13 +93,9 @@ public class ScheduleService : IScheduleService
             .OrderBy(x => x.Day).ThenBy(x => x.Slot)
             .ToList();
 
-        var scheduledPlayersByDay = new Dictionary<int, HashSet<int>>();
         var teamSlotId = 1;
 
-        // 2. 遍歷每個時段嘗試排團
-        var jobCategories = (await _jobCategoryRepository.GetAllAsync())
-            .GroupBy(x => x.CategoryName)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.JobName).ToHashSet());
+        // 2. 遍歷每個時段嘗試排團（重排剩餘池 → 新隊）
 
         foreach (var group in allDaySlots)
         {
@@ -158,6 +202,82 @@ public class ScheduleService : IScheduleService
         }
 
         return schedules;
+    }
+
+    // 台灣時區的星期（0=週日 .. 6=週六），與 PlayerAvailability.Weekday 慣例一致
+    private static int TaiwanWeekday(DateTimeOffset dt)
+        => (int)dt.ToOffset(TimeSpan.FromHours(8)).DayOfWeek;
+
+    /// <summary>
+    /// 依範本把保留隊的空位用池中符合職業的角色補滿（嚴格比對，湊不齊就留空）。
+    /// 補入者標記 IsManual=false（重排自動填），並扣場數、標記當日已排。
+    /// </summary>
+    private void FillTeamFromPool(
+        TeamSlot team,
+        BossTemplate template,
+        List<PlayerRegisterSchedule> pool,
+        Dictionary<string, HashSet<string>> jobCategories,
+        Dictionary<int, HashSet<int>> scheduledPlayersByDay,
+        int requireMembers,
+        int roundConsumption)
+    {
+        var current = team.Characters.Where(c => c.CharacterId != null).ToList();
+        if (current.Count >= requireMembers) return;
+
+        var day = TaiwanWeekday(team.SlotDateTime);
+        var twTime = team.SlotDateTime.ToOffset(TimeSpan.FromHours(8));
+        var slot = TimeOnly.FromDateTime(twTime.DateTime);
+        if (!scheduledPlayersByDay.ContainsKey(day)) scheduledPlayersByDay[day] = new HashSet<int>();
+        var scheduledToday = scheduledPlayersByDay[day];
+
+        // 現有成員的職業，用來扣掉已滿足的範本需求
+        var remainingJobs = current.Select(c => c.Job).ToList();
+
+        foreach (var req in template.Requirements.OrderBy(r => r.Priority))
+        {
+            int fulfilled = 0;
+            for (int i = remainingJobs.Count - 1; i >= 0 && fulfilled < req.Count; i--)
+            {
+                if (IsInJobCategory(remainingJobs[i], req.JobCategory, jobCategories))
+                {
+                    fulfilled++;
+                    remainingJobs.RemoveAt(i);
+                }
+            }
+
+            for (int k = fulfilled; k < req.Count; k++)
+            {
+                if (current.Count >= requireMembers) return;
+
+                var cand = pool.FirstOrDefault(c =>
+                    c.Rounds >= roundConsumption
+                    && !scheduledToday.Contains(c.Id)
+                    && IsInJobCategory(c.Job, req.JobCategory, jobCategories)
+                    && (!req.MinLevel.HasValue || c.Level >= req.MinLevel.Value)
+                    && (!req.MinAttribute.HasValue || c.AttackPower >= req.MinAttribute.Value)
+                    && c.Availabilities.Any(a => a.Weekday == day && a.StartTime <= slot && a.EndTime > slot));
+
+                if (cand == null) break; // 該職業湊不齊 → 留空（嚴格比對，不放寬）
+
+                var member = new TeamSlotCharacter
+                {
+                    TeamSlotId = team.Id,
+                    DiscordId = cand.DiscordId,
+                    DiscordName = cand.DiscordName,
+                    CharacterId = cand.CharacterId,
+                    CharacterName = cand.CharacterName,
+                    Job = cand.Job,
+                    AttackPower = cand.AttackPower,
+                    Level = cand.Level,
+                    Rounds = cand.Rounds,
+                    IsManual = false
+                };
+                team.Characters.Add(member);
+                current.Add(member);
+                cand.Rounds -= roundConsumption;
+                scheduledToday.Add(cand.Id);
+            }
+        }
     }
 
     private bool IsInJobCategory(string job, string category, Dictionary<string, HashSet<string>> jobCategories)
