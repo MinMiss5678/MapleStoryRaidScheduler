@@ -30,7 +30,7 @@ export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, 
         const updatedTeam = {
             ...teamSlot,
             characters: teamSlot.characters.filter((c) => c.id !== id),
-            deleteTeamSlotCharacterIds: !teamSlot.isTemporary
+            deleteTeamSlotCharacterIds: teamSlot.id > 0
                 ? [...(teamSlot.deleteTeamSlotCharacterIds ?? []), id]
                 : (teamSlot.deleteTeamSlotCharacterIds ?? [])
         };
@@ -48,7 +48,7 @@ export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, 
                         <h3 className="text-lg font-bold text-blue-600 dark:text-blue-400">
                             {formatDateTime(teamSlot.slotDateTime)}
                         </h3>
-                        {teamSlot.isTemporary && (
+                        {teamSlot.id < 0 && (
                             <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded font-bold uppercase tracking-wider">
                                 未儲存
                             </span>

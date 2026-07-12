@@ -100,7 +100,8 @@ public class ScheduleServiceAutoScheduleTests
         Assert.Equal(2, result[0].Characters.Count);
         Assert.Equal(bossId, result[0].BossId);
         Assert.Equal(templateId, result[0].TemplateId);
-        Assert.True(result[0].IsTemporary);
+        Assert.Equal(TeamSlotSource.Admin, result[0].Source);
+        Assert.True(result[0].Id <= 0); // 新隊以負 Id 標記，存檔時走 CREATE
     }
 
     [Fact]

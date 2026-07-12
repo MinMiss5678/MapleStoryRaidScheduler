@@ -20,8 +20,7 @@ public class TeamSlotRepository : ITeamSlotRepository
         var sql = new InsertBuilder<TeamSlotDbModel>();
         sql.Set(x => x.BossId, teamSlot.BossId)
             .Set(x => x.SlotDateTime, teamSlot.SlotDateTime.ToUniversalTime())
-            .Set(x => x.IsTemporary, teamSlot.IsTemporary)
-            .Set(x => x.IsPublished, teamSlot.IsPublished)
+            .Set(x => x.Source, teamSlot.Source)
             .Set(x => x.TemplateId, teamSlot.TemplateId)
             .ReturnId();
 
@@ -40,7 +39,7 @@ public class TeamSlotRepository : ITeamSlotRepository
     public async Task<TeamSlot?> GetByIdAsync(int id)
     {
         var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.IsTemporary, x.IsPublished, x.TemplateId })
+            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId })
             .From<TeamSlotDbModel>()
             .Where<TeamSlotDbModel>(x => x.Id == id);
 
@@ -54,8 +53,7 @@ public class TeamSlotRepository : ITeamSlotRepository
             Id = dbModel.Id,
             BossId = dbModel.BossId,
             SlotDateTime = dbModel.SlotDateTime,
-            IsTemporary = dbModel.IsTemporary,
-            IsPublished = dbModel.IsPublished,
+            Source = dbModel.Source,
             TemplateId = dbModel.TemplateId,
             Characters = characters.ToList()
         };
@@ -71,10 +69,10 @@ public class TeamSlotRepository : ITeamSlotRepository
         if (period == null) return [];
 
         var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.IsTemporary, x.IsPublished, x.TemplateId })
+            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId })
             .From<TeamSlotDbModel>()
             .Where<TeamSlotDbModel>(x => x.SlotDateTime >= period.StartDate && x.SlotDateTime <= period.EndDate)
-            .Where<TeamSlotDbModel>(x => x.IsTemporary == false);
+            .Where<TeamSlotDbModel>(x => x.Source == TeamSlotSource.Auto);
 
         var slots = (await _dbContext.QueryAsync<TeamSlotDbModel>(sql)).ToList();
         if (!slots.Any()) return [];
@@ -88,8 +86,7 @@ public class TeamSlotRepository : ITeamSlotRepository
             Id = s.Id,
             BossId = s.BossId,
             SlotDateTime = s.SlotDateTime,
-            IsTemporary = s.IsTemporary,
-            IsPublished = s.IsPublished,
+            Source = s.Source,
             TemplateId = s.TemplateId,
             Characters = charactersGrouped.GetValueOrDefault(s.Id, new List<TeamSlotCharacter>())
         });
@@ -105,11 +102,11 @@ public class TeamSlotRepository : ITeamSlotRepository
         if (period == null) return [];
 
         var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.IsTemporary, x.IsPublished, x.TemplateId })
+            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId })
             .From<TeamSlotDbModel>()
             .Where<TeamSlotDbModel>(x => x.BossId == bossId)
             .Where<TeamSlotDbModel>(x => x.SlotDateTime >= period.StartDate && x.SlotDateTime <= period.EndDate)
-            .Where<TeamSlotDbModel>(x => x.IsTemporary == false);
+            .Where<TeamSlotDbModel>(x => x.Source == TeamSlotSource.Auto);
 
         var slots = (await _dbContext.QueryAsync<TeamSlotDbModel>(sql)).ToList();
         if (!slots.Any()) return [];
@@ -130,8 +127,7 @@ public class TeamSlotRepository : ITeamSlotRepository
                     Id = s.Id,
                     BossId = s.BossId,
                     SlotDateTime = s.SlotDateTime,
-                    IsTemporary = s.IsTemporary,
-                    IsPublished = s.IsPublished,
+                    Source = s.Source,
                     TemplateId = s.TemplateId,
                     Characters = characters
                 });
@@ -150,10 +146,10 @@ public class TeamSlotRepository : ITeamSlotRepository
         if (period == null) return [];
 
         var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.IsTemporary, x.IsPublished, x.TemplateId })
+            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId })
             .From<TeamSlotDbModel>()
             .Where<TeamSlotDbModel>(x => x.SlotDateTime >= period.StartDate && x.SlotDateTime <= period.EndDate)
-            .Where<TeamSlotDbModel>(x => x.IsTemporary == true);
+            .Where<TeamSlotDbModel>(x => x.Source == TeamSlotSource.Admin);
 
         var slots = (await _dbContext.QueryAsync<TeamSlotDbModel>(sql)).ToList();
         if (!slots.Any()) return [];
@@ -167,8 +163,7 @@ public class TeamSlotRepository : ITeamSlotRepository
             Id = s.Id,
             BossId = s.BossId,
             SlotDateTime = s.SlotDateTime,
-            IsTemporary = s.IsTemporary,
-            IsPublished = s.IsPublished,
+            Source = s.Source,
             TemplateId = s.TemplateId,
             Characters = charactersGrouped.GetValueOrDefault(s.Id, new List<TeamSlotCharacter>())
         });
@@ -179,8 +174,7 @@ public class TeamSlotRepository : ITeamSlotRepository
         var sql = new UpdateBuilder<TeamSlotDbModel>();
         sql.Set(x => x.BossId, teamSlot.BossId)
             .Set(x => x.SlotDateTime, teamSlot.SlotDateTime)
-            .Set(x => x.IsTemporary, teamSlot.IsTemporary)
-            .Set(x => x.IsPublished, teamSlot.IsPublished)
+            .Set(x => x.Source, teamSlot.Source)
             .Set(x => x.TemplateId, teamSlot.TemplateId)
             .Where(x => x.Id == teamSlot.Id);
 

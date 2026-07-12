@@ -41,7 +41,7 @@ export default function RaidSchedulerPage() {
                 const raw = await scheduleService.getTeamSlots(selectedBoss.id);
                 const data = raw.map(t => ({ ...t, deleteTeamSlotCharacterIds: t.deleteTeamSlotCharacterIds ?? [] }));
                 setTeamSlots(prev => {
-                    const tempSlots = prev.filter(t => t.isTemporary && t.bossId === selectedBoss.id);
+                    const tempSlots = prev.filter(t => t.id < 0 && t.bossId === selectedBoss.id);
                     const allSlots = [...data, ...tempSlots];
                     setOriginalTeamSlots(JSON.stringify(data));
                     return allSlots;
@@ -80,7 +80,7 @@ export default function RaidSchedulerPage() {
             const data = await scheduleService.autoSchedule(selectedBoss.id, selectedTemplate);
             // 在自動排程時，也保留手動新增的隊伍
             setTeamSlots(prev => {
-                const tempSlots = prev.filter(t => t.isTemporary && t.bossId === selectedBoss?.id);
+                const tempSlots = prev.filter(t => t.id < 0 && t.bossId === selectedBoss?.id);
                 return [...data, ...tempSlots];
             });
             toast.success("自動排團完成");
@@ -104,7 +104,7 @@ export default function RaidSchedulerPage() {
             slotDateTime: slotDate,
             characters: [],
             deleteTeamSlotCharacterIds: [],
-            isTemporary: true,
+            source: "admin",   // 管理員手動開團
         };
 
         setTeamSlots(prev => [...prev, newTeamSlot]);
@@ -136,7 +136,7 @@ export default function RaidSchedulerPage() {
     };
 
     const onTeamSlotDelete = (teamSlot: TeamSlot) => {
-        if (!teamSlot.isTemporary) {
+        if (teamSlot.id > 0) {
             setDeleteTeamSlotIds(prev => [...prev, teamSlot.id]);
         }
         setTeamSlots((prev) => prev.filter((t) => t.id !== teamSlot.id));
@@ -149,14 +149,15 @@ export default function RaidSchedulerPage() {
 
         const updatedTeam = {
             ...teamSlot,
-            characters: [...teamSlot.characters, character],
+            // 管理員手動加人＝人工調整，重排時受保護
+            characters: [...teamSlot.characters, { ...character, isManual: true }],
         };
         onTeamSlotUpdate(updatedTeam);
         toast.success(`已將 ${character.characterName} 加入隊伍`);
     };
 
-    const hasChanges = originalTeamSlots !== JSON.stringify(teamSlots.filter(t => !t.isTemporary)) || 
-                      teamSlots.some(t => t.isTemporary) || 
+    const hasChanges = originalTeamSlots !== JSON.stringify(teamSlots.filter(t => t.id > 0)) ||
+                      teamSlots.some(t => t.id < 0) ||
                       deleteTeamSlotIds.length > 0;
 
     return (
@@ -331,7 +332,7 @@ export default function RaidSchedulerPage() {
                 )}
                 <button
                     onClick={handleConfirmSchedule}
-                    disabled={!hasChanges || (teamSlots.length === 0 && deleteTeamSlotIds.length === 0) || (teamSlots.length > 0 && teamSlots.every(t => t.characters.length === 0 && !t.isTemporary))}
+                    disabled={!hasChanges || (teamSlots.length === 0 && deleteTeamSlotIds.length === 0) || (teamSlots.length > 0 && teamSlots.every(t => t.characters.length === 0 && t.id > 0))}
                     className="flex items-center gap-2 px-6 py-4 bg-green-600 text-white rounded-full hover:bg-green-700 transition-all shadow-xl hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 group"
                 >
                     <Save size={24} className="group-hover:rotate-12 transition-transform" />

@@ -10,7 +10,6 @@ public class TeamSlotDbModel
     public int Id { get; set; }
     public int BossId { get; set; }
     public DateTimeOffset SlotDateTime { get; set; }
-    public bool IsTemporary { get; set; }
-    public bool IsPublished { get; set; }
+    public string Source { get; set; } = "auto";
     public int? TemplateId { get; set; }
 }

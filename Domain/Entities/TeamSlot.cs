@@ -8,7 +8,6 @@ public class TeamSlot
     public string? BossName { get; set; }
     public DateTimeOffset SlotDateTime { get; set; }
     public List<TeamSlotCharacter> Characters { get; set; } = new();
-    public bool IsTemporary { get; set; }
-    public bool IsPublished { get; set; } // 管理員發佈後玩家才能補位
+    public string Source { get; set; } = TeamSlotSource.Auto;        // auto | admin，見 TeamSlotSource
     public int? TemplateId { get; set; }
 }

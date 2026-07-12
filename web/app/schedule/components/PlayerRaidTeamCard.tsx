@@ -105,7 +105,8 @@ export default function PlayerRaidTeamCard({
             discordName: character.discordName ?? "",
             job: character.job,
             attackPower: character.attackPower,
-            rounds: character.rounds ?? 0
+            rounds: character.rounds ?? 0,
+            isManual: true   // 玩家補位＝人工調整，重排時受保護
         };
 
         const isValid = validateAddCharacter(teamSlot, teamSlotCharacter, allTeamSlots, requireMembers);

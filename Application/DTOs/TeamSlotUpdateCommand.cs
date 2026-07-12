@@ -8,7 +8,6 @@ public class TeamSlotUpdateCommand
     public DateTimeOffset SlotDateTime { get; set; }
     public List<TeamSlotMemberDto> Characters { get; set; } = new();
     public List<int> DeleteTeamSlotCharacterIds { get; set; } = new();
-    public bool IsTemporary { get; set; }
-    public bool IsPublished { get; set; }
+    public string Source { get; set; } = Domain.Entities.TeamSlotSource.Auto;
     public int? TemplateId { get; set; }
 }

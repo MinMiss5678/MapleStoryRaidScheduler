@@ -87,7 +87,8 @@ public class TeamSlotService : ITeamSlotService
 
         foreach (var teamSlot in teamSlotUpdateRequest.TeamSlots)
         {
-            if (teamSlot.IsTemporary)
+            // 負 Id / 0 = 尚未存檔的新隊 → CREATE；正 Id = 既有隊 → UPDATE
+            if (teamSlot.Id <= 0)
             {
                 if (!isAdmin)
                     throw new UnauthorizedAccessException("只有管理員可以建立新隊伍。");
@@ -97,8 +98,7 @@ public class TeamSlotService : ITeamSlotService
                     BossId = teamSlot.BossId,
                     PeriodId = teamSlot.PeriodId,
                     SlotDateTime = teamSlot.SlotDateTime,
-                    IsTemporary = teamSlot.IsTemporary,
-                    IsPublished = teamSlot.IsPublished,
+                    Source = teamSlot.Source,
                     TemplateId = teamSlot.TemplateId
                 };
                 var teamSlotId = await _teamSlotRepository.CreateAsync(entity);
@@ -146,6 +146,7 @@ public class TeamSlotService : ITeamSlotService
 
                     var newChar = MapToEntity(member);
                     newChar.TeamSlotId = teamSlot.Id;
+                    // IsManual 由來源端顯式決定（玩家補位/管理員微調=true，重排自動填=false），後端不強制。
                     await _teamSlotCharacterRepository.CreateAsync(newChar);
                 }
                 else

@@ -116,8 +116,7 @@ public class DomainEntitiesTests
             BossName = "Zakum",
             SlotDateTime = now,
             TemplateId = 5,
-            IsTemporary = true,
-            IsPublished = false
+            Source = TeamSlotSource.Admin
         };
 
         // Assert
@@ -126,8 +125,7 @@ public class DomainEntitiesTests
         Assert.Equal("Zakum", teamSlot.BossName);
         Assert.Equal(now, teamSlot.SlotDateTime);
         Assert.Equal(5, teamSlot.TemplateId);
-        Assert.True(teamSlot.IsTemporary);
-        Assert.False(teamSlot.IsPublished);
+        Assert.Equal(TeamSlotSource.Admin, teamSlot.Source);
         Assert.NotNull(teamSlot.Characters);
     }
 

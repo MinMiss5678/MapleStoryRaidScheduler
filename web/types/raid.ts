@@ -18,9 +18,9 @@ export type TeamSlot = {
     slotDateTime: Date;
     characters: TeamSlotCharacter[];
     deleteTeamSlotCharacterIds?: number[]; // 前端暫存，不在 API 回應中
-    isTemporary?: boolean;
-    isPublished?: boolean;
+    source?: string;   // "auto" | "admin"，見後端 TeamSlotSource
     templateId?: number;
+    // 註：尚未存檔的新隊以 id < 0 標記（存檔時走 CREATE）
 };
 
 // Character 已移至 character.ts

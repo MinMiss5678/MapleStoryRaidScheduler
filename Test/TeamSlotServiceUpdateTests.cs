@@ -85,8 +85,7 @@ public class TeamSlotServiceUpdateTests
                     BossId = 1,
                     PeriodId = 1,
                     SlotDateTime = DateTimeOffset.UtcNow,
-                    IsTemporary = true,
-                    IsPublished = false,
+                    Source = TeamSlotSource.Admin,
                     Characters = new List<TeamSlotMemberDto> { character },
                     DeleteTeamSlotCharacterIds = new List<int>()
                 }
@@ -113,7 +112,7 @@ public class TeamSlotServiceUpdateTests
             {
                 new TeamSlotUpdateCommand
                 {
-                    IsTemporary = true,
+                    Source = TeamSlotSource.Admin,
                     Characters = new List<TeamSlotMemberDto>(),
                     DeleteTeamSlotCharacterIds = new List<int>()
                 }
@@ -139,7 +138,7 @@ public class TeamSlotServiceUpdateTests
                 new TeamSlotUpdateCommand
                 {
                     Id = 99,
-                    IsTemporary = false,
+                    Source = TeamSlotSource.Auto,
                     Characters = new List<TeamSlotMemberDto>(),
                     DeleteTeamSlotCharacterIds = new List<int>()
                 }
@@ -177,7 +176,7 @@ public class TeamSlotServiceUpdateTests
                 new TeamSlotUpdateCommand
                 {
                     Id = teamSlotId,
-                    IsTemporary = false,
+                    Source = TeamSlotSource.Auto,
                     DeleteTeamSlotCharacterIds = new List<int> { charSlotId },
                     Characters = new List<TeamSlotMemberDto>()
                 }
@@ -212,7 +211,7 @@ public class TeamSlotServiceUpdateTests
                 new TeamSlotUpdateCommand
                 {
                     Id = teamSlotId,
-                    IsTemporary = false,
+                    Source = TeamSlotSource.Auto,
                     DeleteTeamSlotCharacterIds = new List<int>(),
                     // Id == null → new character, but DiscordId != currentDiscordId
                     Characters = new List<TeamSlotMemberDto>
@@ -253,7 +252,7 @@ public class TeamSlotServiceUpdateTests
                 new TeamSlotUpdateCommand
                 {
                     Id = teamSlotId,
-                    IsTemporary = false,
+                    Source = TeamSlotSource.Auto,
                     DeleteTeamSlotCharacterIds = new List<int>(),
                     Characters = new List<TeamSlotMemberDto> { updatedChar }
                 }

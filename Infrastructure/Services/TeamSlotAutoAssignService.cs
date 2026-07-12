@@ -130,8 +130,7 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
         {
             BossId = cr.BossId,
             SlotDateTime = new DateTimeOffset(targetDateTime, TimeSpan.FromHours(8)).ToOffset(TimeSpan.Zero),
-            IsTemporary = false,
-            IsPublished = true,
+            Source = TeamSlotSource.Auto,   // 玩家報名觸發的系統自動隊
         };
 
         var teamSlotId = await _teamSlotRepository.CreateAsync(teamSlot);

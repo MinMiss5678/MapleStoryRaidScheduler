@@ -8,7 +8,6 @@ public class TeamSlotDto
     public string? BossName { get; set; }
     public DateTimeOffset SlotDateTime { get; set; }
     public List<TeamSlotMemberDto> Characters { get; set; } = new();
-    public bool IsTemporary { get; set; }
-    public bool IsPublished { get; set; }
+    public string Source { get; set; } = Domain.Entities.TeamSlotSource.Auto;
     public int? TemplateId { get; set; }
 }

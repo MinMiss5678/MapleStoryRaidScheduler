@@ -119,7 +119,8 @@ public class ScheduleService : IScheduleService
                         var slotDateTime = GetDateTimeFromPeriod(period.StartDate, period.EndDate, group.Day, group.Slot);
                         schedules.Add(new TeamSlot()
                         {
-                            Id = teamSlotId++,
+                            // 負 Id 代表尚未存檔的新隊，存檔時走 CREATE（見 TeamSlotService.UpdateAsync）
+                            Id = -(teamSlotId++),
                             SlotDateTime = slotDateTime,
                             BossId = bossId,
                             TemplateId = templateId,
@@ -134,7 +135,7 @@ public class ScheduleService : IScheduleService
                                 Level = x.Level,
                                 Rounds = x.Rounds
                             }).ToList(),
-                            IsTemporary = true
+                            Source = TeamSlotSource.Admin   // 批次重排產生
                         });
 
                         // 更新剩餘次數與已排團標記
