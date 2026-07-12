@@ -223,12 +223,14 @@ flowchart TD
 
 手動補位的成員標記 `IsManual = true`，批次重新分配時跳過含 `IsManual` 成員的隊伍，防止人工調整被覆蓋。
 
-### IsTemporary 語意
+### Source 語意（provenance）
+
+隊伍來源，取代舊 `IsTemporary`/`IsPublished` 兩布林。驅動：空隊自動清除、合併資格、批次重排保留。
 
 | 值 | 來源 | 說明 |
 |---|---|---|
-| `false` | `TeamSlotAutoAssignService` | 玩家報名時系統自動建立，空時可自動清除 |
-| `true` | Admin 手動開團 / `ScheduleService` 批次組隊預覽 | Admin 建立，空時不自動刪除 |
+| `auto` | `TeamSlotAutoAssignService` | 玩家報名時系統自動建立，空時可自動清除、可被合併 |
+| `admin` | Admin 手動開團 / `ScheduleService` 批次重排 | Admin 建立，空時不自動刪除、不被自動合併、重排時保留 |
 
 ---
 
@@ -279,8 +281,7 @@ classDiagram
         +int Id
         +int BossId
         +DateTimeOffset SlotDateTime
-        +bool IsTemporary
-        +bool IsPublished
+        +string Source
         +int? TemplateId
     }
     class TeamSlotCharacter {
@@ -409,8 +410,7 @@ erDiagram
         int Id PK
         int BossId FK
         timestamptz SlotDateTime
-        bool IsTemporary
-        bool IsPublished
+        text Source
         int TemplateId FK
     }
 
