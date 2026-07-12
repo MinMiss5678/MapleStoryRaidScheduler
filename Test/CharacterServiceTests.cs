@@ -48,19 +48,20 @@ public class CharacterServiceTests
     }
 
     [Fact]
-    public async Task GetWithDiscordNameAsync_WithBossId_ShouldPassBossIdToQuery()
+    public async Task GetWithDiscordNameAsync_WithBossId_ShouldReturnQueryResultForThatBoss()
     {
-        // Arrange
+        // Arrange：只對 bossId=7 設定回傳，若 service 傳錯 bossId 會拿到空集合 → 斷言失敗（順帶保證參數傳對）
         ulong discordId = 12345;
         int bossId = 7;
-        _characterQueryMock.Setup(q => q.GetWithDiscordNameAsync(discordId, bossId))
-            .ReturnsAsync(new List<CharacterDto>());
+        var expected = new List<CharacterDto> { new() { Id = "cX", Name = "N", Job = "J", DiscordName = "" } };
+        _characterQueryMock.Setup(q => q.GetWithDiscordNameAsync(discordId, bossId)).ReturnsAsync(expected);
 
         // Act
-        await _characterService.GetWithDiscordNameAsync(discordId, bossId);
+        var result = await _characterService.GetWithDiscordNameAsync(discordId, bossId);
 
         // Assert
-        _characterQueryMock.Verify(q => q.GetWithDiscordNameAsync(discordId, bossId), Times.Once);
+        Assert.Single(result);
+        Assert.Equal("cX", result.First().Id);
     }
 
     [Fact]

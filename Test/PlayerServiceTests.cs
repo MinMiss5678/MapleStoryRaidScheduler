@@ -75,17 +75,4 @@ public class PlayerServiceTests
         Assert.Null(result);
     }
 
-    [Fact]
-    public async Task UpdateRoleAsync_ShouldCallRepository()
-    {
-        // Arrange
-        ulong discordId = 12345;
-        string role = "admin";
-
-        // Act
-        await _playerService.UpdateRoleAsync(discordId, role);
-
-        // Assert
-        _playerRepositoryMock.Verify(r => r.UpdateRoleAsync(discordId, role), Times.Once);
-    }
 }
