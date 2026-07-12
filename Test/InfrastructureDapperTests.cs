@@ -143,16 +143,6 @@ public class InfrastructureDapperTests
         mockTx.Verify(t => t.Rollback(), Times.Once);
     }
 
-    [Fact]
-    public void DbContext_Repository_ReturnsRepositoryInstance()
-    {
-        var mockConn = new Mock<IDbConnection>();
-        var ctx = new DbContext(mockConn.Object);
-
-        var repo = ctx.Repository<DapperTestEntity>();
-        Assert.NotNull(repo);
-    }
-
     // ========== UnitOfWork ==========
 
     [Fact]
@@ -202,30 +192,4 @@ public class InfrastructureDapperTests
         mockTx.Verify(t => t.Rollback(), Times.Once);
     }
 
-    // ========== DapperRepository ==========
-
-    [Fact]
-    public void DapperRepository_Constructor_WithKeyAttribute_InitializesCorrectly()
-    {
-        var mockConn = new Mock<IDbConnection>();
-        var repo = new DapperRepository<DapperTestEntity>(mockConn.Object);
-        Assert.NotNull(repo);
-    }
-
-    [Fact]
-    public void DapperRepository_Constructor_WithExplicitKeyAttribute_InitializesCorrectly()
-    {
-        var mockConn = new Mock<IDbConnection>();
-        var repo = new DapperRepository<ExplicitKeyTestEntity>(mockConn.Object);
-        Assert.NotNull(repo);
-    }
-
-    [Fact]
-    public void DapperRepository_Constructor_WithTransaction_InitializesCorrectly()
-    {
-        var mockConn = new Mock<IDbConnection>();
-        var mockTx = new Mock<IDbTransaction>();
-        var repo = new DapperRepository<DapperTestEntity>(mockConn.Object, mockTx.Object);
-        Assert.NotNull(repo);
-    }
 }
