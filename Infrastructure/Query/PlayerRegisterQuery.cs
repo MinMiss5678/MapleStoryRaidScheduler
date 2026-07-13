@@ -7,15 +7,17 @@ using Utils.SqlBuilder;
 
 namespace Infrastructure.Query;
 
+// 參數順序必須對齊 GetByNowPeriodIdAsync 的 SELECT 欄位順序——
+// Dapper 對此 record 走「位置比對」物化，順序不符會失敗（見整合測試）。
 internal record PlayerRegisterDbRow(
     int Id,
+    string CharacterId,
+    int Rounds,
     long DiscordId,
     string DiscordName,
-    string CharacterId,
     string CharacterName,
     string Job,
     int AttackPower,
-    int Rounds,
     int Weekday,
     TimeOnly StartTime,
     TimeOnly EndTime);
