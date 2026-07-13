@@ -67,6 +67,15 @@ internal static class Seed
             new { teamSlotId, discordId, charId });
     }
 
+    /// <summary>在指定隊伍塞一個空位（CharacterId 為 null）。</summary>
+    public static async Task EmptySlotAsync(string cs, int teamSlotId)
+    {
+        await using var c = await OpenAsync(cs);
+        await c.ExecuteAsync(
+            """INSERT INTO "TeamSlotCharacter"("TeamSlotId","Job") VALUES (@teamSlotId,'-');""",
+            new { teamSlotId });
+    }
+
     public static async Task<int> CountTeamAsync(string cs, int teamSlotId)
     {
         await using var c = await OpenAsync(cs);
