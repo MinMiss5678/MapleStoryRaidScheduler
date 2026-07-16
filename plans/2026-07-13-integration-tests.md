@@ -72,6 +72,7 @@
 - ✅ Phase 1–2：`Test.Integration` + `PostgresFixture`（Testcontainers postgres:18 + 套 up.sql + TRUNCATE 隔離）+ `TeamSlotRepository` 2 測試。coverage：`TeamSlotRepository` 0%→54%。
 - ✅ Phase 3（部分）：`TeamSlotCharacterRepository` 空隊清除（auto 刪 / admin 留）2 測試 + 共用 `Seed` 播種工具。
 - ⚠️ Phase 3 `PlayerRegisterQuery`：2 測試 **Skip**（見下方發現）。
+- ✅ Phase 4（部分）：`UnitOfWorkIntegrationTests` 2 測試 **2/2 綠**（Docker 起容器後 `dotnet test` 驗證，409ms）——①Commit 持久 + 提交前其他連線看不到（隔離）②Rollback 跨兩張表原子撤銷。用真 `UnitOfWork` + 真 `TeamSlotRepository` 共用同一交易。Migration `down` 可逆（Phase 4 後半）尚未做。
 
 ## ✅ 整合測試抓到並修好的潛在 bug
 
