@@ -14,11 +14,13 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
-  // 沒有既有 dev server 時自動啟動（Phase 1 smoke 只需要前端）
+  // 沒有既有 dev server 時自動啟動 next dev（Phase 2+ 的 auth 測試還需 compose.e2e 的 backend）
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // 前端 proxy 轉發到 E2E backend（compose.e2e 對外 5230）
+    env: { BACKEND_API_URL: 'http://localhost:5230' },
   },
 });

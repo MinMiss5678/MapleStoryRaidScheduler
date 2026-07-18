@@ -1,0 +1,52 @@
+# E2E 專屬 dev-mode stack：測試 DB + migrate + backend(Development)。
+# 前端由 Playwright webServer（next dev，跑在 host）經 BACKEND_API_URL=http://localhost:5230 連這裡的 backend。
+# 起法：docker compose -f compose.e2e.yaml up -d --build
+# 關鍵：backend 用 ASPNETCORE_ENVIRONMENT=Development → test-login 端點才有效（非 Production）。
+services:
+  e2e-db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: e2e
+      POSTGRES_DB: presentationdb
+    ports:
+      - "5433:5432"   # 對外 5433，避免撞正式 compose 的 5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d presentationdb"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  e2e-migrate:
+    image: migrate/migrate
+    depends_on:
+      e2e-db:
+        condition: service_healthy
+    volumes:
+      - ./db/migrations:/migrations
+    command:
+      - "-path=/migrations"
+      - "-database"
+      - "postgres://postgres:e2e@e2e-db:5432/presentationdb?sslmode=disable"
+      - "up"
+
+  e2e-backend:
+    build:
+      context: .                                    # Dockerfile 從方案根 COPY 各專案
+      dockerfile: Presentation.WebApi/Dockerfile
+    depends_on:
+      e2e-migrate:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development          # ← test-login 端點只在非 Production 有效
+      ASPNETCORE_URLS: http://+:5230
+      ConnectionStrings__DefaultConnection: "Host=e2e-db;Port=5432;Database=presentationdb;Username=postgres;Password=e2e"
+      Jwt__SecretKey: "e2e-testing-secret-key-not-for-production"   # ≥32 bytes（HMAC-SHA256 需要）
+      Jwt__Issuer: "e2e"
+      Jwt__Audience: "e2e"
+      # Discord 不會被 test-login 用到，給 dummy 讓 DI 綁定得起來
+      Discord__ClientId: "0"
+      Discord__ClientSecret: "e2e"
+      Discord__BotToken: "e2e"
+    ports:
+      - "5230:5230"
