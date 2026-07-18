@@ -1,7 +1,8 @@
-# 自架 GitLab CI：build → 單元測試 →（dind）整合測試
+# 自架 GitLab CI：build → 單元/整合測試（收覆蓋率）→ 合併覆蓋率
 stages:
   - build
   - test
+  - coverage
 
 default:
   image: mcr.microsoft.com/dotnet/sdk:9.0
@@ -20,17 +21,22 @@ build:
     key: nuget
     paths: [.nuget/packages]
 
-# 純邏輯，不需要 Docker
+# 純邏輯，不需要 Docker；收覆蓋率存 artifact 給 coverage job 合併
 unit-test:
   stage: test
   script:
-    - dotnet test Test/Test.csproj -c Release --logger "console;verbosity=normal"
+    - dotnet test Test/Test.csproj -c Release --collect:"XPlat Code Coverage" --results-directory ./coverage-unit
   cache:
     key: nuget
     paths: [.nuget/packages]
     policy: pull
+  artifacts:
+    when: always
+    expire_in: 1 day
+    paths:
+      - coverage-unit/**/coverage.cobertura.xml
 
-# 打真 Postgres（Testcontainers）→ 需要 Docker daemon → 用 docker-in-docker service
+# 打真 Postgres（Testcontainers）→ docker-in-docker；收覆蓋率存 artifact
 integration-test:
   stage: test
   services:
@@ -46,4 +52,30 @@ integration-test:
     # dind 裡 Ryuk 清理容器常起不來，關掉（job 結束 dind 整個銷毀即清乾淨）
     TESTCONTAINERS_RYUK_DISABLED: "true"
   script:
-    - dotnet test Test.Integration/Test.Integration.csproj -c Release --logger "console;verbosity=normal"
+    - dotnet test Test.Integration/Test.Integration.csproj -c Release --collect:"XPlat Code Coverage" --results-directory ./coverage-integration
+  artifacts:
+    when: always
+    expire_in: 1 day
+    paths:
+      - coverage-integration/**/coverage.cobertura.xml
+
+# 合併 unit + integration 兩份覆蓋率 → 一份總報告（取聯集，不重複計）
+coverage:
+  stage: coverage
+  needs: [unit-test, integration-test]   # 自動抓這兩個 job 的 artifact
+  script:
+    - dotnet tool install -g dotnet-reportgenerator-globaltool
+    - export PATH="$PATH:/root/.dotnet/tools"
+    - reportgenerator -reports:"coverage-unit/**/coverage.cobertura.xml;coverage-integration/**/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:"TextSummary;Cobertura"
+    - cat coverage-report/Summary.txt
+  # 從 log 抓總行覆蓋率，顯示在 pipeline/MR 上
+  coverage: '/Line coverage: \d+(?:\.\d+)?%/'
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - coverage-report/
+    reports:
+      # 讓 GitLab 在 MR diff 標行覆蓋
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage-report/Cobertura.xml
