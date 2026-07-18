@@ -98,11 +98,16 @@ variables:
 
 commit + push（真終端機）觸發 pipeline：project → **Build → Pipelines**。
 
-> **坑（實際）：job git clone 報 `Failed to connect to localhost:8929`**
-> 原因：GitLab 給 CI 的 clone URL = `external_url`（`http://localhost:8929`）；job 容器裡 `localhost` = 它自己，連不到 GitLab。（不是「resolve gitlab」——URL 本身就是 localhost。）
-> **解（已套用 → green）**：config.toml `[[runners]]` 加
-> `clone_url = "http://host.docker.internal:8929"`（Docker Desktop 容器可經 `host.docker.internal` 連到 host 發布的 8929），再 `docker restart gitlab-runner`。
-> `url`（runner↔GitLab API）維持 `gitlab:8929`；`clone_url` 只改 job 端 clone 網址。
+> **坑（實際，兩段——job 端連不到 GitLab 的兩條不同 URL）**
+> ① **git clone 報 `Failed to connect to localhost:8929`**：clone URL 來自 GitLab `external_url`（localhost）；job 容器裡 localhost=它自己。
+> ② **artifact 上傳報 `lookup gitlab: no such host`**：artifact/API 用 runner 的 `url`（原 `gitlab:8929`），job 容器不在 compose 網路 → 解析不到 `gitlab`。
+> **解（已套用 → green）**：config.toml `[[runners]]` 兩個 URL **都**指 `host.docker.internal`（Docker Desktop 下 runner 與 job 容器都連得到 host 發布的 8929）：
+> ```toml
+> url = "http://host.docker.internal:8929"        # runner 輪詢 + job 端 API（artifact）
+> clone_url = "http://host.docker.internal:8929"  # job 端 git clone（蓋掉 external_url 的 localhost）
+> ```
+> 再 `docker restart gitlab-runner`。
+> **教訓**：clone 走 `external_url`、artifact/API 走 runner `url`——**兩條不同的 URL，都要 job 端連得到**。只修一條會在另一條再爆一次。
 
 ---
 
@@ -116,6 +121,29 @@ commit + push（真終端機）觸發 pipeline：project → **Build → Pipelin
 > **邊界：這閘只管 Merge Request**。直接 `git push gitlab main` 不會被擋（pipeline 會跑但不 gate）→ 要走 branch + MR 才體驗得到閘。
 
 **驗證（Break & Fix，已實測）**：開 branch 加一個故意失敗的測試（`Assert.Equal(1,2)`）→ push → 開 MR → `unit-test` job 紅 → 按鈕變「Merge when all merge checks pass」（延後合併，pipeline 永遠不綠 → 永遠不合）→ 確認 merge 被擋 → 關 MR、刪 branch。
+
+## Step 7 — 合併覆蓋率（unit + integration）
+
+兩個測試專案覆蓋不同層（unit=邏輯、integration=持久層），各產一份 cobertura，合併取**聯集**才是真實總覆蓋。
+
+- 兩個 test job：`dotnet test ... --collect:"XPlat Code Coverage" --results-directory ./coverage-xxx` → cobertura 存成 artifact。
+- `coverage` job：`needs` 抓兩份 artifact → `reportgenerator -reports:"...;..." -reporttypes:"TextSummary;Cobertura"` 合併 → `cat Summary.txt`。
+- `coverage: '/Line coverage: \d+(?:\.\d+)?%/'`：從 log 抓總覆蓋率顯示在 pipeline/MR。
+- `artifacts:reports:coverage_report`（cobertura）：MR diff 標行覆蓋。
+
+實測：合併後 **Line 53.1% / Branch 70.3%**（單元單獨看會低估，因為持久層要靠整合測試點亮）。
+
+### 看覆蓋率的四個地方
+
+| 地方 | 看什麼 | 怎麼到 |
+|---|---|---|
+| **Pipeline / Job 徽章** | 一個 `%`（最快，免進 log） | Pipeline 頁 `coverage` job 旁的數字 |
+| **coverage job 的 log** | Line + Branch + 每個 class 分項（找哪裡低） | 點 `coverage` job → log 尾巴 `Summary.txt` |
+| **Artifact** | 完整檔案 `Summary.txt` + `Cobertura.xml` | `coverage` job → Download artifacts |
+| **Merge Request** | 覆蓋率 % + 跟 target 的增減、diff 上標行覆蓋 | 開 MR 就看得到（來自 `coverage_report` cobertura） |
+
+- **徽章一個 job 只能顯示一個數字**（line 或 branch，二選一）。目前 `coverage: '/Line coverage.../'` → 顯示 **line 53.1%**；要改 branch 就把正則換成 `/Branch coverage: \d+(?:\.\d+)?%/`（→ 70.3%）。慣例是 line，branch 一直在 log 裡看得到。
+- 想要**可點的 HTML 報告**（一路點進每個檔看哪行紅/綠）：`-reporttypes` 加 `Html`，下載 artifact 開 `index.html`。
 
 ## 日常開關
 
@@ -131,8 +159,9 @@ docker compose -f /c/Users/jerem/gitlab-selfhost/docker-compose.yml start
 - ✅ Step 1–4：GitLab + Runner 起好、repo 推上、runner 註冊（Docker executor + privileged + dind 就緒）
 - ✅ Step 5：`.gitlab-ci.yml` push 觸發，套 `clone_url` 後 pipeline **全綠（~2m23s）**——build + unit-test + integration-test（dind + Testcontainers 打真 Postgres）都過。
 - ✅ Step 6：`main` protected + **Pipelines must succeed**；用故意失敗的紅 MR **實測 merge 被擋**。
+- ✅ Step 7：`coverage` job（ReportGenerator 合併 unit+integration cobertura）**綠**——合併後 Line 53.1% / Branch 70.3%，pipeline/MR 顯示覆蓋率。
 
 ## 未決
 
-- 覆蓋率合併（unit + integration 兩份 cobertura）尚未接進 pipeline。
-- `clone_url` 用 `host.docker.internal`（綁 Docker Desktop）；若搬到 Linux CI runner 需改回 `network_mode` + `gitlab:8929`。
+- `url` + `clone_url` 綁 `host.docker.internal`（Docker Desktop 專屬）；搬到 Linux CI runner 需改回 `gitlab:8929` + 讓 job 容器上 compose 網路（`network_mode`）。
+- 覆蓋率門檻閘（低於 X% 擋 merge）尚未設，目前只顯示不強制。
