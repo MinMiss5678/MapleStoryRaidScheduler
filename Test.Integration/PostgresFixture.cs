@@ -54,8 +54,8 @@ public class PostgresFixture : IAsyncLifetime
             await conn.ExecuteAsync(await File.ReadAllTextAsync(file));
     }
 
-    // 從測試輸出目錄往上找 repo 根的 db/migrations
-    private static string FindMigrationsDir()
+    // 從測試輸出目錄往上找 repo 根的 db/migrations（migration 可逆測試也共用）
+    public static string FindMigrationsDir()
     {
         var d = new DirectoryInfo(AppContext.BaseDirectory);
         while (d is not null && !Directory.Exists(Path.Combine(d.FullName, "db", "migrations")))
