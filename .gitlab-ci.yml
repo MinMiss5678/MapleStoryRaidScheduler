@@ -1,0 +1,49 @@
+# 自架 GitLab CI：build → 單元測試 →（dind）整合測試
+stages:
+  - build
+  - test
+
+default:
+  image: mcr.microsoft.com/dotnet/sdk:9.0
+
+variables:
+  # NuGet 套件裝到專案內，方便 GitLab cache 撈得到
+  NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget/packages"
+
+# 整個 solution 編得過（含 Presentation，測試專案未必涵蓋）
+build:
+  stage: build
+  script:
+    - dotnet restore
+    - dotnet build --no-restore -c Release
+  cache:
+    key: nuget
+    paths: [.nuget/packages]
+
+# 純邏輯，不需要 Docker
+unit-test:
+  stage: test
+  script:
+    - dotnet test Test/Test.csproj -c Release --logger "console;verbosity=normal"
+  cache:
+    key: nuget
+    paths: [.nuget/packages]
+    policy: pull
+
+# 打真 Postgres（Testcontainers）→ 需要 Docker daemon → 用 docker-in-docker service
+integration-test:
+  stage: test
+  services:
+    - name: docker:27-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_CERT_PATH: "/certs/client"
+    DOCKER_TLS_VERIFY: "1"
+    # Testcontainers 要透過 dind host「docker」連容器映射的 port，不是 localhost
+    TESTCONTAINERS_HOST_OVERRIDE: "docker"
+    # dind 裡 Ryuk 清理容器常起不來，關掉（job 結束 dind 整個銷毀即清乾淨）
+    TESTCONTAINERS_RYUK_DISABLED: "true"
+  script:
+    - dotnet test Test.Integration/Test.Integration.csproj -c Release --logger "console;verbosity=normal"
