@@ -5,6 +5,14 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+# 階段 2a：E2E 用的 dev 模式（NODE_ENV=development → /api proxy 白名單含 test）
+FROM deps AS dev
+WORKDIR /app
+COPY . .
+ENV NODE_ENV=development
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
 # 階段 2：構建應用程式
 FROM node:20-alpine AS builder
 WORKDIR /app

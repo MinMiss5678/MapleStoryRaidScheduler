@@ -3,6 +3,7 @@ stages:
   - build
   - test
   - coverage
+  - e2e
 
 default:
   image: mcr.microsoft.com/dotnet/sdk:9.0
@@ -79,3 +80,38 @@ coverage:
       coverage_report:
         coverage_format: cobertura
         path: coverage-report/Cobertura.xml
+
+# E2E（Playwright 打全 stack：db + backend + frontend）——重，預設手動觸發。
+# 全在 compose.e2e.yaml，job 只用 dind 起它。核心機制（全 stack + 容器內 playwright）本機已驗證綠。
+e2e:
+  stage: e2e
+  image: docker:27
+  services:
+    - name: docker:27-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_CERT_PATH: "/certs/client"
+    DOCKER_TLS_VERIFY: "1"
+    COMPOSE_PROJECT_NAME: e2e
+  when: manual          # E2E 重（起全 stack），opt-in
+  script:
+    # 起 db + migrate + backend + frontend（在 dind 內 build 映像）
+    - docker compose -f compose.e2e.yaml up -d --build e2e-frontend
+    # 等 backend 的 WeeklyPeriodJob 建好 period（有 period 才代表 backend 起完）→ seed 再蓋掉它
+    - |
+      until [ "$(docker compose -f compose.e2e.yaml exec -T e2e-db sh -c 'PGPASSWORD=e2e psql -U postgres -d presentationdb -tAc "SELECT count(*) FROM \"Period\""' 2>/dev/null | tr -dc 0-9)" -ge 1 ] 2>/dev/null; do
+        echo "等 backend 建 period..."; sleep 3;
+      done
+    # 灌 E2E seed（單一未來 period + 三隻獨立王）
+    - docker compose -f compose.e2e.yaml exec -T e2e-db sh -c 'PGPASSWORD=e2e psql -U postgres -d presentationdb' < db/seed-e2e.sql
+    # 在 compose 內跑 Playwright（共用 frontend netns → localhost:3000）；exit code = 測試結果
+    - docker compose -f compose.e2e.yaml --profile ci run --build --rm e2e-playwright
+  after_script:
+    - docker compose -f compose.e2e.yaml --profile ci down -v || true
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - web/playwright-report/

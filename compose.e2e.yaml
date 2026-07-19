@@ -50,3 +50,38 @@ services:
       Discord__BotToken: "e2e"
     ports:
       - "5230:5230"
+
+  # 前端 dev 模式（NODE_ENV=development → /api proxy 白名單含 test-login）；proxy 到 e2e-backend
+  e2e-frontend:
+    build:
+      context: ./web
+      target: dev
+    depends_on:
+      e2e-backend:
+        condition: service_started
+    environment:
+      BACKEND_API_URL: http://e2e-backend:5230
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+
+  # E2E 執行器（profile ci：本機 up 不啟動，CI 才跑）。在 compose 網路內連 e2e-frontend:3000。
+  e2e-playwright:
+    profiles: [ci]
+    build:
+      context: ./web
+      dockerfile: Dockerfile.e2e
+    depends_on:
+      e2e-frontend:
+        condition: service_started
+    # 共用 frontend 的網路命名空間 → 用 localhost:3000 存取前端（localhost 是 secure context，
+    # crypto.randomUUID / Secure cookie 才正常，免掉 --unsafely-treat-insecure-origin flag）
+    network_mode: "service:e2e-frontend"
+    environment:
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+      PLAYWRIGHT_NO_WEBSERVER: "1"
+      CI: "1"
+    command:
+      - sh
+      - -c
+      - node -e "(async()=>{for(let i=0;i<60;i++){try{const r=await fetch('http://localhost:3000');if(r.ok)break}catch(e){}await new Promise(r=>setTimeout(r,2000))}})()" && npx playwright test

@@ -1,0 +1,9 @@
+# E2E Playwright runner：playwright 官方映像（含瀏覽器）+ 內建 web 源碼與依賴。
+# 走 build context 把源碼烤進映像，避免 dind 下 volume 掛載看不到 job 容器檔案的問題。
+FROM mcr.microsoft.com/playwright:v1.61.1-noble
+WORKDIR /web
+COPY package*.json ./
+RUN npm ci
+COPY . .
+# 由 compose 的 command 覆寫：等 frontend ready 後跑測試
+CMD ["npx", "playwright", "test"]

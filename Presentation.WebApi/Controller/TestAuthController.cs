@@ -59,7 +59,7 @@ public class TestAuthController : ControllerBase
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true, // localhost 視為 secure context，HTTP 下瀏覽器仍接受
+            Secure = true, // 跟正式 AuthController 一致；E2E 一律經 localhost:3000（secure context）存取，Secure cookie 可用
             SameSite = SameSiteMode.Strict,
             Expires = DateTimeOffset.UtcNow.AddDays(30)
         };
