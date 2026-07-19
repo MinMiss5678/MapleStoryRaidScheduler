@@ -29,6 +29,9 @@ DECLARE
     v_boss2_id    int;
     v_tpl2_id     int;
     v_team2_id    int;
+    v_boss3_id    int;
+    v_tpl3_id     int;
+    v_reg3        int;
     -- period 設「未來一週」：截止日永遠在 period 開始前一週（GetDeadlineForPeriod 的 -7），
     -- StartDate 要夠遠（+10）截止日才落在未來、報名才開著（符合 app「當前=即將開打的下週」模型）
     v_weekday     int         := EXTRACT(DOW FROM (CURRENT_DATE + 11))::int;
@@ -88,6 +91,16 @@ BEGIN
     -- 補位者 P-Fill(3001)：有「輸出」角色、未入隊 → 補位進 E2E王2 的空缺
     INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (3001, 'P-Fill', 'user');
     INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower") VALUES ('ch3001', 3001, 'CFill', 'Hero', 940);
+
+    -- 第三隻王 E2E王3 + 範本 + 一個報名的池玩家 → 供「管理員重排」測試（獨立王隔離）
+    INSERT INTO "Boss"("Name","RequireMembers","RoundConsumption") VALUES ('E2E王3', 6, 1) RETURNING "Id" INTO v_boss3_id;
+    INSERT INTO "BossTemplate"("BossId","Name") VALUES (v_boss3_id, 'E2E範本3') RETURNING "Id" INTO v_tpl3_id;
+    INSERT INTO "BossTemplateRequirement"("BossTemplateId","JobCategory","Count","Priority") VALUES (v_tpl3_id, '輸出', 6, 1);
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (5001, 'P-Pool', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower") VALUES ('ch5001', 5001, 'CPool', 'Hero', 930);
+    INSERT INTO "PlayerRegister"("DiscordId","PeriodId") VALUES (5001, v_period_id) RETURNING "Id" INTO v_reg3;
+    INSERT INTO "CharacterRegister"("PlayerRegisterId","CharacterId","BossId","Rounds") VALUES (v_reg3, 'ch5001', v_boss3_id, 1);
+    INSERT INTO "PlayerAvailability"("PlayerRegisterId","Weekday","StartTime","EndTime") VALUES (v_reg3, v_weekday, TIME '20:00', TIME '22:00');
 
     RAISE NOTICE 'E2E seed 就緒 → periodId=%, bossId=%, teamId=%', v_period_id, v_boss_id, v_team_id;
 END $$;
