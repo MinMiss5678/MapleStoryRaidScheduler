@@ -26,12 +26,14 @@ DECLARE
     v_template_id int;
     v_reg         int;
     v_team_id     int;
-    v_weekday     int         := EXTRACT(DOW FROM CURRENT_DATE)::int;
-    v_slot_ts     timestamptz := (CURRENT_DATE::text || ' 12:00:00+00')::timestamptz; -- 今天 20:00（台北）
+    -- period 設「未來一週」：截止日永遠在 period 開始前一週（GetDeadlineForPeriod 的 -7），
+    -- StartDate 要夠遠（+10）截止日才落在未來、報名才開著（符合 app「當前=即將開打的下週」模型）
+    v_weekday     int         := EXTRACT(DOW FROM (CURRENT_DATE + 11))::int;
+    v_slot_ts     timestamptz := ((CURRENT_DATE + 11)::text || ' 12:00:00+00')::timestamptz; -- 未來週內某日 20:00（台北）
 BEGIN
-    -- 唯一當期（含今天）→ GetByNowAsync 會回這個
+    -- 唯一當期（未來一週）→ GetActivePeriodAsync 回這個，且報名截止日在未來 → 報名開著
     INSERT INTO "Period"("StartDate","EndDate")
-    VALUES (CURRENT_DATE::timestamptz, (CURRENT_DATE + 7)::timestamptz)
+    VALUES ((CURRENT_DATE + 10)::timestamptz, (CURRENT_DATE + 17)::timestamptz)
     RETURNING "Id" INTO v_period_id;
 
     -- 王 + 範本（單一「輸出」、需 6 人）+ 職業對照
@@ -61,6 +63,11 @@ BEGIN
         ("TeamSlotId","DiscordId","DiscordName","CharacterId","CharacterName","Job","AttackPower","Rounds","IsManual")
     VALUES
         (v_team_id, 1002, 'P1', 'ch1002', 'C1', 'Hero', 990, 1, false);
+
+    -- 另一個玩家 P-New(2001)：有角色、尚未報名/未入隊 → 供「報名 → 自動排隊」寫入測試
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (2001, 'P-New', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower")
+    VALUES ('ch2001', 2001, 'CNew', 'Hero', 950);
 
     RAISE NOTICE 'E2E seed 就緒 → periodId=%, bossId=%, teamId=%', v_period_id, v_boss_id, v_team_id;
 END $$;
