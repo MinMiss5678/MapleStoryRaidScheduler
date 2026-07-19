@@ -26,6 +26,9 @@ DECLARE
     v_template_id int;
     v_reg         int;
     v_team_id     int;
+    v_boss2_id    int;
+    v_tpl2_id     int;
+    v_team2_id    int;
     -- period 設「未來一週」：截止日永遠在 period 開始前一週（GetDeadlineForPeriod 的 -7），
     -- StartDate 要夠遠（+10）截止日才落在未來、報名才開著（符合 app「當前=即將開打的下週」模型）
     v_weekday     int         := EXTRACT(DOW FROM (CURRENT_DATE + 11))::int;
@@ -68,6 +71,23 @@ BEGIN
     INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (2001, 'P-New', 'user');
     INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower")
     VALUES ('ch2001', 2001, 'CNew', 'Hero', 950);
+
+    -- 第二隻王 E2E王2 + 只有 1 人的隊（5 個「輸出」空缺）→ 供「補位」測試。
+    -- 用獨立王/隊，與 E2E王（報名/讀取測試用）隔離，避免平行測試互相干擾。
+    INSERT INTO "Boss"("Name","RequireMembers","RoundConsumption") VALUES ('E2E王2', 6, 1) RETURNING "Id" INTO v_boss2_id;
+    INSERT INTO "BossTemplate"("BossId","Name") VALUES (v_boss2_id, 'E2E範本2') RETURNING "Id" INTO v_tpl2_id;
+    INSERT INTO "BossTemplateRequirement"("BossTemplateId","JobCategory","Count","Priority") VALUES (v_tpl2_id, '輸出', 6, 1);
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (4001, 'P-Dummy', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower") VALUES ('ch4001', 4001, 'CDummy', 'Hero', 900);
+    INSERT INTO "TeamSlot"("BossId","SlotDateTime","Source","TemplateId")
+    VALUES (v_boss2_id, v_slot_ts, 'auto', v_tpl2_id) RETURNING "Id" INTO v_team2_id;
+    INSERT INTO "TeamSlotCharacter"
+        ("TeamSlotId","DiscordId","DiscordName","CharacterId","CharacterName","Job","AttackPower","Rounds","IsManual")
+    VALUES (v_team2_id, 4001, 'P-Dummy', 'ch4001', 'CDummy', 'Hero', 900, 0, false); -- Rounds=0：無場數限制，補位者(未報名 rounds=0)才過 validate #5
+
+    -- 補位者 P-Fill(3001)：有「輸出」角色、未入隊 → 補位進 E2E王2 的空缺
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (3001, 'P-Fill', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower") VALUES ('ch3001', 3001, 'CFill', 'Hero', 940);
 
     RAISE NOTICE 'E2E seed 就緒 → periodId=%, bossId=%, teamId=%', v_period_id, v_boss_id, v_team_id;
 END $$;
