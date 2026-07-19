@@ -51,7 +51,7 @@ public class RegisterServiceTests
             DeadlineTime = new TimeSpan(23, 59, 59)
         };
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
-        _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
 
         var command = new RegisterCreateCommand
         {
@@ -75,7 +75,7 @@ public class RegisterServiceTests
             DeadlineTime = new TimeSpan(23, 59, 59)
         };
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
-        _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
 
         var command = new RegisterCreateCommand
         {
@@ -112,7 +112,7 @@ public class RegisterServiceTests
             DeadlineTime = new TimeSpan(23, 59, 59)
         };
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
-        _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
 
         var command = new RegisterCreateCommand
         {
@@ -142,7 +142,7 @@ public class RegisterServiceTests
             DeadlineDayOfWeek = DayOfWeek.Wednesday,
             DeadlineTime = new TimeSpan(23, 59, 59)
         });
-        _periodQueryMock.Setup(p => p.GetByNowAsync())
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync())
             .ReturnsAsync(new Period { StartDate = DateTimeOffset.Now.AddDays(10) });
 
         const int realRegisterId = 5;    // 伺服器由 (discordId, periodId) 查出的、呼叫者自己的 id
@@ -184,7 +184,7 @@ public class RegisterServiceTests
             DeadlineDayOfWeek = DayOfWeek.Wednesday,
             DeadlineTime = new TimeSpan(23, 59, 59)
         });
-        _periodQueryMock.Setup(p => p.GetByNowAsync())
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync())
             .ReturnsAsync(new Period { StartDate = DateTimeOffset.Now.AddDays(10) });
         _playerRegisterRepositoryMock
             .Setup(r => r.GetIdAsync(It.IsAny<ulong>(), It.IsAny<int>()))

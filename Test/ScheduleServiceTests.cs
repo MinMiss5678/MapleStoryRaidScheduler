@@ -111,7 +111,7 @@ public class ScheduleServiceTests
         _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1 });
         _playerRegisterQueryMock.Setup(q => q.GetByNowPeriodIdAsync(bossId))
             .ReturnsAsync(new List<PlayerRegisterSchedule>());
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(new Period
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(new Period
         {
             StartDate = new DateTimeOffset(2026, 4, 3, 0, 0, 0, TimeSpan.Zero),
             EndDate = new DateTimeOffset(2026, 4, 9, 23, 59, 59, TimeSpan.Zero)

@@ -64,7 +64,7 @@ public class TeamSlotServiceQueryTests
             }
         };
 
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _teamSlotQueryMock.Setup(q => q.GetByPeriodAndBossIdAsync(period, bossId)).ReturnsAsync(dtos);
 
         // Act
@@ -83,7 +83,7 @@ public class TeamSlotServiceQueryTests
     {
         // Arrange
         var period = CreatePeriod();
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _teamSlotQueryMock.Setup(q => q.GetByPeriodAndBossIdAsync(period, It.IsAny<int>()))
             .ReturnsAsync(new List<TeamSlotCharacterDto>());
 
@@ -113,7 +113,7 @@ public class TeamSlotServiceQueryTests
             }
         };
 
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _teamSlotQueryMock.Setup(q => q.GetByPeriodAndDiscordIdAsync(period, discordId)).ReturnsAsync(dtos);
 
         // Act
@@ -141,7 +141,7 @@ public class TeamSlotServiceQueryTests
             new TeamSlotCharacterDto { TeamSlotId = 2, BossId = 6, BossName = "B2", SlotDateTime = slot2, TeamSlotCharacterId = 20, DiscordId = discordId, DiscordName = "", Job = "" }
         };
 
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _teamSlotQueryMock.Setup(q => q.GetByPeriodAndDiscordIdAsync(period, discordId)).ReturnsAsync(dtos);
 
         // Act

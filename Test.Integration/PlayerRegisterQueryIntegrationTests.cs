@@ -16,7 +16,7 @@ public class PlayerRegisterQueryIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
 
-        // GetByNowAsync 回最新 period → 只需一個 period
+        // GetActivePeriodAsync 回最新 period → 只需一個 period
         var periodId = await Seed.PeriodAsync(cs,
             DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(6));
         var bossId = await Seed.BossAsync(cs);

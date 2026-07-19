@@ -28,7 +28,7 @@ public class PeriodServiceTests
             StartDate = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero),
             EndDate = new DateTimeOffset(2026, 4, 16, 23, 59, 59, TimeSpan.Zero)
         };
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
 
         // Act
         var result = await _periodService.GetByNowAsync();
@@ -44,7 +44,7 @@ public class PeriodServiceTests
     public async Task GetByNowAsync_ShouldThrowNotFoundException_WhenNoPeriodExists()
     {
         // Arrange
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync((Period?)null);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync((Period?)null);
 
         // Act & Assert
         await Assert.ThrowsAsync<NotFoundException>(() => _periodService.GetByNowAsync());

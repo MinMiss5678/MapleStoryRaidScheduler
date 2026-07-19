@@ -38,7 +38,7 @@ public class ScheduleService : IScheduleService
         var requireMembers = boss?.RequireMembers ?? 6;
 
         var characterRegisters = (await _playerRegisterQuery.GetByNowPeriodIdAsync(bossId)).ToList();
-        var period = await _periodQuery.GetByNowAsync();
+        var period = await _periodQuery.GetActivePeriodAsync();
         if (period == null) return [];
 
         var jobCategories = (await _jobCategoryRepository.GetAllAsync())

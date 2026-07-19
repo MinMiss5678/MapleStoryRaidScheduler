@@ -74,7 +74,7 @@ public class ScheduleServiceAutoScheduleTests
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
         _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1 });
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(jobCategories);
 
         // 2 players both available 週四 20:00-22:00, with 1 round each
@@ -124,7 +124,7 @@ public class ScheduleServiceAutoScheduleTests
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
         _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId))
             .ReturnsAsync(new Boss { RoundConsumption = 1, RequireMembers = 6 });
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(CreateJobCategories());
 
         // 保留隊：週四 20:00，已有手動成員 c1(Hero)，缺 1 人
@@ -204,7 +204,7 @@ public class ScheduleServiceAutoScheduleTests
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
         _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1 });
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(jobCategories);
 
         var registrations = new List<PlayerRegisterSchedule>
@@ -246,7 +246,7 @@ public class ScheduleServiceAutoScheduleTests
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
         _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1 });
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(jobCategories);
 
         // 4 players, 2 rounds each → can form 2 teams
@@ -281,7 +281,7 @@ public class ScheduleServiceAutoScheduleTests
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
         _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 2 });
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(jobCategories);
 
         var avail = new List<PlayerAvailability>
@@ -314,7 +314,7 @@ public class ScheduleServiceAutoScheduleTests
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
         _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync((Boss?)null); // null boss
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(jobCategories);
         _playerRegisterQueryMock.Setup(q => q.GetByNowPeriodIdAsync(bossId))
             .ReturnsAsync(new List<PlayerRegisterSchedule>());

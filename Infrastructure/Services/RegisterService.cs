@@ -152,7 +152,7 @@ public class RegisterService : IRegisterService
     private async Task EnsureRegistrationOpen()
     {
         var config = await _systemConfigService.GetAsync();
-        var latestPeriod = await _periodQuery.GetByNowAsync();
+        var latestPeriod = await _periodQuery.GetActivePeriodAsync();
         if (latestPeriod != null)
         {
             var deadline = config.GetDeadlineForPeriod(latestPeriod.StartDate);
@@ -165,7 +165,7 @@ public class RegisterService : IRegisterService
 
     public async Task DeleteAsync(ulong discordId, int id)
     {
-        var period = await _periodQuery.GetByNowAsync();
+        var period = await _periodQuery.GetActivePeriodAsync();
         if (period == null) return;
         await _teamSlotCharacterRepository.DeleteByDiscordIdAndPeriodAsync(discordId, period.StartDate,
             period.EndDate);

@@ -35,7 +35,7 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
     
     public async Task<IEnumerable<PlayerRegisterSchedule>> GetByNowPeriodIdAsync(int bossId)
     {
-        var period = await _periodQuery.GetPeriodIdByNowAsync();
+        var period = await _periodQuery.GetActivePeriodIdAsync();
         var sql = new QueryBuilder();
         sql.Select<CharacterRegisterDbModel>(x => new
             {

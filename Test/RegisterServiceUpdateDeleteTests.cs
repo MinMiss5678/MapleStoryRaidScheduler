@@ -51,7 +51,7 @@ public class RegisterServiceUpdateDeleteTests
             DeadlineTime = new TimeSpan(23, 59, 59)
         };
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
-        _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class RegisterServiceUpdateDeleteTests
             DeadlineTime = new TimeSpan(23, 59, 59)
         };
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
-        _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -121,7 +121,7 @@ public class RegisterServiceUpdateDeleteTests
             StartDate = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero),
             EndDate = new DateTimeOffset(2026, 4, 16, 23, 59, 59, TimeSpan.Zero)
         };
-        _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
 
         // Act
         await _registerService.DeleteAsync(discordId, registerId);
@@ -137,7 +137,7 @@ public class RegisterServiceUpdateDeleteTests
     public async Task DeleteAsync_ShouldReturnEarly_WhenNoPeriod()
     {
         // Arrange
-        _periodQueryMock.Setup(p => p.GetByNowAsync()).ReturnsAsync((Period?)null);
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync((Period?)null);
 
         // Act
         await _registerService.DeleteAsync(12345, 1);

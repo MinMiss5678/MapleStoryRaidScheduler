@@ -30,7 +30,7 @@ public class TeamSlotCharacterServiceTests
             StartDate = new DateTimeOffset(2026, 4, 3, 0, 0, 0, TimeSpan.Zero),
             EndDate = new DateTimeOffset(2026, 4, 9, 23, 59, 59, TimeSpan.Zero)
         };
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
 
         // Act
         await _service.DeleteByDiscordIdAndPeriodAsync(discordId);
@@ -43,7 +43,7 @@ public class TeamSlotCharacterServiceTests
     public async Task DeleteByDiscordIdAndPeriodAsync_ShouldSkip_WhenNoPeriod()
     {
         // Arrange
-        _periodQueryMock.Setup(q => q.GetByNowAsync()).ReturnsAsync((Period?)null);
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync((Period?)null);
 
         // Act
         await _service.DeleteByDiscordIdAndPeriodAsync(12345);

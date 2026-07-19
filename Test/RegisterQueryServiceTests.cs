@@ -34,7 +34,7 @@ public class RegisterQueryServiceTests
     [Fact]
     public async Task GetAsync_ShouldThrowNotFoundException_WhenNoPeriod()
     {
-        _periodQueryMock.Setup(p => p.GetPeriodIdByNowAsync()).ReturnsAsync(0);
+        _periodQueryMock.Setup(p => p.GetActivePeriodIdAsync()).ReturnsAsync(0);
 
         await Assert.ThrowsAsync<NotFoundException>(() => _queryService.GetAsync(12345UL));
     }
@@ -42,7 +42,7 @@ public class RegisterQueryServiceTests
     [Fact]
     public async Task GetAsync_ShouldThrowNotFoundException_WhenNoRegister()
     {
-        _periodQueryMock.Setup(p => p.GetPeriodIdByNowAsync()).ReturnsAsync(1);
+        _periodQueryMock.Setup(p => p.GetActivePeriodIdAsync()).ReturnsAsync(1);
         _playerRegisterRepositoryMock.Setup(r => r.GetListAsync(It.IsAny<ulong>(), 1))
             .ReturnsAsync(new List<PlayerCharacterRegister>());
 
@@ -56,7 +56,7 @@ public class RegisterQueryServiceTests
         int periodId = 1;
         int playerRegisterId = 100;
 
-        _periodQueryMock.Setup(p => p.GetPeriodIdByNowAsync()).ReturnsAsync(periodId);
+        _periodQueryMock.Setup(p => p.GetActivePeriodIdAsync()).ReturnsAsync(periodId);
 
         var playerCharacterRegisters = new List<PlayerCharacterRegister>
         {

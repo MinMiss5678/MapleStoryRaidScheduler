@@ -16,7 +16,7 @@ public class PeriodService : IPeriodService
 
     public async Task<PeriodDto> GetByNowAsync()
     {
-        var period = await _periodQuery.GetByNowAsync();
+        var period = await _periodQuery.GetActivePeriodAsync();
         if (period == null) throw new NotFoundException("No active period found");
         var periodDtos = new PeriodDto()
         {

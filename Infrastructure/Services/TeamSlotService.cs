@@ -25,7 +25,7 @@ public class TeamSlotService : ITeamSlotService
 
     public async Task<IEnumerable<TeamSlotDto>> GetByBossIdAsync(int bossId)
     {
-        var period = await _periodQuery.GetByNowAsync();
+        var period = await _periodQuery.GetActivePeriodAsync();
         if (period == null) return [];
         var teamSlotCharacters = await _teamSlotQuery.GetByPeriodAndBossIdAsync(period, bossId);
 
@@ -34,7 +34,7 @@ public class TeamSlotService : ITeamSlotService
 
     public async Task<IEnumerable<TeamSlotDto>> GetByDiscordIdAsync(ulong discordId)
     {
-        var period = await _periodQuery.GetByNowAsync();
+        var period = await _periodQuery.GetActivePeriodAsync();
         if (period == null) return [];
         var teamSlotCharacters = await _teamSlotQuery.GetByPeriodAndDiscordIdAsync(period, discordId);
 

@@ -19,7 +19,7 @@ public class TeamSlotCharacterService : ITeamSlotCharacterService
 
     public async Task DeleteByDiscordIdAndPeriodAsync(ulong discordId)
     {
-        var period = await _periodQuery.GetByNowAsync();
+        var period = await _periodQuery.GetActivePeriodAsync();
         if (period == null) return;
 
         await _teamSlotCharacterRepository.DeleteByDiscordIdAndPeriodAsync(discordId, period.StartDate, period.EndDate);

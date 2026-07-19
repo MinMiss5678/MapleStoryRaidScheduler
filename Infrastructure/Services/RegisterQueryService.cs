@@ -27,7 +27,7 @@ public class RegisterQueryService : IRegisterQueryService
 
     public async Task<RegisterDto> GetAsync(ulong discordId)
     {
-        var periodId = await _periodQuery.GetPeriodIdByNowAsync();
+        var periodId = await _periodQuery.GetActivePeriodIdAsync();
         if (periodId == 0) throw new NotFoundException("No active period found");
         return await GetByPeriodAsync(discordId, periodId);
     }

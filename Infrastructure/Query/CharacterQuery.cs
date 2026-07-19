@@ -38,7 +38,7 @@ public class CharacterQuery : ICharacterQuery
     public async Task<IEnumerable<CharacterDto>> GetWithDiscordNameAsync(ulong discordId, int? bossId = null)
     {
         // CTE 預先聚合當期 Rounds，避免 correlated subquery N 次執行
-        var periodId = await _periodQuery.GetPeriodIdByNowAsync();
+        var periodId = await _periodQuery.GetActivePeriodIdAsync();
         var bossFilter = bossId.HasValue ? "AND cr.\"BossId\" = @bossId" : "";
         var sql = $"""
                            WITH current_rounds AS (

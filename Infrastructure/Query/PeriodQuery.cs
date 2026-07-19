@@ -15,9 +15,9 @@ public class PeriodQuery : IPeriodQuery
         _dbContext = dbContext;
     }
     
-    public async Task<int> GetPeriodIdByNowAsync()
+    public async Task<int> GetActivePeriodIdAsync()
     {
-        var period = await GetByNowAsync();
+        var period = await GetActivePeriodAsync();
         return period?.Id ?? 0;
     }
 
@@ -47,7 +47,7 @@ public class PeriodQuery : IPeriodQuery
         return periodId ?? 0;
     }
 
-    public async Task<Period?> GetByNowAsync()
+    public async Task<Period?> GetActivePeriodAsync()
     {
         // 永遠回傳 DB 最新建立的 period（即玩家正在報名或即將出戰的那週）
         // WeeklyPeriodJob 每週四建立下一個 period，建立後自動切換

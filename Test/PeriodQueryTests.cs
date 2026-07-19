@@ -22,7 +22,7 @@ public class PeriodQueryTests
     }
 
     [Fact]
-    public async Task GetPeriodIdByNowAsync_ShouldReturnIdFromCurrentPeriod()
+    public async Task GetActivePeriodIdAsync_ShouldReturnIdFromCurrentPeriod()
     {
         // Arrange
         var period = new Period { Id = 10, StartDate = DateTimeOffset.UtcNow, EndDate = DateTimeOffset.UtcNow.AddDays(7) };
@@ -30,7 +30,7 @@ public class PeriodQueryTests
             .ReturnsAsync(period);
 
         // Act
-        var result = await _periodQuery.GetPeriodIdByNowAsync();
+        var result = await _periodQuery.GetActivePeriodIdAsync();
 
         // Assert
         Assert.Equal(10, result);
@@ -130,7 +130,7 @@ public class PeriodQueryTests
     }
 
     [Fact]
-    public async Task GetByNowAsync_ShouldReturnLatestPeriod()
+    public async Task GetActivePeriodAsync_ShouldReturnLatestPeriod()
     {
         // Arrange
         var latest = new Period { Id = 1, StartDate = DateTimeOffset.UtcNow };
@@ -138,7 +138,7 @@ public class PeriodQueryTests
             .ReturnsAsync(latest);
 
         // Act
-        var result = await _periodQuery.GetByNowAsync();
+        var result = await _periodQuery.GetActivePeriodAsync();
 
         // Assert
         Assert.NotNull(result);
