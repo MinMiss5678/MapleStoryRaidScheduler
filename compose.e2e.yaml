@@ -31,6 +31,7 @@ services:
       - "up"
 
   e2e-backend:
+    image: ${E2E_REGISTRY:-e2e}/backend:latest       # 本機由 build 產出並 tag；CI 預先 buildx 帶 cache 建好
     build:
       context: .                                    # Dockerfile 從方案根 COPY 各專案
       dockerfile: Presentation.WebApi/Dockerfile
@@ -53,6 +54,7 @@ services:
 
   # 前端 dev 模式（NODE_ENV=development → /api proxy 白名單含 test-login）；proxy 到 e2e-backend
   e2e-frontend:
+    image: ${E2E_REGISTRY:-e2e}/frontend:latest
     build:
       context: ./web
       target: dev
@@ -68,6 +70,7 @@ services:
   # E2E 執行器（profile ci：本機 up 不啟動，CI 才跑）。在 compose 網路內連 e2e-frontend:3000。
   e2e-playwright:
     profiles: [ci]
+    image: ${E2E_REGISTRY:-e2e}/playwright:latest
     build:
       context: ./web
       dockerfile: Dockerfile.e2e

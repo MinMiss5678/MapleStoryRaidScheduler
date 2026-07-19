@@ -93,4 +93,5 @@ docker compose -f compose.e2e.yaml --profile ci down -v   # 含資料一起清
 ## 未決
 
 - GitLab `e2e` job 本身（dind + `docker:27` 的 compose 可用性 + seed 時序 quoting）**待首次 pipeline 實跑驗證**——compose + 容器 playwright 機制已本機證明綠。
+- **CI 加速（layer cache）**：`.gitlab-ci.yml` e2e job 用 `docker buildx` + **registry cache**（`--cache-from/--cache-to type=registry`，需 `docker-container` driver + registry login）預建 3 映像，compose 改用 `image:` 引用（`E2E_REGISTRY=$CI_REGISTRY_IMAGE`）。dind 每次全新 → 靠 registry cache 讓 `dotnet restore`/`npm ci` 命中跳過。**首次跑慢（建 + 推 cache）、之後才快**；效果待 pipeline 驗（比較兩次跑的時間）。
 - 平行測試靠「三隻獨立王 + 唯一 discordId」隔離；若之後測試變多，考慮每 spec 重置（Respawn 式）或 `--profile ci` 專屬 seed。
