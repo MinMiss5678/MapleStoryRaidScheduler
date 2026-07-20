@@ -551,6 +551,6 @@ Secrets 以 volume mount 方式掛載至 `/run/secrets/`，與 Docker secrets �
 
 ### CI/CD
 
-- **CI**：`.gitlab-ci.yml` build → 單元 + 整合測試（dind + Testcontainers）→ 覆蓋率合併 → E2E（manual）。見 `docs/e2e-testing-setup.md`、`docs/gitlab-selfhost-ci-setup.md`。
+- **CI**：`.gitlab-ci.yml` build → 單元 + 整合測試（dind + Testcontainers）→ 覆蓋率合併 → E2E（自動，coverage 全過後觸發）。見 `docs/e2e-testing-setup.md`、`docs/gitlab-selfhost-ci-setup.md`。
 - **CD**：`deploy` stage（manual、限 main）→ 推 `minqq/*` 映像 → migrate Job → `kubectl rollout restart`。見 `docs/cd-deploy-setup.md`。
 - **手動部署**（不走 CI）：`docs/deployment.md`（`deploy.ps1` / `rollout.ps1`）。

@@ -29,7 +29,7 @@ CI  ：e2e-playwright 容器共用 e2e-frontend 網路（network_mode）→ 走 
 | `db/seed-e2e.sql` | E2E seed（單一未來 period + 3 隻獨立王） |
 | `compose.e2e.yaml` | 全 stack + `e2e-playwright`(profile ci) |
 | `web/Dockerfile`（`dev` target）/ `web/Dockerfile.e2e` | 前端 dev / playwright 執行器映像 |
-| `.gitlab-ci.yml`（`e2e` job）| dind 起 compose 跑 E2E（`when: manual`） |
+| `.gitlab-ci.yml`（`e2e` job）| dind 起 compose 跑 E2E（coverage 全過後自動觸發） |
 
 ## 認證接縫（繞過 Discord OAuth）
 
@@ -61,7 +61,7 @@ docker compose -f compose.e2e.yaml --profile ci run --build --rm e2e-playwright
 ```
 
 ### GitLab CI
-`.gitlab-ci.yml` 的 `e2e` job（`when: manual`）：dind 起 compose → **等 backend `/health/ready`**（e2e-frontend 的 node 在 compose 網路內 fetch backend readiness 探針；補 `service_started` ≠ app ready 的洞）→ seed → 跑 `e2e-playwright`。
+`.gitlab-ci.yml` 的 `e2e` job（coverage 全過後自動觸發）：dind 起 compose → **等 backend `/health/ready`**（e2e-frontend 的 node 在 compose 網路內 fetch backend readiness 探針；補 `service_started` ≠ app ready 的洞）→ seed → 跑 `e2e-playwright`。
 
 ### 收工
 ```bash
@@ -99,7 +99,7 @@ docker compose -f compose.e2e.yaml --profile ci down -v   # 含資料一起清
 自架 GitLab CE 閒置吃 ~4GB → 改用 **gitlab.com 官方托管**（GitLab + runner 都在他們機器，本機 RAM 全省）。
 - **runner**：免費預設 `saas-linux-small-amd64` = **2 vCPU / 8 GB / 30 GB**，內建 Docker（dind 可跑）。
 - **遷移**：GitHub 匯入 project（或加 gitlab.com remote 推）；免費 CI 要**綁卡驗證**才給 shared runner。
-- `.gitlab-ci.yml` 的 `e2e` job（`when: manual` + `needs: []` 不等前面 stage）已實跑綠：**7 passed**。
+- `.gitlab-ci.yml` 的 `e2e` job（coverage 全過後自動觸發，不再 `when: manual`）已實跑綠：**7 passed**。
 
 ### layer cache（已驗證綠）
 buildx registry cache（`--cache-from/--cache-to type=registry`，`docker-container` driver + registry login）+ compose 改 `image:` 引用（`E2E_REGISTRY=$CI_REGISTRY_IMAGE`）。dind 每次全新 → 靠 registry cache 讓 `dotnet restore`/`npm ci` 層命中跳過。
@@ -119,7 +119,7 @@ glab ci status                                          # 當前 branch 最新 p
 glab ci list -R <group/project>                         # 列 pipelines
 glab ci lint .gitlab-ci.yml                             # 驗 CI 設定語法
 glab api "projects/<id>/pipelines/<pid>/jobs"           # 找 job id（trigger 要數字 id 不是名字）
-glab ci trigger <job-id>                                # 觸發 manual job（e2e）
+glab ci run                                              # 重觸發整條 pipeline（e2e 已自動，不需 trigger）
 glab api "projects/<id>/jobs/<job-id>/trace" | tail     # 非阻塞讀 log（trace 會阻塞跟到結束）
 glab api --method POST "projects/<id>/jobs/<job-id>/cancel"   # 取消
 ```

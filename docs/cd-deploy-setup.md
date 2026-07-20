@@ -5,7 +5,7 @@
 
 > 手動部署版（本機 `deploy.ps1` / `rollout.ps1`）見 `docs/deployment.md`——本 stage 就是把它搬進 CI。
 
-> ⚠️ **尚未在真叢集驗證**（本機無叢集 / Docker Hub / kubeconfig）。YAML 已 `glab ci lint` 過、邏輯照抄已驗證的 `rollout.ps1`。第一次跑請盯著 log。
+> ⚠️ **EC2 叢集目前已移除**，`deploy` job 無法執行（kubeconfig 指向的叢集不存在）。重新佈建 k8s 叢集並更新 `KUBECONFIG_B64` 後可再啟用。
 
 ## 前置：CI/CD Variables（Settings → CI/CD → Variables，全設 protected + masked）
 
