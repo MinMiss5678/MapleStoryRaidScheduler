@@ -82,7 +82,7 @@ coverage:
         coverage_format: cobertura
         path: coverage-report/Cobertura.xml
 
-# E2E（Playwright 打全 stack：db + backend + frontend）——重，預設手動觸發。
+# E2E（Playwright 打全 stack：db + backend + frontend）——重，coverage 全過後自動觸發。
 # 全在 compose.e2e.yaml，job 只用 dind 起它。核心機制（全 stack + 容器內 playwright）本機已驗證綠。
 e2e:
   stage: e2e
@@ -97,8 +97,6 @@ e2e:
     DOCKER_TLS_VERIFY: "1"
     COMPOSE_PROJECT_NAME: e2e
     E2E_REGISTRY: "$CI_REGISTRY_IMAGE"   # compose 的 image: 用這個前綴引用預建映像
-  when: manual          # E2E 重（起全 stack），opt-in
-  needs: []             # 不等前面 stage，觸發即跑（E2E 自帶 stack、不需 build/test 產物）
   script:
     # buildx docker-container driver（才能 registry cache export）+ 登入 GitLab Registry
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
