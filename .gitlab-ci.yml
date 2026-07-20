@@ -114,10 +114,12 @@ e2e:
       docker buildx build --cache-from ${C}/playwright --cache-to ${C}/playwright,mode=max --load -t $E2E_REGISTRY/playwright:latest -f web/Dockerfile.e2e ./web
     # 起 stack（用預建映像，不再 --build）
     - docker compose -f compose.e2e.yaml up -d e2e-frontend
-    # 等 backend 的 WeeklyPeriodJob 建好 period（有 period 才代表 backend 起完）→ seed 再蓋掉它
+    # 等 backend /health/ready = 200（backend 起完 + DB 連得到；migrations 已跑，因 e2e-backend
+    # depends_on e2e-migrate: service_completed_successfully）。比輪詢 Period 更直接、且不綁 WeeklyPeriodJob。
+    # 用 e2e-frontend(node) 在 compose 網路內 fetch backend 的 readiness 探針（沿用本檔 e2e-playwright 的 node fetch 等待 pattern）。
     - |
-      until [ "$(docker compose -f compose.e2e.yaml exec -T e2e-db sh -c 'PGPASSWORD=e2e psql -U postgres -d presentationdb -tAc "SELECT count(*) FROM \"Period\""' 2>/dev/null | tr -dc 0-9)" -ge 1 ] 2>/dev/null; do
-        echo "等 backend 建 period..."; sleep 3;
+      until docker compose -f compose.e2e.yaml exec -T e2e-frontend node -e "fetch('http://e2e-backend:5230/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null; do
+        echo "等 backend /health/ready..."; sleep 3;
       done
     # 灌 E2E seed（單一未來 period + 三隻獨立王）
     - docker compose -f compose.e2e.yaml exec -T e2e-db sh -c 'PGPASSWORD=e2e psql -U postgres -d presentationdb' < db/seed-e2e.sql
