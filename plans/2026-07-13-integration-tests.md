@@ -75,7 +75,8 @@
 - ✅ Phase 4（部分）：`UnitOfWorkIntegrationTests` 2 測試 **2/2 綠**（Docker 起容器後 `dotnet test` 驗證，409ms）——①Commit 持久 + 提交前其他連線看不到（隔離）②Rollback 跨兩張表原子撤銷。用真 `UnitOfWork` + 真 `TeamSlotRepository` 共用同一交易。
 - ✅ Phase 4（後半）：`MigrationReversibilityIntegrationTests` **綠**——同容器內開臨時 DB，依序套所有 `*.up.sql` → 反向套所有 `*.down.sql`，驗全程不報錯且最後 public schema 歸零（守 down.sql 正確性）。全 8 支整合測試一起跑 0 失敗。
 - ✅ Phase 5：覆蓋率合併 + CI 閘控 **改用自架 GitLab CI 完成（超出原計畫）**——`.gitlab-ci.yml`：build → unit + integration（dind + Testcontainers）→ ReportGenerator 合併兩份 cobertura；protected branch + Pipelines must succeed 當閘（紅 MR 實測擋 merge）。合併後 **Line 53.1% / Branch 70.3%**。詳見 `docs/gitlab-selfhost-ci-setup.md`。
-- 🟡 Phase 3（其餘）**選配、暫緩**：`TeamSlotQuery`/`PeriodQuery`/`CharacterQuery`/`SessionQuery`、`CharacterRepository`/`PlayerRegisterRepository`/`PlayerAvailabilityRepository` 尚無整合測試——擴覆蓋面用，非必要。
+- ✅ Phase 3（後補）：補 **`CharacterQuery`**（CTE SUM 聚合當期場數 + bossId 過濾 + ARRAY_AGG + Player JOIN）與 **`TeamSlotQuery`**（多 LEFT JOIN + period 範圍過濾 + bossId 過濾 + BossName join）兩支——挑「CTE/JOIN 這類真 DB 才驗得到」的複雜 SQL。整合測試 **8 → 10 支**全綠。
+- 🟢 Phase 3（其餘）**刻意不做（YAGNI）**：`PeriodQuery`/`SessionQuery`、`CharacterRepository`/`PlayerRegisterRepository`/`PlayerAvailabilityRepository` 多為簡單 SELECT/CRUD，真 DB 測不出新東西——留給 code review，不為覆蓋率而測。
 
 > **狀態：核心完成。** Harness / 關鍵 query / 交易 / 可逆 / 覆蓋率合併 / CI 閘控全到位，並抓到一個 prod bug。剩 Phase 3 其餘為選配。
 

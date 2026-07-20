@@ -195,6 +195,9 @@ UnitOfWorkMiddleware         ← 開啟 DB 事務，成功 Commit，例外 Rollb
 Controller / Service
 ```
 
+> **健康檢查端點例外**：`/health/live`、`/health/ready` 以 `UseHealthChecks` **終端中介軟體**掛在這條管線**之前**，完全繞過上述四個中介軟體。
+> 原因：`AuthenticationMiddleware` 的相依鏈（session/player service → repo → `IDbConnection`）在**建構時**就 eager 開 DB 連線；若讓健康檢查走進管線，DB 掛掉時 readiness 會因「建不出 auth 中介軟體」回 500 而非乾淨 503，liveness 更會誤殺存活的 pod。詳見 `docs/cd-deploy-setup.md`。
+
 ---
 
 ## 自動分配引擎
@@ -542,5 +545,12 @@ frontend → cloudflared
 `k8s/` 目錄包含各服務的 Deployment / Service / PVC，以及：
 - `k8s/migrate-job.yaml`：批次 Job，執行 migration 後完成
 - `k8s/secrets.yaml`：Secret template（真實值不入 git）
+- backend 掛 **liveness (`/health/live`) / readiness (`/health/ready`)** 探針：DB 掛時停止導流量但不重啟 pod；滾動更新時 readiness 沒綠的新 pod 不會接到流量
 
 Secrets 以 volume mount 方式掛載至 `/run/secrets/`，與 Docker secrets 路徑一致，應用程式設定無需因部署平台而異。
+
+### CI/CD
+
+- **CI**：`.gitlab-ci.yml` build → 單元 + 整合測試（dind + Testcontainers）→ 覆蓋率合併 → E2E（manual）。見 `docs/e2e-testing-setup.md`、`docs/gitlab-selfhost-ci-setup.md`。
+- **CD**：`deploy` stage（manual、限 main）→ 推 `minqq/*` 映像 → migrate Job → `kubectl rollout restart`。見 `docs/cd-deploy-setup.md`。
+- **手動部署**（不走 CI）：`docs/deployment.md`（`deploy.ps1` / `rollout.ps1`）。

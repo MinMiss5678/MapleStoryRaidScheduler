@@ -3,6 +3,8 @@
 `.gitlab-ci.yml` 的 `deploy` job：把 `k8s/rollout.ps1`（build + push `minqq/*` → `kubectl rollout restart`）＋ `migrate-job` 搬進 CI。
 **CD 到 prod 一律人工點擊**（`when: manual`）、只在 `main`。等於「一鍵發版」，但那一鍵是人按的。
 
+> 手動部署版（本機 `deploy.ps1` / `rollout.ps1`）見 `docs/deployment.md`——本 stage 就是把它搬進 CI。
+
 > ⚠️ **尚未在真叢集驗證**（本機無叢集 / Docker Hub / kubeconfig）。YAML 已 `glab ci lint` 過、邏輯照抄已驗證的 `rollout.ps1`。第一次跑請盯著 log。
 
 ## 前置：CI/CD Variables（Settings → CI/CD → Variables，全設 protected + masked）
