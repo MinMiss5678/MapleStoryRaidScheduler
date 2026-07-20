@@ -55,6 +55,7 @@ public class SessionServiceTests
     {
         var session = new Session
         {
+            SessionId = "",
             DiscordId = 456UL,
             AccessToken = "valid-token",
             RefreshToken = "ref",
@@ -73,6 +74,7 @@ public class SessionServiceTests
     {
         var session = new Session
         {
+            SessionId = "",
             DiscordId = 789UL,
             AccessToken = "cached-token",
             RefreshToken = "ref",
@@ -97,6 +99,7 @@ public class SessionServiceTests
         // 已過期 → 應以 RefreshToken 換新 token、更新 DB、回傳新 session
         var expired = new Session
         {
+            SessionId = "",
             DiscordId = 555UL,
             AccessToken = "old",
             RefreshToken = "old-refresh",
@@ -120,6 +123,7 @@ public class SessionServiceTests
         // 已過期但 refresh 失敗（回 null）→ 視為無效 session
         var expired = new Session
         {
+            SessionId = "",
             DiscordId = 666UL,
             AccessToken = "old",
             RefreshToken = "bad",

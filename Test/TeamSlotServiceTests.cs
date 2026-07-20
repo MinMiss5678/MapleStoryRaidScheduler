@@ -94,6 +94,7 @@ public class TeamSlotServiceTests
 
         var template = new BossTemplate
         {
+            Name = "",
             Requirements = new List<BossTemplateRequirement>
             {
                 new BossTemplateRequirement { JobCategory = "Warrior", Count = 1, Priority = 1 },
@@ -103,8 +104,8 @@ public class TeamSlotServiceTests
 
         var members = new List<TeamSlotCharacter>
         {
-            new TeamSlotCharacter { CharacterName = "P1", Job = "Hero" },
-            new TeamSlotCharacter { CharacterName = "P2", Job = "Bishop" }
+            new TeamSlotCharacter { CharacterName = "P1", Job = "Hero", DiscordName = "" },
+            new TeamSlotCharacter { CharacterName = "P2", Job = "Bishop", DiscordName = "" }
         };
 
         // Act
@@ -201,7 +202,7 @@ public class TeamSlotAutoAssignServiceTests
             });
 
         _playerRepositoryMock.Setup(r => r.GetAsync(discordId))
-            .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "Player1" });
+            .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "Player1", Role = "" });
 
         // Act
         await _autoAssignService.AutoAssignAsync(register);
@@ -256,7 +257,7 @@ public class TeamSlotAutoAssignServiceTests
             });
 
         _playerRepositoryMock.Setup(r => r.GetAsync(discordId))
-            .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "Player2" });
+            .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "Player2", Role = "" });
 
         int capturedTeamSlotId = 0;
         _teamSlotRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<TeamSlot>()))
@@ -312,6 +313,7 @@ public class TeamSlotAutoAssignServiceTests
                 {
                     Id = 1,
                     CharacterId = "other_char",
+                    DiscordName = "",
                     Job = "Support",
                     TeamSlotId = 100
                 }

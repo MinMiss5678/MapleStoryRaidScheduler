@@ -50,6 +50,7 @@ public class ScheduleServiceAutoScheduleTests
     {
         Id = templateId,
         BossId = bossId,
+        Name = "",
         Requirements = new List<BossTemplateRequirement>
         {
             new BossTemplateRequirement { JobCategory = "任意", Count = 2, Priority = 1 }
@@ -73,7 +74,7 @@ public class ScheduleServiceAutoScheduleTests
         var jobCategories = CreateJobCategories();
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
-        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1 });
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1, Name = "" });
         _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(jobCategories);
 
@@ -123,7 +124,7 @@ public class ScheduleServiceAutoScheduleTests
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
         _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId))
-            .ReturnsAsync(new Boss { RoundConsumption = 1, RequireMembers = 6 });
+            .ReturnsAsync(new Boss { RoundConsumption = 1, RequireMembers = 6, Name = "" });
         _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(CreateJobCategories());
 
@@ -135,7 +136,7 @@ public class ScheduleServiceAutoScheduleTests
             Source = TeamSlotSource.Admin,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { Id = 1, TeamSlotId = 100, DiscordId = 11111, CharacterId = "c1", CharacterName = "Hero", Job = "Hero", Rounds = 1, IsManual = true }
+                new TeamSlotCharacter { Id = 1, TeamSlotId = 100, DiscordId = 11111, DiscordName = "", CharacterId = "c1", CharacterName = "Hero", Job = "Hero", Rounds = 1, IsManual = true }
             }
         };
         _teamSlotRepositoryMock.Setup(r => r.GetTemporaryByPeriodIdAsync(period.Id))
@@ -193,6 +194,7 @@ public class ScheduleServiceAutoScheduleTests
         var template = new BossTemplate
         {
             Id = templateId,
+            Name = "",
             Requirements = new List<BossTemplateRequirement>
             {
                 // Requires 3 members but only 2 available
@@ -203,7 +205,7 @@ public class ScheduleServiceAutoScheduleTests
         var jobCategories = CreateJobCategories();
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
-        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1 });
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1, Name = "" });
         _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(jobCategories);
 
@@ -211,7 +213,7 @@ public class ScheduleServiceAutoScheduleTests
         {
             new PlayerRegisterSchedule
             {
-                Id = 1, DiscordId = 11111, Job = "Hero", Rounds = 1,
+                Id = 1, DiscordId = 11111, DiscordName = "", CharacterId = "", CharacterName = "", Job = "Hero", Rounds = 1,
                 Availabilities = new List<PlayerAvailability>
                 {
                     new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) }
@@ -219,7 +221,7 @@ public class ScheduleServiceAutoScheduleTests
             },
             new PlayerRegisterSchedule
             {
-                Id = 2, DiscordId = 22222, Job = "Bishop", Rounds = 1,
+                Id = 2, DiscordId = 22222, DiscordName = "", CharacterId = "", CharacterName = "", Job = "Bishop", Rounds = 1,
                 Availabilities = new List<PlayerAvailability>
                 {
                     new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) }
@@ -245,7 +247,7 @@ public class ScheduleServiceAutoScheduleTests
         var jobCategories = CreateJobCategories();
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
-        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1 });
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1, Name = "" });
         _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(jobCategories);
 
@@ -256,10 +258,10 @@ public class ScheduleServiceAutoScheduleTests
         };
         var registrations = new List<PlayerRegisterSchedule>
         {
-            new PlayerRegisterSchedule { Id = 1, DiscordId = 1, Job = "Hero", Rounds = 2, Availabilities = avail },
-            new PlayerRegisterSchedule { Id = 2, DiscordId = 2, Job = "Bishop", Rounds = 2, Availabilities = avail },
-            new PlayerRegisterSchedule { Id = 3, DiscordId = 3, Job = "Bowmaster", Rounds = 2, Availabilities = avail },
-            new PlayerRegisterSchedule { Id = 4, DiscordId = 4, Job = "Hero", Rounds = 2, Availabilities = avail },
+            new PlayerRegisterSchedule { Id = 1, DiscordId = 1, DiscordName = "", CharacterId = "", CharacterName = "", Job = "Hero", Rounds = 2, Availabilities = avail },
+            new PlayerRegisterSchedule { Id = 2, DiscordId = 2, DiscordName = "", CharacterId = "", CharacterName = "", Job = "Bishop", Rounds = 2, Availabilities = avail },
+            new PlayerRegisterSchedule { Id = 3, DiscordId = 3, DiscordName = "", CharacterId = "", CharacterName = "", Job = "Bowmaster", Rounds = 2, Availabilities = avail },
+            new PlayerRegisterSchedule { Id = 4, DiscordId = 4, DiscordName = "", CharacterId = "", CharacterName = "", Job = "Hero", Rounds = 2, Availabilities = avail },
         };
         _playerRegisterQueryMock.Setup(q => q.GetByNowPeriodIdAsync(bossId)).ReturnsAsync(registrations);
 
@@ -280,7 +282,7 @@ public class ScheduleServiceAutoScheduleTests
         var jobCategories = CreateJobCategories();
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
-        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 2 });
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 2, Name = "" });
         _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(jobCategories);
 
@@ -291,8 +293,8 @@ public class ScheduleServiceAutoScheduleTests
         var registrations = new List<PlayerRegisterSchedule>
         {
             // Has only 1 round but boss requires 2 → should be skipped
-            new PlayerRegisterSchedule { Id = 1, DiscordId = 1, Job = "Hero", Rounds = 1, Availabilities = avail },
-            new PlayerRegisterSchedule { Id = 2, DiscordId = 2, Job = "Bishop", Rounds = 2, Availabilities = avail },
+            new PlayerRegisterSchedule { Id = 1, DiscordId = 1, DiscordName = "", CharacterId = "", CharacterName = "", Job = "Hero", Rounds = 1, Availabilities = avail },
+            new PlayerRegisterSchedule { Id = 2, DiscordId = 2, DiscordName = "", CharacterId = "", CharacterName = "", Job = "Bishop", Rounds = 2, Availabilities = avail },
         };
         _playerRegisterQueryMock.Setup(q => q.GetByNowPeriodIdAsync(bossId)).ReturnsAsync(registrations);
 

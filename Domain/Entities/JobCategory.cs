@@ -2,6 +2,6 @@
 
 public class JobCategory
 {
-    public string CategoryName { get; set; }
-    public string JobName { get; set; }
+    public required string CategoryName { get; set; }
+    public required string JobName { get; set; }
 }

@@ -87,7 +87,7 @@ public class TeamSlotMergeServiceMergeTests
             Id = 1, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, IsManual = true } // manual!
+                new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, DiscordName = "", Job = "", IsManual = true } // manual!
             }
         };
         var teamB = new TeamSlot
@@ -95,7 +95,7 @@ public class TeamSlotMergeServiceMergeTests
             Id = 2, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, IsManual = false }
+                new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, DiscordName = "", Job = "", IsManual = false }
             }
         };
 
@@ -109,7 +109,7 @@ public class TeamSlotMergeServiceMergeTests
         _teamSlotRepositoryMock.Setup(r => r.GetIncompleteTeamsAsync(5, 1))
             .ReturnsAsync(new List<TeamSlot> { teamA, teamB });
         _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(5)).ReturnsAsync(new List<BossTemplate>());
-        _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss> { new Boss { Id = 5, RequireMembers = 6 } });
+        _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss> { new Boss { Id = 5, RequireMembers = 6, Name = "" } });
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<JobCategory>());
         _periodQueryMock.Setup(q => q.GetByIdAsync(1)).ReturnsAsync(period);
 
@@ -150,7 +150,7 @@ public class TeamSlotMergeServiceMergeTests
             Id = 1, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, IsManual = false }
+                new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, DiscordName = "", Job = "", IsManual = false }
             }
         };
         var teamB = new TeamSlot
@@ -158,7 +158,7 @@ public class TeamSlotMergeServiceMergeTests
             Id = 2, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, IsManual = false }
+                new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, DiscordName = "", Job = "", IsManual = false }
             }
         };
 
@@ -174,7 +174,7 @@ public class TeamSlotMergeServiceMergeTests
         _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(5)).ReturnsAsync(new List<BossTemplate>());
         _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss>
         {
-            new Boss { Id = 5, RequireMembers = 6 }
+            new Boss { Id = 5, RequireMembers = 6, Name = "" }
         });
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<JobCategory>());
         _periodQueryMock.Setup(q => q.GetByIdAsync(1)).ReturnsAsync(period);
@@ -216,7 +216,7 @@ public class TeamSlotMergeServiceMergeTests
             Id = 1, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, Job = "Hero", IsManual = false }
+                new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, DiscordName = "", Job = "Hero", IsManual = false }
             }
         };
         var teamB = new TeamSlot
@@ -224,13 +224,14 @@ public class TeamSlotMergeServiceMergeTests
             Id = 2, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, Job = "Bishop", IsManual = false }
+                new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, DiscordName = "", Job = "Bishop", IsManual = false }
             }
         };
 
         var template = new BossTemplate
         {
             Id = 10, BossId = 5,
+            Name = "",
             Requirements = new List<BossTemplateRequirement>
             {
                 new BossTemplateRequirement { JobCategory = "任意", Count = 2, Priority = 1 }
@@ -250,7 +251,7 @@ public class TeamSlotMergeServiceMergeTests
             .ReturnsAsync(new List<BossTemplate> { template });
         _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss>
         {
-            new Boss { Id = 5, RequireMembers = 6 }
+            new Boss { Id = 5, RequireMembers = 6, Name = "" }
         });
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<JobCategory>
         {
@@ -295,7 +296,7 @@ public class TeamSlotMergeServiceMergeTests
             Id = 1, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c1", DiscordId = sameDiscordId, IsManual = false }
+                new TeamSlotCharacter { CharacterId = "c1", DiscordId = sameDiscordId, DiscordName = "", Job = "", IsManual = false }
             }
         };
         var teamB = new TeamSlot
@@ -303,7 +304,7 @@ public class TeamSlotMergeServiceMergeTests
             Id = 2, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c2", DiscordId = sameDiscordId, IsManual = false } // same!
+                new TeamSlotCharacter { CharacterId = "c2", DiscordId = sameDiscordId, DiscordName = "", Job = "", IsManual = false } // same!
             }
         };
 
@@ -312,7 +313,7 @@ public class TeamSlotMergeServiceMergeTests
         _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(5)).ReturnsAsync(new List<BossTemplate>());
         _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss>
         {
-            new Boss { Id = 5, RequireMembers = 6 }
+            new Boss { Id = 5, RequireMembers = 6, Name = "" }
         });
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<JobCategory>());
         _playerAvailabilityRepositoryMock.Setup(r =>
@@ -322,7 +323,7 @@ public class TeamSlotMergeServiceMergeTests
         var register = new Register
         {
             PeriodId = 1,
-            CharacterRegisters = new List<CharacterRegister> { new CharacterRegister { BossId = 5 } }
+            CharacterRegisters = new List<CharacterRegister> { new CharacterRegister { BossId = 5, CharacterId = "" } }
         };
 
         // Act
@@ -341,8 +342,8 @@ public class TeamSlotMergeServiceMergeTests
             Id = 1, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c1", DiscordId = 111, IsManual = false },
-                new TeamSlotCharacter { CharacterId = "c2", DiscordId = 222, IsManual = false }
+                new TeamSlotCharacter { CharacterId = "c1", DiscordId = 111, DiscordName = "", Job = "", IsManual = false },
+                new TeamSlotCharacter { CharacterId = "c2", DiscordId = 222, DiscordName = "", Job = "", IsManual = false }
             }
         };
         var teamB = new TeamSlot
@@ -350,7 +351,7 @@ public class TeamSlotMergeServiceMergeTests
             Id = 2, BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { CharacterId = "c3", DiscordId = 333, IsManual = false }
+                new TeamSlotCharacter { CharacterId = "c3", DiscordId = 333, DiscordName = "", Job = "", IsManual = false }
             }
         };
 
@@ -359,7 +360,7 @@ public class TeamSlotMergeServiceMergeTests
         _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(5)).ReturnsAsync(new List<BossTemplate>());
         _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss>
         {
-            new Boss { Id = 5, RequireMembers = 2 } // max 2 members
+            new Boss { Id = 5, RequireMembers = 2, Name = "" } // max 2 members
         });
         _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<JobCategory>());
         _playerAvailabilityRepositoryMock.Setup(r =>
@@ -369,7 +370,7 @@ public class TeamSlotMergeServiceMergeTests
         var register = new Register
         {
             PeriodId = 1,
-            CharacterRegisters = new List<CharacterRegister> { new CharacterRegister { BossId = 5 } }
+            CharacterRegisters = new List<CharacterRegister> { new CharacterRegister { BossId = 5, CharacterId = "" } }
         };
 
         // Act

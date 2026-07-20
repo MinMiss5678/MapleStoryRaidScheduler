@@ -101,6 +101,7 @@ public class ScheduleServiceTests
         {
             Id = templateId,
             BossId = bossId,
+            Name = "",
             Requirements = new List<BossTemplateRequirement>
             {
                 new BossTemplateRequirement { JobCategory = "任意", Count = 6, Priority = 1 }
@@ -108,7 +109,7 @@ public class ScheduleServiceTests
         };
 
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
-        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1 });
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { RoundConsumption = 1, Name = "" });
         _playerRegisterQueryMock.Setup(q => q.GetByNowPeriodIdAsync(bossId))
             .ReturnsAsync(new List<PlayerRegisterSchedule>());
         _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(new Period

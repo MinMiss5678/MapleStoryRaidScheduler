@@ -128,7 +128,9 @@ public class TeamSlotService : ITeamSlotService
                 await _teamSlotCharacterRepository.DeleteCharacterAsync(new TeamSlotCharacter
                 {
                     Id = teamSlotCharacterId,
-                    TeamSlotId = teamSlot.Id
+                    TeamSlotId = teamSlot.Id,
+                    DiscordName = "",
+                    Job = ""
                 });
             }
 

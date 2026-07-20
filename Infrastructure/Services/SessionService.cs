@@ -56,6 +56,7 @@ public class SessionService : ISessionService
                 
                 var newSession = new Session()
                 {
+                    SessionId = session.SessionId,
                     DiscordId = session.DiscordId,
                     AccessToken = newToken.AccessToken,
                     RefreshToken = newToken.RefreshToken,

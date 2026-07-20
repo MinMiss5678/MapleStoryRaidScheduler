@@ -14,8 +14,8 @@ public class TeamSlotMergeServiceStaticTests
         // Arrange
         var members = new List<TeamSlotCharacter>
         {
-            new TeamSlotCharacter { DiscordId = 1 },
-            new TeamSlotCharacter { DiscordId = 2 }  // 沒有 availability
+            new TeamSlotCharacter { DiscordId = 1, DiscordName = "", Job = "" },
+            new TeamSlotCharacter { DiscordId = 2, DiscordName = "", Job = "" }  // 沒有 availability
         };
 
         var availabilities = new Dictionary<ulong, IEnumerable<PlayerAvailability>>
@@ -43,8 +43,8 @@ public class TeamSlotMergeServiceStaticTests
         // Arrange - 兩人完全沒有重疊時段
         var members = new List<TeamSlotCharacter>
         {
-            new TeamSlotCharacter { DiscordId = 1 },
-            new TeamSlotCharacter { DiscordId = 2 }
+            new TeamSlotCharacter { DiscordId = 1, DiscordName = "", Job = "" },
+            new TeamSlotCharacter { DiscordId = 2, DiscordName = "", Job = "" }
         };
 
         var availabilities = new Dictionary<ulong, IEnumerable<PlayerAvailability>>
@@ -82,8 +82,8 @@ public class TeamSlotMergeServiceStaticTests
         // Arrange - 兩人週四 19-22 有重疊
         var members = new List<TeamSlotCharacter>
         {
-            new TeamSlotCharacter { DiscordId = 1 },
-            new TeamSlotCharacter { DiscordId = 2 }
+            new TeamSlotCharacter { DiscordId = 1, DiscordName = "", Job = "" },
+            new TeamSlotCharacter { DiscordId = 2, DiscordName = "", Job = "" }
         };
 
         var availabilities = new Dictionary<ulong, IEnumerable<PlayerAvailability>>
@@ -131,6 +131,7 @@ public class TeamSlotMergeServiceStaticTests
 
         var template = new BossTemplate
         {
+            Name = "",
             Requirements = new List<BossTemplateRequirement>
             {
                 new BossTemplateRequirement { JobCategory = "任意", Count = 2, Priority = 1 }
@@ -140,9 +141,9 @@ public class TeamSlotMergeServiceStaticTests
         // 3 members but requireMembers=2 → null
         var members = new List<TeamSlotCharacter>
         {
-            new TeamSlotCharacter { CharacterName = "P1", Job = "Hero", AttackPower = 1000 },
-            new TeamSlotCharacter { CharacterName = "P2", Job = "Bishop", AttackPower = 900 },
-            new TeamSlotCharacter { CharacterName = "P3", Job = "Thief", AttackPower = 800 }
+            new TeamSlotCharacter { CharacterName = "P1", Job = "Hero", DiscordName = "", AttackPower = 1000 },
+            new TeamSlotCharacter { CharacterName = "P2", Job = "Bishop", DiscordName = "", AttackPower = 900 },
+            new TeamSlotCharacter { CharacterName = "P3", Job = "Thief", DiscordName = "", AttackPower = 800 }
         };
 
         // Act
@@ -164,6 +165,7 @@ public class TeamSlotMergeServiceStaticTests
 
         var template = new BossTemplate
         {
+            Name = "",
             Requirements = new List<BossTemplateRequirement>
             {
                 new BossTemplateRequirement { JobCategory = "Warrior", Count = 1, Priority = 1 },
@@ -174,7 +176,7 @@ public class TeamSlotMergeServiceStaticTests
         // 只有 Warrior，沒有 Mage → 應填入空位
         var members = new List<TeamSlotCharacter>
         {
-            new TeamSlotCharacter { CharacterName = "P1", Job = "Hero", AttackPower = 1000 }
+            new TeamSlotCharacter { CharacterName = "P1", Job = "Hero", DiscordName = "", AttackPower = 1000 }
         };
 
         // Act

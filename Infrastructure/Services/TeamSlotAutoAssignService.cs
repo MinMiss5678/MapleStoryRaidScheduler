@@ -53,7 +53,7 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
 
             if (matchingTeam != null)
             {
-                var newMember = new TeamSlotCharacter { TeamSlotId = matchingTeam.Id };
+                var newMember = new TeamSlotCharacter { TeamSlotId = matchingTeam.Id, DiscordName = "", Job = "" };
                 FillSlot(newMember, register, character, cr, player);
                 await _teamSlotCharacterRepository.CreateAsync(newMember);
                 matchingTeam.Characters.Add(newMember);
@@ -135,7 +135,7 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
 
         var teamSlotId = await _teamSlotRepository.CreateAsync(teamSlot);
 
-        var firstMember = new TeamSlotCharacter { TeamSlotId = teamSlotId };
+        var firstMember = new TeamSlotCharacter { TeamSlotId = teamSlotId, DiscordName = "", Job = "" };
         FillSlot(firstMember, register, character, cr, player);
         await _teamSlotCharacterRepository.CreateAsync(firstMember);
 

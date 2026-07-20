@@ -40,7 +40,7 @@ public class BossServiceTests
     public async Task GetTemplatesByBossIdAsync_ShouldReturnTemplates()
     {
         // Arrange
-        var templates = new List<BossTemplate> { new BossTemplate { Id = 1, BossId = 10 } };
+        var templates = new List<BossTemplate> { new BossTemplate { Id = 1, BossId = 10, Name = "" } };
         _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(10)).ReturnsAsync(templates);
 
         // Act
@@ -55,7 +55,7 @@ public class BossServiceTests
     public async Task GetTemplateByIdAsync_ShouldReturnTemplate()
     {
         // Arrange
-        var template = new BossTemplate { Id = 1 };
+        var template = new BossTemplate { Id = 1, Name = "" };
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(1)).ReturnsAsync(template);
 
         // Act
@@ -164,8 +164,8 @@ public class BossServiceTests
         // Arrange
         var templates = new List<BossTemplate>
         {
-            new BossTemplate { Id = 10, BossId = 1 },
-            new BossTemplate { Id = 20, BossId = 1 }
+            new BossTemplate { Id = 10, BossId = 1, Name = "" },
+            new BossTemplate { Id = 20, BossId = 1, Name = "" }
         };
         _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(1)).ReturnsAsync(templates);
         _bossRepositoryMock.Setup(r => r.DeleteTemplateAsync(It.IsAny<int>())).ReturnsAsync(true);

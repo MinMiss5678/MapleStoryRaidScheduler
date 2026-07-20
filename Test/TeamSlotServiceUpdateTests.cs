@@ -163,7 +163,7 @@ public class TeamSlotServiceUpdateTests
             Id = teamSlotId,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { Id = charSlotId, DiscordId = otherDiscordId, CharacterId = "other" }
+                new TeamSlotCharacter { Id = charSlotId, DiscordId = otherDiscordId, DiscordName = "", Job = "", CharacterId = "other" }
             }
         };
         _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
@@ -235,7 +235,7 @@ public class TeamSlotServiceUpdateTests
         int? charSlotId = 5;
         ulong discordId = 12345;
 
-        var existingChar = new TeamSlotCharacter { Id = charSlotId, DiscordId = discordId, CharacterId = "c1" };
+        var existingChar = new TeamSlotCharacter { Id = charSlotId, DiscordId = discordId, DiscordName = "", Job = "", CharacterId = "c1" };
         var existingTeamSlot = new TeamSlot
         {
             Id = teamSlotId,
@@ -276,7 +276,7 @@ public class TeamSlotServiceUpdateTests
             Id = teamSlotId,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { Id = 1, CharacterId = "c1", DiscordId = 111 }
+                new TeamSlotCharacter { Id = 1, CharacterId = "c1", DiscordId = 111, DiscordName = "", Job = "" }
             }
         };
         _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
@@ -314,7 +314,7 @@ public class TeamSlotServiceUpdateTests
             Id = teamSlotId,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { Id = emptySlotId, CharacterId = null, DiscordId = 0 } // 空位
+                new TeamSlotCharacter { Id = emptySlotId, CharacterId = null, DiscordId = 0, DiscordName = "", Job = "" } // 空位
             }
         };
         _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);

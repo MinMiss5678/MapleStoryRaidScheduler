@@ -22,7 +22,7 @@ public class PlayerServiceTests
     public async Task CreateAsync_ShouldCreatePlayer_WhenNotExists()
     {
         // Arrange
-        var player = new Player { DiscordId = 12345, DiscordName = "TestPlayer" };
+        var player = new Player { DiscordId = 12345, DiscordName = "TestPlayer", Role = "" };
         _playerRepositoryMock.Setup(r => r.ExistAsync(player.DiscordId)).ReturnsAsync(false);
 
         // Act
@@ -36,7 +36,7 @@ public class PlayerServiceTests
     public async Task CreateAsync_ShouldSkipCreation_WhenPlayerAlreadyExists()
     {
         // Arrange
-        var player = new Player { DiscordId = 12345 };
+        var player = new Player { DiscordId = 12345, DiscordName = "", Role = "" };
         _playerRepositoryMock.Setup(r => r.ExistAsync(player.DiscordId)).ReturnsAsync(true);
 
         // Act
@@ -51,7 +51,7 @@ public class PlayerServiceTests
     {
         // Arrange
         ulong discordId = 12345;
-        var player = new Player { DiscordId = discordId, DiscordName = "TestPlayer" };
+        var player = new Player { DiscordId = discordId, DiscordName = "TestPlayer", Role = "" };
         _playerRepositoryMock.Setup(r => r.GetAsync(discordId)).ReturnsAsync(player);
 
         // Act

@@ -88,7 +88,7 @@ public class AuthServiceTests
         _roleMappingRepoMock.Setup(r => r.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
             .ReturnsAsync("Admin");
         _playerRepoMock.Setup(p => p.GetAsync(discordId))
-            .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "AdminUser" });
+            .ReturnsAsync(new Player { DiscordId = discordId, DiscordName = "AdminUser", Role = "" });
         _jwtServiceMock.Setup(j => j.CreateToken(It.IsAny<DiscordUser>(), It.IsAny<string>(), It.IsAny<int>()))
             .Returns("new-jwt");
 
