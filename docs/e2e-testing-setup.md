@@ -92,6 +92,9 @@ docker compose -f compose.e2e.yaml --profile ci down -v   # 含資料一起清
 
 ## 未決
 
-- GitLab `e2e` job 本身（dind + `docker:27` 的 compose 可用性 + seed 時序 quoting）**待首次 pipeline 實跑驗證**——compose + 容器 playwright 機制已本機證明綠。
+- ✅ GitLab `e2e` job **已在 gitlab.com shared runner（saas-linux-small，8GB）實跑綠**（7 passed，首次 ~5.4 分）。首跑實測踩到兩個 dind+buildx 坑：
+  - 🔴 **buildx 讀不到 env 的 TLS**（`could not create a builder instance with TLS data loaded from environment`）→ 先 `docker context create ... --docker "host=$DOCKER_HOST,ca=...,cert=...,key=..."` 包 TLS，再 `docker buildx create ... <context>`。
+  - 🔴 **buildkit 容器 RUN 步驟無對外網路**（`dotnet restore`/`npm ci` 連不到 nuget/npm，NU1301 timeout）→ builder 加 **`--driver-opt network=host`**（用 dind 的 host 網路）。
+  - `--cache-from ... not found` 是**首跑正常**（cache 尚未存在，該次建完即推 cache）。
 - **CI 加速（layer cache）**：`.gitlab-ci.yml` e2e job 用 `docker buildx` + **registry cache**（`--cache-from/--cache-to type=registry`，需 `docker-container` driver + registry login）預建 3 映像，compose 改用 `image:` 引用（`E2E_REGISTRY=$CI_REGISTRY_IMAGE`）。dind 每次全新 → 靠 registry cache 讓 `dotnet restore`/`npm ci` 命中跳過。**首次跑慢（建 + 推 cache）、之後才快**；效果待 pipeline 驗（比較兩次跑的時間）。
 - 平行測試靠「三隻獨立王 + 唯一 discordId」隔離；若之後測試變多，考慮每 spec 重置（Respawn 式）或 `--profile ci` 專屬 seed。
