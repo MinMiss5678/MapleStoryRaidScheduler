@@ -3,6 +3,8 @@
 自架 GitLab CE + Runner，跑本專案的 CI（build → 單元 → 整合測試打真 Postgres）。
 重點記**坑**——照抄指令不難，難在踩到的網路/認證問題。
 
+> **現況**：實際 CI 已改用 **gitlab.com 官方托管**（自架 GitLab CE 閒置吃 ~4GB，本機扛不住）→ 見 `e2e-testing-setup.md` 的「CI on gitlab.com」。本文留作**自架學習 / dind 原理參考**（親手搞懂 runner 註冊、dind、network_mode、覆蓋率合併、閘控——面試講得出底層）。
+
 ## 架構
 
 ```

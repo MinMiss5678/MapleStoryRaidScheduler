@@ -89,12 +89,41 @@ docker compose -f compose.e2e.yaml --profile ci down -v   # 含資料一起清
 | **dind volume 掛載**看不到 job 容器檔案 | CI 掛載跑不了 | Playwright 映像走 **build context**（`Dockerfile.e2e` COPY 源碼） |
 | **前端 prod build** `NODE_ENV=production` 擋 `test` 白名單 | proxy 403 | `web/Dockerfile` 加 **`dev` target** |
 | **stale next dev 卡 3000 / stack 停掉** | test-login 500 | 殺 3000 佔用 / `up -d` 重起 |
+| **buildx 讀不到 env TLS**（dind+TLS，CI） | `could not create a builder instance with TLS data loaded from environment` | `docker context create` 包 TLS，再 `buildx create <ctx>` |
+| **buildkit RUN 無對外網路**（dind，CI） | `dotnet restore`/`npm ci` NU1301 timeout（連不到 nuget/npm） | builder 加 `--driver-opt network=host` |
+
+## CI on gitlab.com（官方托管）
+
+自架 GitLab CE 閒置吃 ~4GB → 改用 **gitlab.com 官方托管**（GitLab + runner 都在他們機器，本機 RAM 全省）。
+- **runner**：免費預設 `saas-linux-small-amd64` = **2 vCPU / 8 GB / 30 GB**，內建 Docker（dind 可跑）。
+- **遷移**：GitHub 匯入 project（或加 gitlab.com remote 推）；免費 CI 要**綁卡驗證**才給 shared runner。
+- `.gitlab-ci.yml` 的 `e2e` job（`when: manual` + `needs: []` 不等前面 stage）已實跑綠：**7 passed**。
+
+### layer cache（已驗證綠）
+buildx registry cache（`--cache-from/--cache-to type=registry`，`docker-container` driver + registry login）+ compose 改 `image:` 引用（`E2E_REGISTRY=$CI_REGISTRY_IMAGE`）。dind 每次全新 → 靠 registry cache 讓 `dotnet restore`/`npm ci` 層命中跳過。
+
+| 跑 | 時間 | 結果 |
+|---|---|---|
+| 第 1 跑（無 cache，建 + 推 cache） | 5.4 分 | 7 passed |
+| 第 2 跑（大量 `CACHED` 命中） | **4.5 分** | 7 passed（**<5 分達標**） |
+
+只快 ~17%：base image 拉取 + `--cache-to` 每次重推 + compose up/測試（~2 分固定）不受 cache 影響。想再快 → 預建映像 push 成正式 image、e2e 直接 `pull`（YAGNI，4.5 分已達標）。
+
+## 用 glab 驅動/除錯 CI（CLI）
+
+```bash
+glab auth status                                        # 確認登入 gitlab.com
+glab ci status                                          # 當前 branch 最新 pipeline
+glab ci list -R <group/project>                         # 列 pipelines
+glab ci lint .gitlab-ci.yml                             # 驗 CI 設定語法
+glab api "projects/<id>/pipelines/<pid>/jobs"           # 找 job id（trigger 要數字 id 不是名字）
+glab ci trigger <job-id>                                # 觸發 manual job（e2e）
+glab api "projects/<id>/jobs/<job-id>/trace" | tail     # 非阻塞讀 log（trace 會阻塞跟到結束）
+glab api --method POST "projects/<id>/jobs/<job-id>/cancel"   # 取消
+```
+（project 數字 id 可從任一 job log 的 `project-<id>` 看到。）
 
 ## 未決
 
-- ✅ GitLab `e2e` job **已在 gitlab.com shared runner（saas-linux-small，8GB）實跑綠**（7 passed，首次 ~5.4 分）。首跑實測踩到兩個 dind+buildx 坑：
-  - 🔴 **buildx 讀不到 env 的 TLS**（`could not create a builder instance with TLS data loaded from environment`）→ 先 `docker context create ... --docker "host=$DOCKER_HOST,ca=...,cert=...,key=..."` 包 TLS，再 `docker buildx create ... <context>`。
-  - 🔴 **buildkit 容器 RUN 步驟無對外網路**（`dotnet restore`/`npm ci` 連不到 nuget/npm，NU1301 timeout）→ builder 加 **`--driver-opt network=host`**（用 dind 的 host 網路）。
-  - `--cache-from ... not found` 是**首跑正常**（cache 尚未存在，該次建完即推 cache）。
-- **CI 加速（layer cache）**：`.gitlab-ci.yml` e2e job 用 `docker buildx` + **registry cache**（`--cache-from/--cache-to type=registry`，需 `docker-container` driver + registry login）預建 3 映像，compose 改用 `image:` 引用（`E2E_REGISTRY=$CI_REGISTRY_IMAGE`）。dind 每次全新 → 靠 registry cache 讓 `dotnet restore`/`npm ci` 命中跳過。**首次跑慢（建 + 推 cache）、之後才快**；效果待 pipeline 驗（比較兩次跑的時間）。
-- 平行測試靠「三隻獨立王 + 唯一 discordId」隔離；若之後測試變多，考慮每 spec 重置（Respawn 式）或 `--profile ci` 專屬 seed。
+- 平行測試靠「三隻獨立王 + 唯一 discordId」隔離；測試變多時考慮每 spec 重置（Respawn 式）。
+- 再加速可預建映像 push 成正式 image（e2e 直接 pull）；目前 4.5 分已達標故未做（YAGNI）。
