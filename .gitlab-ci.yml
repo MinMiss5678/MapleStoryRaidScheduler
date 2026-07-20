@@ -4,6 +4,7 @@ stages:
   - test
   - coverage
   - e2e
+  - deploy
 
 default:
   image: mcr.microsoft.com/dotnet/sdk:9.0
@@ -133,3 +134,51 @@ e2e:
     expire_in: 1 week
     paths:
       - web/playwright-report/
+
+# CD：build + push minqq/* → migrate → 滾動更新 k8s。CD 到 prod 一律「人工點擊」（when:manual），
+# 只在 main。等同把 k8s/rollout.ps1 + migrate-job 搬進 CI。滾動更新時 readiness 探針會擋壞版本導流量。
+#
+# 需先在 GitLab CI/CD Variables 設（protected + masked）：
+#   DOCKERHUB_USER / DOCKERHUB_TOKEN   推 minqq/* 到 Docker Hub（k8s 從這拉映像）
+#   KUBECONFIG_B64                     base64 過的 kubeconfig（`base64 -w0 ~/.kube/config`）→ 讓 CI 連得到叢集
+deploy:
+  stage: deploy
+  image: docker:27
+  services:
+    - name: docker:27-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_CERT_PATH: "/certs/client"
+    DOCKER_TLS_VERIFY: "1"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual        # 只在 main、且需人工點擊才部署
+  script:
+    # buildx（docker-container driver + network=host）——與 e2e job 同套路
+    - docker context create cd-ctx --docker "host=$DOCKER_HOST,ca=$DOCKER_CERT_PATH/ca.pem,cert=$DOCKER_CERT_PATH/cert.pem,key=$DOCKER_CERT_PATH/key.pem"
+    - docker buildx create --use --bootstrap --name cd --driver-opt network=host cd-ctx
+    # 登入：Docker Hub（推 minqq/*，k8s 從這拉）＋ GitLab Registry（存 layer cache，與 e2e 共用）
+    - docker login -u "$DOCKERHUB_USER" -p "$DOCKERHUB_TOKEN"
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    # build + push 4 個映像（backend/frontend 走 registry layer cache；frontend 用 prod 目標，非 e2e 的 dev）
+    - |
+      C="type=registry,ref=$CI_REGISTRY_IMAGE/cache"
+      docker buildx build --cache-from ${C}/backend  --cache-to ${C}/backend,mode=max  --push -t minqq/presentation.webapi:latest -f Presentation.WebApi/Dockerfile .
+      docker buildx build --cache-from ${C}/frontend --cache-to ${C}/frontend,mode=max --push -t minqq/frontend:latest           -f web/Dockerfile ./web
+      docker buildx build --push -t minqq/presentation:latest -f Presentation/Dockerfile .
+      docker buildx build --push -t minqq/migrate:latest      -f db/Dockerfile.migrate ./db
+    # 安裝 kubectl + 載入 kubeconfig
+    - apk add --no-cache curl
+    - curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && chmod +x kubectl && mv kubectl /usr/local/bin/
+    - mkdir -p ~/.kube && echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+    # migration（Job spec immutable → 先刪舊 job 再套用，等它跑完才滾更新）
+    - kubectl delete job migrate -n maple-raid --ignore-not-found
+    - kubectl apply -f k8s/migrate-job.yaml
+    - kubectl wait --for=condition=complete job/migrate -n maple-raid --timeout=120s
+    # 滾動更新三個服務（:latest + imagePullPolicy Always → 重啟即拉新映像）；readiness 綠才收舊 pod
+    - kubectl rollout restart deployment/backend deployment/frontend deployment/bot -n maple-raid
+    - kubectl rollout status deployment/backend  -n maple-raid --timeout=180s
+    - kubectl rollout status deployment/frontend -n maple-raid --timeout=180s
+    - kubectl rollout status deployment/bot      -n maple-raid --timeout=180s
