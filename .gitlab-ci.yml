@@ -103,7 +103,8 @@ e2e:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
     # dind+TLS 下 buildx 無法直接從 env 讀 TLS → 先建 docker context 包 TLS，再用它建 docker-container builder
     - docker context create e2e-ctx --docker "host=$DOCKER_HOST,ca=$DOCKER_CERT_PATH/ca.pem,cert=$DOCKER_CERT_PATH/cert.pem,key=$DOCKER_CERT_PATH/key.pem"
-    - docker buildx create --use --bootstrap --name e2e e2e-ctx
+    # network=host：buildkit 容器用 dind 的 host 網路，RUN 步驟（dotnet restore / npm ci）才連得到對外
+    - docker buildx create --use --bootstrap --name e2e --driver-opt network=host e2e-ctx
     # 預建 3 映像：registry layer cache（dotnet restore / npm ci 未變就命中跳過）→ --load 進 dind
     - |
       C="type=registry,ref=$CI_REGISTRY_IMAGE/cache"
