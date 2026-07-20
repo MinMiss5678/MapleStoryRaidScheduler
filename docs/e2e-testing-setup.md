@@ -38,8 +38,10 @@ CI  ：e2e-playwright 容器共用 e2e-frontend 網路（network_mode）→ 走 
 
 ## Seed 模型（`db/seed-e2e.sql`）
 
-- **TRUNCATE 所有交易資料** → 只留**一個** period（`GetActivePeriodAsync` 回最新 StartDate 的，須確保唯一）。
-- period 設 **`CURRENT_DATE + 10 ~ +17`（未來一週）** → 報名截止日（period 前一週）落在未來 → 報名開著。
+- **TRUNCATE 所有交易資料** → seed 當下只留**一個** period（`GetActivePeriodAsync` 回最新 StartDate 的）。
+- period 設 **`CURRENT_DATE + 10 ~ +17`（未來一週）**，一石二鳥：
+  - 報名截止日（period 前一週）落在未來 → 報名開著。
+  - StartDate `+10` **永遠晚於** `WeeklyPeriodJob` 會插的「下週四」（≤ `+7`）→ 就算 backend 起來後 job 補插一顆 period（用 `/health/ready` 等待時 seed 可能早於 job 首次 tick），seed 這顆仍是**最新 StartDate = active** → 測試不受影響。
 - **三隻獨立王隔離**平行測試互相干擾：`E2E王`（讀取/報名）、`E2E王2`（補位）、`E2E王3`（重排）。
 
 ## 怎麼跑
@@ -47,7 +49,7 @@ CI  ：e2e-playwright 容器共用 e2e-frontend 網路（network_mode）→ 走 
 ### 本機（快，日常）
 ```bash
 docker compose -f compose.e2e.yaml up -d                 # db + backend + frontend
-# 等 backend 起完（WeeklyPeriodJob 建 period）後灌 seed：
+# 等 backend /health/ready = 200（起完 + DB 連得到）後灌 seed：
 docker compose -f compose.e2e.yaml exec -T e2e-db \
   env PGPASSWORD=e2e psql -U postgres -d presentationdb < db/seed-e2e.sql
 cd web && npm run e2e                                     # 跑 7 支（reuse compose 前端）
@@ -59,7 +61,7 @@ docker compose -f compose.e2e.yaml --profile ci run --build --rm e2e-playwright
 ```
 
 ### GitLab CI
-`.gitlab-ci.yml` 的 `e2e` job（`when: manual`）：dind 起 compose → 等 period → seed → 跑 `e2e-playwright`。
+`.gitlab-ci.yml` 的 `e2e` job（`when: manual`）：dind 起 compose → **等 backend `/health/ready`**（e2e-frontend 的 node 在 compose 網路內 fetch backend readiness 探針；補 `service_started` ≠ app ready 的洞）→ seed → 跑 `e2e-playwright`。
 
 ### 收工
 ```bash
