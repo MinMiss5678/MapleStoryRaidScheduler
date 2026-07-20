@@ -3,9 +3,11 @@ using Application.Options;
 using Dapper;
 using Infrastructure.BackgroundJobs;
 using Infrastructure.Dapper;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Npgsql;
 using Presentation.WebApi.Extensions;
+using Presentation.WebApi.HealthChecks;
 using Presentation.WebApi.Middleware;
 using Serilog;
 
@@ -37,25 +39,20 @@ builder.Services.AddRepositories();
 builder.Services.AddHostedService<WeeklyPeriodJob>();
 
 var defaultConnectionFile = builder.Configuration.GetConnectionString("DefaultConnectionFile");
-if (!string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectionFile))
+var connectionString = !string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectionFile)
+    ? File.ReadAllText(defaultConnectionFile).Trim()
+    : builder.Configuration.GetConnectionString("DefaultConnection")!;
+
+builder.Services.AddScoped<IDbConnection>(_ =>
 {
-    var defaultConnection = File.ReadAllText(defaultConnectionFile).Trim();
-    builder.Services.AddScoped<IDbConnection>(_ =>
-    {
-        var conn = new NpgsqlConnection(defaultConnection);
-        conn.Open();
-        return conn;
-    });
-}
-else
-{
-    builder.Services.AddScoped<IDbConnection>(_ =>
-    {
-        var conn = new NpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
-        conn.Open();
-        return conn;
-    });
-}
+    var conn = new NpgsqlConnection(connectionString);
+    conn.Open();
+    return conn;
+});
+
+// 健康檢查：readiness 探針查 DB（tag "ready"）；liveness 不掛任何 check（見下方 endpoint）
+builder.Services.AddHealthChecks()
+    .AddCheck("database", new DatabaseHealthCheck(connectionString), tags: new[] { "ready" });
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
@@ -121,6 +118,21 @@ var options = new ForwardedHeadersOptions
 options.KnownNetworks.Clear(); // 清掉預設 127.0.0.1/8
 options.KnownProxies.Clear();
 app.UseForwardedHeaders(options);
+
+// 健康檢查放最前面（auth/uow/serilog 之前）當「終端中介軟體」短路——必須完全繞過後面整條管線。
+// 原因：AuthenticationMiddleware 的相依鏈（session/player service → repo → IDbConnection）
+// 建構時就 eager 開 DB 連線；若讓 health 走到它，DB 掛掉時 readiness 會因「建不出 auth 中介軟體」
+// 回 500 而非乾淨 503，且 liveness 會誤判（DB 掛 → pod 被重啟）。放這裡完全避開。
+// 放在 UseHttpsRedirection 之前 → 內部 HTTP 探針不會被 307 轉址。
+app.UseHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false // liveness：app 活著就 200，不查 DB
+});
+app.UseHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready") // readiness：查 DB，DB 沒好回 503
+});
+
 app.UseHttpsRedirection();
 // 記錄每個 HTTP Request / Response（不含健康檢查等靜態路徑）
 app.UseSerilogRequestLogging();
