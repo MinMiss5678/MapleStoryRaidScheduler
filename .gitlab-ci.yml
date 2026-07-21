@@ -1,13 +1,15 @@
 # 自架 GitLab CI：build → 單元/整合測試（收覆蓋率）→ 合併覆蓋率
 
-# 純文件變動（*.md / docs / plans / LICENSE）不觸發整條 pipeline，省 CI 資源。
-# 手動 / web / API / 排程觸發一律照跑（方便強制重跑）；push 只有動到程式碼相關檔才跑。
-# 想手動略過某次 push 也可在 commit 訊息加 [skip ci]（GitLab 原生支援）。
+# MR 流程：feature 分支 → 開 MR（CI 在 MR 上跑）→ 綠燈 merge main → main 上人工點 deploy。
+# - 純分支 push（還沒開 MR）不跑 → 避免與 MR pipeline 重複。
+# - 純文件變動（*.md / docs / plans / LICENSE）不觸發 → 省 CI。
+# - 手動 / web / API / 排程一律照跑；想略過某次也可 commit 訊息加 [skip ci]。
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "trigger"'
-    - if: '$CI_PIPELINE_SOURCE == "push"'
-      changes:
+    # MR pipeline：只在動到程式碼相關檔時跑（純文件 MR 不跑）
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &code-changes
         - "**/*.cs"
         - "**/*.csproj"
         - "**/*.sln"
@@ -18,6 +20,10 @@ workflow:
         - "compose*.yaml"
         - ".gitlab-ci.yml"
         - "secrets/**/*"
+    # main（merge 進來後）：同樣只在程式碼變動時跑；deploy job 在此等人點
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes: *code-changes
+    # 其餘（純分支 push、純文件）一律不跑
     - when: never
 
 stages:
@@ -183,23 +189,28 @@ deploy:
     # 登入：Docker Hub（推 minqq/*，k8s 從這拉）＋ GitLab Registry（存 layer cache，與 e2e 共用）
     - docker login -u "$DOCKERHUB_USER" -p "$DOCKERHUB_TOKEN"
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    # build + push 4 個映像（backend/frontend 走 registry layer cache；frontend 用 prod 目標，非 e2e 的 dev）
+    # build + push 4 個映像，雙標籤：不可變的 $CI_COMMIT_SHORT_SHA（用來部署/回滾/追溯）
+    # + latest（給首次部署 deploy.ps1 / manifest 的方便）。backend/frontend 走 registry layer cache。
     - |
       C="type=registry,ref=$CI_REGISTRY_IMAGE/cache"
-      docker buildx build --cache-from ${C}/backend  --cache-to ${C}/backend,mode=max  --push -t minqq/presentation.webapi:latest -f Presentation.WebApi/Dockerfile .
-      docker buildx build --cache-from ${C}/frontend --cache-to ${C}/frontend,mode=max --push -t minqq/frontend:latest           -f web/Dockerfile ./web
-      docker buildx build --push -t minqq/presentation:latest -f Presentation/Dockerfile .
-      docker buildx build --push -t minqq/migrate:latest      -f db/Dockerfile.migrate ./db
+      S="$CI_COMMIT_SHORT_SHA"
+      docker buildx build --cache-from ${C}/backend  --cache-to ${C}/backend,mode=max  --push -t minqq/presentation.webapi:$S -t minqq/presentation.webapi:latest -f Presentation.WebApi/Dockerfile .
+      docker buildx build --cache-from ${C}/frontend --cache-to ${C}/frontend,mode=max --push -t minqq/frontend:$S           -t minqq/frontend:latest           -f web/Dockerfile ./web
+      docker buildx build --push -t minqq/presentation:$S -t minqq/presentation:latest -f Presentation/Dockerfile .
+      docker buildx build --push -t minqq/migrate:$S      -t minqq/migrate:latest      -f db/Dockerfile.migrate ./db
     # 安裝 kubectl + 載入 kubeconfig
     - apk add --no-cache curl
     - curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && chmod +x kubectl && mv kubectl /usr/local/bin/
     - mkdir -p ~/.kube && echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
-    # migration（Job spec immutable → 先刪舊 job 再套用，等它跑完才滾更新）
+    # migration（Job spec immutable → 先刪舊 job；把映像 pin 成本次 SHA 再套用，migrate 也可追溯）
     - kubectl delete job migrate -n maple-raid --ignore-not-found
-    - kubectl apply -f k8s/migrate-job.yaml
+    - sed "s#minqq/migrate:latest#minqq/migrate:$CI_COMMIT_SHORT_SHA#" k8s/migrate-job.yaml | kubectl apply -f -
     - kubectl wait --for=condition=complete job/migrate -n maple-raid --timeout=120s
-    # 滾動更新三個服務（:latest + imagePullPolicy Always → 重啟即拉新映像）；readiness 綠才收舊 pod
-    - kubectl rollout restart deployment/backend deployment/frontend deployment/bot -n maple-raid
+    # 用 Kustomize 宣告式部署三個應用：把 images.newTag 換成本次 SHA 再 apply -k（單一來源、無漂移）。
+    # kubectl 內建 kustomize，不需另裝；apply -k 只套 kustomization 列的三個應用，不碰 secret/db/migrate。
+    # readiness 綠才收舊 pod；SHA 不可變 → rollout undo 能真的退回上一個版本。
+    - 'sed -i "s/newTag: latest/newTag: $CI_COMMIT_SHORT_SHA/" k8s/kustomization.yaml'
+    - kubectl apply -k k8s
     - kubectl rollout status deployment/backend  -n maple-raid --timeout=180s
     - kubectl rollout status deployment/frontend -n maple-raid --timeout=180s
     - kubectl rollout status deployment/bot      -n maple-raid --timeout=180s
