@@ -39,6 +39,9 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
                     ["Jwt:SecretKey"] = "integration-test-secret-key-at-least-32-bytes-long!!",
                     ["Jwt:Issuer"] = "test",
                     ["Jwt:Audience"] = "test",
+                    // 測試用小上限：5 次/10 秒 → 發遠超的請求即可穩定觸發限流（不依賴時序）
+                    ["RateLimit:PermitLimit"] = "5",
+                    ["RateLimit:WindowSeconds"] = "10",
                     // 指向 127.0.0.1:1 → conn.Open() 立即被拒（fail fast）；限流在 UoW 前計數，不受影響
                     ["ConnectionStrings:DefaultConnection"] =
                         "Host=127.0.0.1;Port=1;Database=x;Username=x;Password=x;Timeout=1;Command Timeout=1",
@@ -63,22 +66,25 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
         return req;
     }
 
+    // 上限 5/10s，一口氣發 60 次遠超上限。即使跨一個視窗邊界（本機/CI <10s，最多 1 次邊界 →
+    // 至多放行 2×5=10）、或少數請求未計數，60 次也必定出現至少一個 429。不依賴「第幾次」。
+    private async Task<List<HttpStatusCode>> BurstAsync(HttpClient client, string token, int n)
+    {
+        var statuses = new List<HttpStatusCode>(n);
+        for (int i = 0; i < n; i++)
+            statuses.Add((await client.SendAsync(AuthedGet(token))).StatusCode);
+        return statuses;
+    }
+
     [Fact]
     public async Task ExceedsPerUserLimit_Returns429()
     {
         var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        var token = CreateJwt(1001);
 
-        // 前 100 次（PermitLimit）：可能因無 DB 回 500，但都不該是 429
-        for (int i = 0; i < 100; i++)
-        {
-            var resp = await client.SendAsync(AuthedGet(token));
-            Assert.NotEqual(HttpStatusCode.TooManyRequests, resp.StatusCode);
-        }
+        var statuses = await BurstAsync(client, CreateJwt(1001), 60);
 
-        // 第 101 次：同一 discordId 超過 100/10s → 429
-        var limited = await client.SendAsync(AuthedGet(token));
-        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        // 同一 discordId 遠超上限 → 至少一個被限
+        Assert.Contains(HttpStatusCode.TooManyRequests, statuses);
     }
 
     [Fact]
@@ -86,12 +92,11 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
     {
         var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-        // 用光使用者 A 的額度（101 次 → 最後幾次被限）
-        var tokenA = CreateJwt(2001);
-        for (int i = 0; i < 101; i++)
-            await client.SendAsync(AuthedGet(tokenA));
+        // 使用者 A 打到被限
+        var aStatuses = await BurstAsync(client, CreateJwt(2001), 60);
+        Assert.Contains(HttpStatusCode.TooManyRequests, aStatuses);
 
-        // 使用者 B（不同 discordId）自己的視窗仍是滿的 → 不該是 429
+        // 使用者 B（不同 discordId）自己的視窗仍空 → 第一次就不該被限
         var respB = await client.SendAsync(AuthedGet(CreateJwt(2002)));
         Assert.NotEqual(HttpStatusCode.TooManyRequests, respB.StatusCode);
     }

@@ -6,6 +6,7 @@ using Infrastructure.BackgroundJobs;
 using Infrastructure.Dapper;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using Presentation.WebApi.Extensions;
 using Presentation.WebApi.HealthChecks;
@@ -61,6 +62,8 @@ builder.Services.AddHttpClient();
 // 登入後「按身分」限流：以驗證過的 discordId（session/JWT，client 偽造不了）當 partition key，
 // 換 IP 也繞不掉。未登入請求不在此限（登入前的暴力破解另案處理，需 IP/CAPTCHA/帳號鎖定）。
 // middleware 掛在 Auth 之後、UnitOfWork 之前 → 被擋的請求不會白開 DB 交易。
+// 綁 RateLimitOptions 到 DI（延遲繫結）→ 值在請求處理時才讀，才吃得到測試 / 環境覆寫的設定
+builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimit"));
 builder.Services.AddRateLimiter(rateLimiterOptions =>
 {
     rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -73,12 +76,13 @@ builder.Services.AddRateLimiter(rateLimiterOptions =>
         if (string.IsNullOrEmpty(discordId))
             return RateLimitPartition.GetNoLimiter("anonymous");
 
-        // 每個使用者：固定視窗 100 次 / 10 秒——正常瀏覽（每頁數個 React Query）遠不會碰到，
-        // 但擋得住腳本狂打。要調就改這兩個值（未來可抽成 RateLimitOptions 綁 config）。
+        // 每個使用者固定視窗（預設 100 次 / 10 秒）——正常瀏覽（每頁數個 React Query）遠不會碰到，
+        // 但擋得住腳本狂打。上限由 appsettings 的 RateLimit 區段控制（測試會調小以驗行為）。
+        var rl = httpContext.RequestServices.GetRequiredService<IOptions<RateLimitOptions>>().Value;
         return RateLimitPartition.GetFixedWindowLimiter(discordId, _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 100,
-            Window = TimeSpan.FromSeconds(10),
+            PermitLimit = rl.PermitLimit,
+            Window = TimeSpan.FromSeconds(rl.WindowSeconds),
             QueueLimit = 0
         });
     });
