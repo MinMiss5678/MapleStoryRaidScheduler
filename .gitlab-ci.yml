@@ -40,8 +40,16 @@ variables:
   # NuGet 套件裝到專案內，方便 GitLab cache 撈得到
   NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget/packages"
 
+# 驗證類 job（build/test/coverage/e2e）只在 MR + 手動觸發跑，不在 main 重跑：
+# MR 已把關過綠才 merge，main 沒必要再跑一整套（省每次 merge 白燒 e2e）。deploy 則只在 main。
+.validate-rules:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "trigger"'
+
 # 整個 solution 編得過（含 Presentation，測試專案未必涵蓋）
 build:
+  extends: .validate-rules
   stage: build
   script:
     - dotnet restore
@@ -52,6 +60,7 @@ build:
 
 # 純邏輯，不需要 Docker；收覆蓋率存 artifact 給 coverage job 合併
 unit-test:
+  extends: .validate-rules
   stage: test
   script:
     - dotnet test Test/Test.csproj -c Release --collect:"XPlat Code Coverage" --results-directory ./coverage-unit
@@ -67,6 +76,7 @@ unit-test:
 
 # 打真 Postgres（Testcontainers）→ docker-in-docker；收覆蓋率存 artifact
 integration-test:
+  extends: .validate-rules
   stage: test
   services:
     - name: docker:27-dind
@@ -90,6 +100,7 @@ integration-test:
 
 # 合併 unit + integration 兩份覆蓋率 → 一份總報告（取聯集，不重複計）
 coverage:
+  extends: .validate-rules
   stage: coverage
   needs: [unit-test, integration-test]   # 自動抓這兩個 job 的 artifact
   script:
@@ -112,6 +123,7 @@ coverage:
 # E2E（Playwright 打全 stack：db + backend + frontend）——重，coverage 全過後自動觸發。
 # 全在 compose.e2e.yaml，job 只用 dind 起它。核心機制（全 stack + 容器內 playwright）本機已驗證綠。
 e2e:
+  extends: .validate-rules
   stage: e2e
   image: docker:27
   services:
