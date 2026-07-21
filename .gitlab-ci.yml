@@ -1,4 +1,25 @@
 # 自架 GitLab CI：build → 單元/整合測試（收覆蓋率）→ 合併覆蓋率
+
+# 純文件變動（*.md / docs / plans / LICENSE）不觸發整條 pipeline，省 CI 資源。
+# 手動 / web / API / 排程觸發一律照跑（方便強制重跑）；push 只有動到程式碼相關檔才跑。
+# 想手動略過某次 push 也可在 commit 訊息加 [skip ci]（GitLab 原生支援）。
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "trigger"'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      changes:
+        - "**/*.cs"
+        - "**/*.csproj"
+        - "**/*.sln"
+        - "web/**/*"
+        - "db/**/*"
+        - "k8s/**/*"
+        - "**/Dockerfile*"
+        - "compose*.yaml"
+        - ".gitlab-ci.yml"
+        - "secrets/**/*"
+    - when: never
+
 stages:
   - build
   - test
