@@ -1,3 +1,4 @@
+using System.Data;
 using System.Net;
 using Application.Interface;
 using Application.Options;
@@ -5,8 +6,9 @@ using Domain.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Npgsql;
 using Xunit;
 
 namespace Test.Integration;
@@ -49,17 +51,17 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
         {
             builder.UseEnvironment("Development"); // 非 Production
 
-            builder.ConfigureAppConfiguration((_, cfg) => cfg.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                // 指向 127.0.0.1:1 → conn.Open() 立即被拒（fail fast）；限流在 UoW 前，不受影響
-                ["ConnectionStrings:DefaultConnection"] =
-                    "Host=127.0.0.1;Port=1;Database=x;Username=x;Password=x;Timeout=1;Command Timeout=1",
-                ["ConnectionStrings:DefaultConnectionFile"] = ""
-            }));
-
-            // services 層強制覆寫（跑在 app 註冊之後 → 贏過 Configure/Bind）
+            // services 層強制覆寫（跑在 app 註冊之後 → 贏過 Configure/Bind；不靠 config 來源優先序）
             builder.ConfigureTestServices(services =>
             {
+                // 🔴 關鍵：AuthenticationMiddleware 的相依鏈在「建構時」就 eager 開 DB 連線
+                // （session/player service → repo → IDbConnection.Open()）。若連不上，auth 會在
+                // 限流器「之前」就丟例外 500 → 請求到不了限流器。這裡把 IDbConnection 換成
+                // 「不 eager 開」的連線：auth 建得起來、JWT 路徑無狀態不查 DB → 請求到得了限流器。
+                // （過限流的少數請求會在下游用到 DB 時才 500，那已在限流器之後、無妨。）
+                services.RemoveAll<IDbConnection>();
+                services.AddScoped<IDbConnection>(_ => new NpgsqlConnection());
+
                 services.PostConfigure<RateLimitOptions>(o =>
                 {
                     o.PermitLimit = TestPermitLimit; // 小上限 → 發遠超請求即穩定觸發 429
