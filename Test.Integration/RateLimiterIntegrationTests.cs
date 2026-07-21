@@ -26,6 +26,14 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
     private readonly Factory _factory;
     public RateLimiterIntegrationTests(Factory factory) => _factory = factory;
 
+    // 以 https base address 送 → app 的 UseHttpsRedirection 見已是 https 即放行，
+    // 不會在限流器之前把請求 307 轉走（CI 上會有 https port 導致轉址）。
+    private HttpClient CreateClient() => _factory.CreateClient(new WebApplicationFactoryClientOptions
+    {
+        AllowAutoRedirect = false,
+        BaseAddress = new Uri("https://localhost")
+    });
+
     public class Factory : WebApplicationFactory<Program>
     {
         protected override IHost CreateHost(IHostBuilder builder)
@@ -79,22 +87,24 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
     [Fact]
     public async Task ExceedsPerUserLimit_Returns429()
     {
-        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var client = CreateClient();
 
         var statuses = await BurstAsync(client, CreateJwt(1001), 60);
 
-        // 同一 discordId 遠超上限 → 至少一個被限
-        Assert.Contains(HttpStatusCode.TooManyRequests, statuses);
+        // 同一 discordId 遠超上限 → 至少一個被限（附上實際狀態碼便於診斷）
+        Assert.True(statuses.Contains(HttpStatusCode.TooManyRequests),
+            $"預期出現 429，實際狀態碼分布：{string.Join(",", statuses.GroupBy(s => s).Select(g => $"{(int)g.Key}×{g.Count()}"))}");
     }
 
     [Fact]
     public async Task DifferentUsers_HaveIndependentLimits()
     {
-        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var client = CreateClient();
 
         // 使用者 A 打到被限
         var aStatuses = await BurstAsync(client, CreateJwt(2001), 60);
-        Assert.Contains(HttpStatusCode.TooManyRequests, aStatuses);
+        Assert.True(aStatuses.Contains(HttpStatusCode.TooManyRequests),
+            $"預期 A 出現 429，實際：{string.Join(",", aStatuses.GroupBy(s => s).Select(g => $"{(int)g.Key}×{g.Count()}"))}");
 
         // 使用者 B（不同 discordId）自己的視窗仍空 → 第一次就不該被限
         var respB = await client.SendAsync(AuthedGet(CreateJwt(2002)));
