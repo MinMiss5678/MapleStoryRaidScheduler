@@ -19,6 +19,9 @@ public class DbContext
     public void Begin()
     {
         _completed = false;
+        // 連線改為延遲開啟（工廠不再 eager Open）→ 開交易前先確保連線已開
+        if (Connection.State != ConnectionState.Open)
+            Connection.Open();
         if (Transaction == null)
             Transaction = Connection.BeginTransaction();
     }

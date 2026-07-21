@@ -45,12 +45,12 @@ var connectionString = !string.IsNullOrEmpty(defaultConnectionFile) && File.Exis
     ? File.ReadAllText(defaultConnectionFile).Trim()
     : builder.Configuration.GetConnectionString("DefaultConnection")!;
 
-builder.Services.AddScoped<IDbConnection>(_ =>
-{
-    var conn = new NpgsqlConnection(connectionString);
-    conn.Open();
-    return conn;
-});
+// 不在建構時 Open（避免「解析即 I/O」的副作用）：
+//   - 讀取：Dapper 對關閉的連線會自動開/關，不需先 Open。
+//   - 寫入：UnitOfWork 的 DbContext.Begin() 用到交易時才 Open（BeginTransaction 需連線已開）。
+// 好處：注入連線鏈的元件（如 AuthenticationMiddleware）建構時不再碰 DB → 可獨立測試、
+//       DB 掛掉退化成乾淨的查詢失敗而非建構失敗。
+builder.Services.AddScoped<IDbConnection>(_ => new NpgsqlConnection(connectionString));
 
 // 健康檢查：readiness 探針查 DB（tag "ready"）；liveness 不掛任何 check（見下方 endpoint）
 builder.Services.AddHealthChecks()
@@ -160,10 +160,9 @@ options.KnownNetworks.Clear(); // 清掉預設 127.0.0.1/8
 options.KnownProxies.Clear();
 app.UseForwardedHeaders(options);
 
-// 健康檢查放最前面（auth/uow/serilog 之前）當「終端中介軟體」短路——必須完全繞過後面整條管線。
-// 原因：AuthenticationMiddleware 的相依鏈（session/player service → repo → IDbConnection）
-// 建構時就 eager 開 DB 連線；若讓 health 走到它，DB 掛掉時 readiness 會因「建不出 auth 中介軟體」
-// 回 500 而非乾淨 503，且 liveness 會誤判（DB 掛 → pod 被重啟）。放這裡完全避開。
+// 健康檢查放最前面（auth/uow/serilog 之前）當「終端中介軟體」短路——完全繞過後面整條管線。
+// 探針不該需要認證、也不該開交易；readiness 的 DB 檢查走專屬 HealthCheck（DatabaseHealthCheck），
+// 不經請求管線 → DB 掛掉時乾淨回 503，liveness 不查 DB 故不會誤判重啟 pod。
 // 放在 UseHttpsRedirection 之前 → 內部 HTTP 探針不會被 307 轉址。
 app.UseHealthChecks("/health/live", new HealthCheckOptions
 {
