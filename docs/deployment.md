@@ -15,7 +15,7 @@
 .\k8s\deploy.ps1
 ```
 
-自動執行：建立 Secret → 部署所有服務 → 等待 DB 就緒 → 執行 migration
+自動執行：建立 Secret → 部署基礎服務（namespace/db/seq/cloudflared）→ 等待 DB 就緒 → `apply -k` 部署三個應用（Kustomize，映像 pin 當前 git SHA）→ 執行 migration
 
 ---
 
@@ -27,7 +27,7 @@
 .\k8s\rollout.ps1 bot        # Discord Bot
 ```
 
-自動執行：docker build → docker push → kubectl rollout restart → 等待完成
+自動執行：docker build（SHA + latest 雙標籤）→ docker push → kubectl set image 到該 SHA → 等待完成
 
 ---
 
