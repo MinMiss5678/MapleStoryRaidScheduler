@@ -41,7 +41,7 @@ CI  ：e2e-playwright 容器共用 e2e-frontend 網路（network_mode）→ 走 
 - **TRUNCATE 所有交易資料** → seed 當下只留**一個** period（`GetActivePeriodAsync` 回最新 StartDate 的）。
 - period 設 **`CURRENT_DATE + 10 ~ +17`（未來一週）**，一石二鳥：
   - 報名截止日（period 前一週）落在未來 → 報名開著。
-  - StartDate `+10` **永遠晚於** `WeeklyPeriodJob` 會插的「下週四」（≤ `+7`）→ 就算 backend 起來後 job 補插一顆 period（用 `/health/ready` 等待時 seed 可能早於 job 首次 tick），seed 這顆仍是**最新 StartDate = active** → 測試不受影響。
+  - StartDate `+10` **永遠晚於** `WeeklyPeriodJob` 會插的「下個重製日」（週二，≤ `+7`；見 `SlotDateCalculator.ResetDay`）→ 就算 backend 起來後 job 補插一顆 period（用 `/health/ready` 等待時 seed 可能早於 job 首次 tick），seed 這顆仍是**最新 StartDate = active** → 測試不受影響。
 - **三隻獨立王隔離**平行測試互相干擾：`E2E王`（讀取/報名）、`E2E王2`（補位）、`E2E王3`（重排）。
 
 ## 怎麼跑

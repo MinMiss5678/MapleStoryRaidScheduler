@@ -8,6 +8,7 @@
 - **CQRS-Lite 讀寫分離**：寫入路徑走 Service + Repository（逐筆操作、語意清晰），讀取路徑走獨立 Query 介面（不受寫入模型約束，可自由使用 JOIN 等最佳化 SQL 一次查回所需資料）。
 - **冪等性保護**：所有 POST/PUT/DELETE 請求強制帶 `X-Idempotency-Key`，由 Middleware 統一攔截並快取結果，防止網路重試造成重複操作。
 - **雙軌身分驗證**：一般玩家使用自定義 JWT，管理員使用 Session（儲存於 DB），兩者在同一 Middleware 中統一驗證，依 Discord 身分組自動分流。
+- **按身分限流**：以已驗證的 `discordId`（session/JWT claim）為 key 做 per-user 限流（換 IP 也繞不掉），Middleware 掛在驗證之後、交易之前，被擋的請求不白開 DB 交易。
 - **自動分配引擎**：玩家報名後即時觸發，根據可用時段比對現有隊伍空位，無匹配則建立新暫時隊伍。
 - **批次組隊預覽**：管理員以職業範本手動觸發，從所有報名者批次生成完整隊伍建議（IsTemporary），確認後才正式寫入。
 - **補位保護機制**：手動補位的成員標記 `IsManual = true`，自動分配引擎會跳過這些成員，防止人工調整被覆蓋。
@@ -25,7 +26,7 @@
 | **通知** | DSharpPlus Discord Bot |
 | **日誌** | Serilog + Seq（結構化可查詢日誌） |
 | **容器化** | Docker Compose、Kubernetes |
-| **測試** | xUnit + Moq |
+| **測試** | xUnit + Moq（單元）、Testcontainers（整合）、Playwright（E2E）|
 
 ## 架構設計
 
@@ -40,7 +41,7 @@ Presentation.WebApi  →  Application  →  Domain
 - **Domain**：純 C# 實體與介面，零外部依賴，可獨立測試。
 - **Application**：DTOs、服務介面、查詢介面，定義業務邊界。
 - **Infrastructure**：Dapper Repository、Discord 整合、背景作業，實作所有外部依賴。
-- **Presentation.WebApi**：Controller + 四層 Middleware 管線。
+- **Presentation.WebApi**：Controller + Middleware 管線（例外處理 / 冪等 / 驗證 / 限流 / 交易）。
 
 詳細設計請見 [架構設計文件](docs/architecture.md)。
 
@@ -55,6 +56,7 @@ Presentation.WebApi  →  Application  →  Domain
 | `Presentation/` | Discord Bot 主控台應用程式 (DSharpPlus) |
 | `web/` | Next.js 15 前端 (App Router, Tailwind, Shadcn/UI) |
 | `Test/` | xUnit + Moq 單元測試 |
+| `Test.Integration/` | 整合測試（Testcontainers 真 Postgres、WebApplicationFactory 限流測試）|
 | `Utils/` | 自製 SqlBuilder、JSON 轉換器 |
 | `db/migrations/` | golang-migrate SQL 檔案（up/down） |
 | `k8s/` | Kubernetes 部署設定 |

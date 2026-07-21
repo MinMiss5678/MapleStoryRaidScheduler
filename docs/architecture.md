@@ -186,7 +186,10 @@ ExceptionHandlerMiddleware   ← 全域例外捕捉，統一回傳 ProblemDetail
 IdempotencyMiddleware        ← 強制 X-Idempotency-Key，防重複操作
   │
   ▼
-AuthenticationMiddleware     ← 驗證 JWT（玩家）或 SessionId（管理員）
+AuthenticationMiddleware     ← 驗證 JWT（玩家）或 SessionId（管理員），設 discordId claim
+  │
+  ▼
+RateLimiter                  ← 登入後按 discordId 限流（100/10s/人）；放此處故被擋的請求不白開 DB 交易
   │
   ▼
 UnitOfWorkMiddleware         ← 開啟 DB 事務，成功 Commit，例外 Rollback
@@ -194,6 +197,8 @@ UnitOfWorkMiddleware         ← 開啟 DB 事務，成功 Commit，例外 Rollb
   ▼
 Controller / Service
 ```
+
+> **限流為何按身分不按 IP**：`discordId` 來自已驗證的 session/JWT，client 偽造不了，換 IP 也繞不掉；且前端 proxy 會剝除 `X-Forwarded-For`／`cf-connecting-ip`，後端本就看不到真實 IP。未登入端點（登入前暴力破解）不在此限——那需 IP／CAPTCHA／帳號鎖定，屬另案。
 
 > **健康檢查端點例外**：`/health/live`、`/health/ready` 以 `UseHealthChecks` **終端中介軟體**掛在這條管線**之前**，完全繞過上述四個中介軟體。
 > 原因：`AuthenticationMiddleware` 的相依鏈（session/player service → repo → `IDbConnection`）在**建構時**就 eager 開 DB 連線；若讓健康檢查走進管線，DB 掛掉時 readiness 會因「建不出 auth 中介軟體」回 500 而非乾淨 503，liveness 更會誤殺存活的 pod。詳見 `docs/cd-deploy-setup.md`。
