@@ -53,7 +53,7 @@ Presentation.WebApi  →  Application  →  Domain
 
 ### 1. 不使用 EF Core（Runtime），改用 Dapper + 自製 SqlBuilder
 
-**決策原因**：刻意選擇手寫 SQL，目的是讓每條查詢的行為完全確定且可審計，同時作為自製 SqlBuilder 的技術展示——以 Expression Tree 解析 Lambda 表達式產生型別安全的 SQL，取代字串拼接。
+**決策原因**：Runtime 不用 EF Core 是刻意選擇——主要想理解無模型（model-less）的資料存取。誠實說，EF Core 也能手寫 SQL（`FromSqlRaw`），這不是能力上的必要；Dapper 真正獨有的是不背 ORM 模型、輕量映射。以這專案規模，EF Core 其實更務實，選 Dapper 偏學習導向。手寫 SQL 的字串散落問題，用自製 SqlBuilder（Expression Tree 解析 Lambda 產生型別安全 SQL）解掉。
 
 > **注意**：`Infrastructure/Migrations/MigrationDbContext` 僅供 design-time 使用（詳見第 6 點），不注冊到 DI，不影響 runtime 行為。
 
@@ -77,7 +77,9 @@ Sql.Query<CharacterDbModel>()
 
 ### 2. CQRS-Lite 讀寫分離
 
-**決策原因**：讀取與寫入的需求差異大——寫入需要事務保護與業務驗證，讀取需要最佳化 SQL 與多表 JOIN。混用同一 Repository 會導致讀取路徑被事務拖慢。
+**決策原因**：讀取與寫入的**模型不同**——寫入用 entity + `UnitOfWork` 事務保護與業務驗證，讀取需要跨表 JOIN 回**專用 DTO**、不受寫入模型約束。分開讓讀側能自由最佳化查詢。
+
+> 這是 CQRS 的**核心原則**（讀寫責任分離），但本專案是**同一資料庫、強一致的輕量版（CQRS-Lite）**，非「獨立讀庫 + 物化視圖 + 事件溯源 + 最終一致」的完整型 CQRS。停在輕量版對此規模是刻意取捨。
 
 **實作方式**：
 - **寫入 (Command)**：`Application/Interface/` 定義介面 → `Infrastructure/Services/` 實作，走 `UnitOfWork` 事務。
@@ -122,7 +124,7 @@ Discord 身分組 → 系統角色的對應由 `DiscordRoleMapping` 表管理，
 
 ### 6. Schema 版本管理（golang-migrate）
 
-**決策原因**：手寫 SQL 無 ORM migration 機制，多環境（dev / staging / prod）的 schema 需要有明確的版本追蹤與 rollback 能力，確保環境一致性與部署安全。
+**決策原因**：手寫 SQL 無 ORM migration 機制，多環境（dev / prod）的 schema 需要明確的版本追蹤與 rollback 能力，確保環境一致性與部署安全。
 
 **實作方式**：`db/migrations/` 存放有序號的 up/down SQL 檔，migrate service 在 backend 啟動前執行。
 
