@@ -7,8 +7,10 @@
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "trigger"'
-    # MR pipeline：只在動到程式碼相關檔時跑（純文件 MR 不跑）
+    # 所有 MR 都建 pipeline：動到程式碼 → 跑完整驗證；純文件 → 只跑 docs-ok（秒過，滿足鎖 main 的 merge check）
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    # main（merge 進來後）：只在程式碼變動時建（純文件 merge 不需 deploy pipeline）；deploy job 在此等人點
+    - if: '$CI_COMMIT_BRANCH == "main"'
       changes: &code-changes
         - "**/*.cs"
         - "**/*.csproj"
@@ -20,10 +22,7 @@ workflow:
         - "compose*.yaml"
         - ".gitlab-ci.yml"
         - "secrets/**/*"
-    # main（merge 進來後）：同樣只在程式碼變動時跑；deploy job 在此等人點
-    - if: '$CI_COMMIT_BRANCH == "main"'
-      changes: *code-changes
-    # 其餘（純分支 push、純文件）一律不跑
+    # 純分支 push（還沒開 MR）不跑，避免與 MR pipeline 重複
     - when: never
 
 stages:
@@ -40,12 +39,23 @@ variables:
   # NuGet 套件裝到專案內，方便 GitLab cache 撈得到
   NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget/packages"
 
-# 驗證類 job（build/test/coverage/e2e）只在 MR + 手動觸發跑，不在 main 重跑：
-# MR 已把關過綠才 merge，main 沒必要再跑一整套（省每次 merge 白燒 e2e）。deploy 則只在 main。
+# 驗證類 job（build/test/coverage/e2e）：MR 上只在動到程式碼時跑（純文件 MR 不跑這些重的）、
+# 手動觸發一律跑；不在 main 重跑（MR 已把關過，省每次 merge 白燒 e2e）。deploy 則只在 main。
 .validate-rules:
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "trigger"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: *code-changes
+
+# 純文件 MR 沒有上面那些重的 job → 加一個秒過的 no-op，讓 pipeline 有綠可過鎖 main 的 merge check。
+# 動到程式碼的 MR 這 job 也會跑（alpine echo，極輕、可忽略）。
+docs-ok:
+  stage: build
+  image: alpine:latest
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  script:
+    - echo "docs / no-op gate passed"
 
 # 整個 solution 編得過（含 Presentation，測試專案未必涵蓋）
 build:
