@@ -11,6 +11,7 @@
       <ProjectReference Include="..\Application\Application.csproj" />
       <ProjectReference Include="..\Domain\Domain.csproj" />
       <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
+      <ProjectReference Include="..\Presentation.WebApi\Presentation.WebApi.csproj" />
       <ProjectReference Include="..\Utils\Utils.csproj" />
     </ItemGroup>
 
@@ -19,6 +20,7 @@
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         <PrivateAssets>all</PrivateAssets>
       </PackageReference>
+      <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.4" />
       <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
       <PackageReference Include="Dapper" Version="2.1.66" />
       <PackageReference Include="Npgsql" Version="9.0.4" />

@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Threading.RateLimiting;
 using Application.Options;
 using Dapper;
 using Infrastructure.BackgroundJobs;
@@ -56,6 +57,42 @@ builder.Services.AddHealthChecks()
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
+
+// 登入後「按身分」限流：以驗證過的 discordId（session/JWT，client 偽造不了）當 partition key，
+// 換 IP 也繞不掉。未登入請求不在此限（登入前的暴力破解另案處理，需 IP/CAPTCHA/帳號鎖定）。
+// middleware 掛在 Auth 之後、UnitOfWork 之前 → 被擋的請求不會白開 DB 交易。
+builder.Services.AddRateLimiter(rateLimiterOptions =>
+{
+    rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    rateLimiterOptions.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var discordId = httpContext.User.FindFirst("discordId")?.Value;
+
+        // 未登入 → 不限流（本階段只做「登入後按身分」）
+        if (string.IsNullOrEmpty(discordId))
+            return RateLimitPartition.GetNoLimiter("anonymous");
+
+        // 每個使用者：固定視窗 100 次 / 10 秒——正常瀏覽（每頁數個 React Query）遠不會碰到，
+        // 但擋得住腳本狂打。要調就改這兩個值（未來可抽成 RateLimitOptions 綁 config）。
+        return RateLimitPartition.GetFixedWindowLimiter(discordId, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 100,
+            Window = TimeSpan.FromSeconds(10),
+            QueueLimit = 0
+        });
+    });
+
+    // 觸發時記 log（配 Serilog/Seq 可觀測），並回傳 Retry-After 提示
+    rateLimiterOptions.OnRejected = (context, _) =>
+    {
+        var discordId = context.HttpContext.User.FindFirst("discordId")?.Value ?? "unknown";
+        Log.Warning("Rate limit 觸發：discordId={DiscordId} path={Path}",
+            discordId, context.HttpContext.Request.Path);
+        context.HttpContext.Response.Headers["Retry-After"] = "10";
+        return ValueTask.CompletedTask;
+    };
+});
 builder.Services.AddControllers()
     .AddNewtonsoftJson(options =>
     {
@@ -139,6 +176,11 @@ app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseMiddleware<IdempotencyMiddleware>();
 app.UseMiddleware<AuthenticationMiddleware>();
+// 限流放 Auth 之後（才有 discordId 可分區）、UoW 之前（被擋的請求不白開 DB 交易）
+app.UseRateLimiter();
 app.UseMiddleware<UnitOfWorkMiddleware>();
 app.MapControllers();
 app.Run();
+
+// 讓整合測試（WebApplicationFactory<Program>）能參照到 top-level Program 類別
+public partial class Program;
