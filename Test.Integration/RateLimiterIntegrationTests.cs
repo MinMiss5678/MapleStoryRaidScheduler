@@ -1,4 +1,3 @@
-using System.Data;
 using System.Net;
 using Application.Interface;
 using Application.Options;
@@ -7,8 +6,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Npgsql;
 using Xunit;
 
 namespace Test.Integration;
@@ -52,16 +49,10 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
             builder.UseEnvironment("Development"); // 非 Production
 
             // services 層強制覆寫（跑在 app 註冊之後 → 贏過 Configure/Bind；不靠 config 來源優先序）
+            // 註：IDbConnection 已改延遲開啟（見 Program.cs），auth 建構時不再 eager 開 DB → 不需再覆寫它，
+            // 請求本來就到得了限流器（過限流的少數請求會在下游用到 DB 時才 500，已在限流器之後、無妨）。
             builder.ConfigureTestServices(services =>
             {
-                // 🔴 關鍵：AuthenticationMiddleware 的相依鏈在「建構時」就 eager 開 DB 連線
-                // （session/player service → repo → IDbConnection.Open()）。若連不上，auth 會在
-                // 限流器「之前」就丟例外 500 → 請求到不了限流器。這裡把 IDbConnection 換成
-                // 「不 eager 開」的連線：auth 建得起來、JWT 路徑無狀態不查 DB → 請求到得了限流器。
-                // （過限流的少數請求會在下游用到 DB 時才 500，那已在限流器之後、無妨。）
-                services.RemoveAll<IDbConnection>();
-                services.AddScoped<IDbConnection>(_ => new NpgsqlConnection());
-
                 services.PostConfigure<RateLimitOptions>(o =>
                 {
                     o.PermitLimit = TestPermitLimit; // 小上限 → 發遠超請求即穩定觸發 429
