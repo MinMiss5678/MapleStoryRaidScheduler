@@ -26,11 +26,13 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
     private readonly Factory _factory;
     public RateLimiterIntegrationTests(Factory factory) => _factory = factory;
 
-    // 以 https base address 送 → app 的 UseHttpsRedirection 見已是 https 即放行，
-    // 不會在限流器之前把請求 307 轉走（CI 上會有 https port 導致轉址）。
     private HttpClient CreateClient() => _factory.CreateClient(new WebApplicationFactoryClientOptions
     {
         AllowAutoRedirect = false,
+        // 由我手動帶 Cookie header 送 jwtToken；關掉 client 的 CookieContainer，
+        // 否則它會蓋掉手動 header（CI/Linux 上會 strip → 無 cookie → auth 丟例外 500，繞過限流器）。
+        HandleCookies = false,
+        // 以 https base address 送 → UseHttpsRedirection 見已是 https 即放行，不在限流器前 307 轉走。
         BaseAddress = new Uri("https://localhost")
     });
 
