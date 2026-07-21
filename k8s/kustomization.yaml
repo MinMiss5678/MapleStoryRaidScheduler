@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: maple-raid
+
+# 只管三個會隨版本更新的長駐應用。
+# namespace / database / seq / cloudflared / secret / migrate 各自處理（見 deploy.ps1、migrate.sh）。
+resources:
+  - backend.yaml
+  - frontend.yaml
+  - bot.yaml
+
+# 映像 tag 的單一來源：部署時（CD / deploy.ps1 / rollout.ps1）把 newTag 換成當次 git SHA。
+# committed 值保持 latest 當佔位；實際部署一律 pin SHA → 不可變、可 rollout undo、兩條路徑不漂移。
+# 用 kubectl apply -k（內建 kustomize）即可，不需額外裝 kustomize binary。
+images:
+  - name: minqq/presentation.webapi
+    newTag: latest
+  - name: minqq/frontend
+    newTag: latest
+  - name: minqq/presentation
+    newTag: latest
