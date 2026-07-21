@@ -1,10 +1,12 @@
 using System.Net;
 using Application.Interface;
+using Application.Options;
 using Domain.Entities;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace Test.Integration;
@@ -17,9 +19,15 @@ namespace Test.Integration;
 ///   - 限流 middleware 在 UnitOfWork（開 DB 交易）之前就攔，被擋的請求根本不碰 DB。
 ///   - 未超上限的請求會因連不到 DB 回 500，但那不影響「有沒有被限流（429）」——限流計數在 UoW 之前。
 /// 所以斷言只看「是不是 429」，與下游 DB 狀態無關。
+///
+/// 覆寫走 services 層 PostConfigure（保證最後執行、贏過 app 的 config 繫結），
+/// 不靠 ConfigureAppConfiguration 的來源優先序——那在 CI 會被 appsettings/env 蓋掉。
 /// </summary>
 public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationTests.Factory>
 {
+    private const string TestSecret = "integration-test-secret-key-at-least-32-bytes-long!!";
+    private const int TestPermitLimit = 5;
+
     // /api/Period/GetByNow：非 [AllowAnonymous]、無 role 限制 → user JWT 打得過 auth、進得了限流器
     private const string ProtectedPath = "/api/Period/GetByNow";
 
@@ -29,8 +37,7 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
     private HttpClient CreateClient() => _factory.CreateClient(new WebApplicationFactoryClientOptions
     {
         AllowAutoRedirect = false,
-        // 由我手動帶 Cookie header 送 jwtToken；關掉 client 的 CookieContainer，
-        // 否則它會蓋掉手動 header（CI/Linux 上會 strip → 無 cookie → auth 丟例外 500，繞過限流器）。
+        // 由我手動帶 Cookie header 送 jwtToken；關掉 client 的 CookieContainer，否則會蓋掉手動 header。
         HandleCookies = false,
         // 以 https base address 送 → UseHttpsRedirection 見已是 https 即放行，不在限流器前 307 轉走。
         BaseAddress = new Uri("https://localhost")
@@ -38,27 +45,34 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
 
     public class Factory : WebApplicationFactory<Program>
     {
-        protected override IHost CreateHost(IHostBuilder builder)
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development"); // 非 Production
-            builder.ConfigureAppConfiguration((_, cfg) =>
+
+            builder.ConfigureAppConfiguration((_, cfg) => cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                cfg.AddInMemoryCollection(new Dictionary<string, string?>
+                // 指向 127.0.0.1:1 → conn.Open() 立即被拒（fail fast）；限流在 UoW 前，不受影響
+                ["ConnectionStrings:DefaultConnection"] =
+                    "Host=127.0.0.1;Port=1;Database=x;Username=x;Password=x;Timeout=1;Command Timeout=1",
+                ["ConnectionStrings:DefaultConnectionFile"] = ""
+            }));
+
+            // services 層強制覆寫（跑在 app 註冊之後 → 贏過 Configure/Bind）
+            builder.ConfigureTestServices(services =>
+            {
+                services.PostConfigure<RateLimitOptions>(o =>
                 {
-                    // 無狀態 JWT：CreateToken 與 middleware ValidateToken 共用這組設定
-                    ["Jwt:SecretKey"] = "integration-test-secret-key-at-least-32-bytes-long!!",
-                    ["Jwt:Issuer"] = "test",
-                    ["Jwt:Audience"] = "test",
-                    // 測試用小上限：5 次/10 秒 → 發遠超的請求即可穩定觸發限流（不依賴時序）
-                    ["RateLimit:PermitLimit"] = "5",
-                    ["RateLimit:WindowSeconds"] = "10",
-                    // 指向 127.0.0.1:1 → conn.Open() 立即被拒（fail fast）；限流在 UoW 前計數，不受影響
-                    ["ConnectionStrings:DefaultConnection"] =
-                        "Host=127.0.0.1;Port=1;Database=x;Username=x;Password=x;Timeout=1;Command Timeout=1",
-                    ["ConnectionStrings:DefaultConnectionFile"] = ""
+                    o.PermitLimit = TestPermitLimit; // 小上限 → 發遠超請求即穩定觸發 429
+                    o.WindowSeconds = 10;
+                });
+                services.PostConfigure<JwtOptions>(o =>
+                {
+                    // CreateToken 與 middleware ValidateToken 共用這組（鑄與驗一致、且是已知值）
+                    o.SecretKey = TestSecret;
+                    o.Issuer = "test";
+                    o.Audience = "test";
                 });
             });
-            return base.CreateHost(builder);
         }
     }
 
@@ -76,14 +90,26 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
         return req;
     }
 
-    // 上限 5/10s，一口氣發 60 次遠超上限。即使跨一個視窗邊界（本機/CI <10s，最多 1 次邊界 →
-    // 至多放行 2×5=10）、或少數請求未計數，60 次也必定出現至少一個 429。不依賴「第幾次」。
-    private async Task<List<HttpStatusCode>> BurstAsync(HttpClient client, string token, int n)
+    // 上限 5/10s，一口氣發 60 次遠超上限。即使跨一個視窗邊界（<10s 最多 1 次邊界 → 至多放行 2×5=10），
+    // 60 次也必定出現至少一個 429。不依賴「第幾次」。同時擷取首個回應 body 便於失敗時診斷。
+    private async Task<(List<HttpStatusCode> statuses, string firstBody)> BurstAsync(HttpClient client, string token, int n)
     {
         var statuses = new List<HttpStatusCode>(n);
+        var firstBody = "";
         for (int i = 0; i < n; i++)
-            statuses.Add((await client.SendAsync(AuthedGet(token))).StatusCode);
-        return statuses;
+        {
+            var resp = await client.SendAsync(AuthedGet(token));
+            statuses.Add(resp.StatusCode);
+            if (i == 0) firstBody = await resp.Content.ReadAsStringAsync();
+        }
+        return (statuses, firstBody);
+    }
+
+    private static string Diagnose(List<HttpStatusCode> statuses, string firstBody)
+    {
+        var dist = string.Join(",", statuses.GroupBy(s => s).Select(g => $"{(int)g.Key}×{g.Count()}"));
+        var body = firstBody.Length > 200 ? firstBody[..200] : firstBody;
+        return $"狀態碼分布：{dist}；首個回應 body：{body}";
     }
 
     [Fact]
@@ -91,11 +117,10 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
     {
         var client = CreateClient();
 
-        var statuses = await BurstAsync(client, CreateJwt(1001), 60);
+        var (statuses, firstBody) = await BurstAsync(client, CreateJwt(1001), 60);
 
-        // 同一 discordId 遠超上限 → 至少一個被限（附上實際狀態碼便於診斷）
         Assert.True(statuses.Contains(HttpStatusCode.TooManyRequests),
-            $"預期出現 429，實際狀態碼分布：{string.Join(",", statuses.GroupBy(s => s).Select(g => $"{(int)g.Key}×{g.Count()}"))}");
+            $"預期出現 429。{Diagnose(statuses, firstBody)}");
     }
 
     [Fact]
@@ -104,9 +129,9 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
         var client = CreateClient();
 
         // 使用者 A 打到被限
-        var aStatuses = await BurstAsync(client, CreateJwt(2001), 60);
+        var (aStatuses, aBody) = await BurstAsync(client, CreateJwt(2001), 60);
         Assert.True(aStatuses.Contains(HttpStatusCode.TooManyRequests),
-            $"預期 A 出現 429，實際：{string.Join(",", aStatuses.GroupBy(s => s).Select(g => $"{(int)g.Key}×{g.Count()}"))}");
+            $"預期 A 出現 429。{Diagnose(aStatuses, aBody)}");
 
         // 使用者 B（不同 discordId）自己的視窗仍空 → 第一次就不該被限
         var respB = await client.SendAsync(AuthedGet(CreateJwt(2002)));
