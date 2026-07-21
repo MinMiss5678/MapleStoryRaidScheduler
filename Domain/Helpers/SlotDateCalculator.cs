@@ -4,6 +4,31 @@ namespace Domain.Helpers;
 
 public static class SlotDateCalculator
 {
+    /// <summary>
+    /// 楓之谷官方每週重製日（＝週期第一天）的單一事實來源。
+    /// 官方改期時只改這裡，所有週期排序 / slot 日期 / 背景排程都會跟著推導。
+    /// 重製「時間」不在此定義——它由 period.StartDate 的當日時間推導（目前週二 00:00 UTC = 08:00 TPE）。
+    /// </summary>
+    public const DayOfWeek ResetDay = DayOfWeek.Tuesday;
+
+    /// <summary>週期內的天別偏移：重製日 = 0、隔天 = 1 … 前一天 = 6（以 ResetDay 為基準旋轉）。</summary>
+    public static int CycleDayOffset(int weekday) => (weekday - (int)ResetDay + 7) % 7;
+
+    /// <summary>週期內天別排序（重製日優先），供合併 / 顯示使用。例：週二起 → [2,3,4,5,6,0,1]。</summary>
+    public static int[] CycleWeekdayOrder()
+        => Enumerable.Range(0, 7).Select(i => ((int)ResetDay + i) % 7).ToArray();
+
+    /// <summary>
+    /// 從 now 起算下一個重製日的 00:00 UTC。
+    /// 若今天正是重製日且已過 00:00，回傳下週的重製日（與 WeeklyPeriodJob / DeadlineJob 共用）。
+    /// </summary>
+    public static DateTimeOffset NextReset(DateTimeOffset now)
+    {
+        int days = ((int)ResetDay - (int)now.DayOfWeek + 7) % 7;
+        if (days == 0) days = 7;
+        return new DateTimeOffset(now.Date.AddDays(days), TimeSpan.Zero);
+    }
+
     public static PlayerAvailability GetBestAvailability(Register register, Period period)
     {
         // 取得週期重置時間 (TPE)
@@ -12,11 +37,11 @@ public static class SlotDateCalculator
         return register.Availabilities
             .OrderBy(a =>
             {
-                // 楓之谷週期的排序：週四為 0
-                int dayWeight = (a.Weekday + 3) % 7;
+                // 依重製日旋轉：ResetDay 當天為 0
+                int dayWeight = CycleDayOffset(a.Weekday);
 
-                // 如果是週四且時間早於重置時間 (08:00)，將其排序權重加 7，視為本週期的最後
-                if (a.Weekday == 4 && a.StartTime.ToTimeSpan() < resetTime)
+                // 若為重製日當天、且時間早於重製時間 (08:00)，權重加 7，視為本週期最後（屬上一輪殘留）
+                if (a.Weekday == (int)ResetDay && a.StartTime.ToTimeSpan() < resetTime)
                 {
                     return dayWeight + 7;
                 }
@@ -30,15 +55,15 @@ public static class SlotDateCalculator
     public static DateTime GetNextSlotDate(PlayerAvailability avail, Period period)
     {
         // 確保以台灣時間 (UTC+8) 計算
-        // period.StartDate 為週四 00:00 UTC = 08:00 TPE
+        // period.StartDate 為重製日 00:00 UTC = 08:00 TPE
         var periodStartTpe = period.StartDate.ToOffset(TimeSpan.FromHours(8));
-        var startDate = periodStartTpe.Date; // 週四的日期
+        var startDate = periodStartTpe.Date; // 重製日的日期
 
         int targetDayOfWeek = avail.Weekday;
         var slotTime = avail.StartTime.ToTimeSpan();
 
-        // 楓之谷週期的天數偏移 (週四=0, 週五=1, ..., 週三=6)
-        int targetOffset = (targetDayOfWeek + 3) % 7;
+        // 週期內天數偏移：重製日=0, 隔天=1, ..., 前一天=6
+        int targetOffset = CycleDayOffset(targetDayOfWeek);
         
         var slotDate = startDate.AddDays(targetOffset).Add(slotTime);
 

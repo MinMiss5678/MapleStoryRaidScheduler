@@ -15,45 +15,45 @@ public class TeamSlotServiceTests
     [Fact]
     public void GetNextSlotDate_ShouldBeWithinPeriod_MonToFri_20To00()
     {
-        // Arrange
+        // Arrange（重製日 = 週二，period 從 2026-04-07 週二 08:00 TPE 開始）
         var period = new Period
         {
-            StartDate = new DateTimeOffset(2026, 4, 2, 0, 0, 0, TimeSpan.Zero), // 2026-04-02 08:00 TPE
-            EndDate = new DateTimeOffset(2026, 4, 8, 23, 59, 59, TimeSpan.Zero)
+            StartDate = new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero), // 2026-04-07 08:00 TPE
+            EndDate = new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero)
         };
 
-        var availMon = new PlayerAvailability { Weekday = 1, StartTime = new TimeOnly(20, 0) };
-        var availThuMidnight = new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(0, 0) };
-        var availThu8PM = new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(20, 0) };
+        var availMon = new PlayerAvailability { Weekday = 1, StartTime = new TimeOnly(20, 0) };       // 週一 = 週期最後一天
+        var availTueMidnight = new PlayerAvailability { Weekday = 2, StartTime = new TimeOnly(0, 0) }; // 重製日 00:00（早於 reset → 推下週）
+        var availTue8PM = new PlayerAvailability { Weekday = 2, StartTime = new TimeOnly(20, 0) };      // 重製日 20:00
 
         // Act
         var resultMon = SlotDateCalculator.GetNextSlotDate(availMon, period);
-        var resultThuMid = SlotDateCalculator.GetNextSlotDate(availThuMidnight, period);
-        var resultThu8PM = SlotDateCalculator.GetNextSlotDate(availThu8PM, period);
+        var resultTueMid = SlotDateCalculator.GetNextSlotDate(availTueMidnight, period);
+        var resultTue8PM = SlotDateCalculator.GetNextSlotDate(availTue8PM, period);
 
         // Assert
         // GetNextSlotDate returns DateTime (local TPE), compare as DateTime
-        Assert.Equal(new DateTime(2026, 4, 6, 20, 0, 0), resultMon);
-        Assert.Equal(new DateTime(2026, 4, 9, 0, 0, 0), resultThuMid);
-        Assert.Equal(new DateTime(2026, 4, 2, 20, 0, 0), resultThu8PM);
+        Assert.Equal(new DateTime(2026, 4, 13, 20, 0, 0), resultMon);
+        Assert.Equal(new DateTime(2026, 4, 14, 0, 0, 0), resultTueMid);
+        Assert.Equal(new DateTime(2026, 4, 7, 20, 0, 0), resultTue8PM);
     }
 
     [Fact]
-    public async Task GetBestAvailability_ShouldPreferThu8PM_OverThuMidnight()
+    public async Task GetBestAvailability_ShouldPreferResetDay8PM_OverResetDayMidnight()
     {
-        // Arrange
+        // Arrange（重製日 = 週二）
         var period = new Period
         {
-            StartDate = new DateTimeOffset(2026, 4, 2, 0, 0, 0, TimeSpan.Zero), // 2026-04-02 08:00 TPE
-            EndDate = new DateTimeOffset(2026, 4, 8, 23, 59, 59, TimeSpan.Zero)
+            StartDate = new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero), // 2026-04-07 08:00 TPE
+            EndDate = new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero)
         };
 
         var register = new Register
         {
             Availabilities = new List<PlayerAvailability>
             {
-                new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(0, 0) },
-                new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(20, 0) }
+                new PlayerAvailability { Weekday = 2, StartTime = new TimeOnly(0, 0) },  // 重製日 00:00 → 早於 reset，排最後
+                new PlayerAvailability { Weekday = 2, StartTime = new TimeOnly(20, 0) }  // 重製日 20:00 → 排最前
             }
         };
 
@@ -213,7 +213,7 @@ public class TeamSlotAutoAssignServiceTests
     }
 
     [Fact]
-    public async Task AutoAssignAsync_ShouldCreateNewTeam_OnThursday20_WhenMonToFri_20To00()
+    public async Task AutoAssignAsync_ShouldCreateNewTeam_OnResetDay20_WhenMonToFri_20To00()
     {
         // Arrange
         var discordId = 24680UL;
@@ -246,8 +246,8 @@ public class TeamSlotAutoAssignServiceTests
             .ReturnsAsync(new Period
             {
                 Id = periodId,
-                StartDate = new DateTimeOffset(2026, 4, 2, 0, 0, 0, TimeSpan.Zero),
-                EndDate = new DateTimeOffset(2026, 4, 8, 23, 59, 59, TimeSpan.Zero)
+                StartDate = new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero), // 週二 = 重製日
+                EndDate = new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero)
             });
 
         _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(discordId))
@@ -274,7 +274,7 @@ public class TeamSlotAutoAssignServiceTests
         // Assert
         _teamSlotRepositoryMock.Verify(r => r.CreateAsync(It.Is<TeamSlot>(ts =>
             ts.BossId == bossId &&
-            ts.SlotDateTime == new DateTimeOffset(2026, 4, 2, 12, 0, 0, TimeSpan.Zero)
+            ts.SlotDateTime == new DateTimeOffset(2026, 4, 7, 12, 0, 0, TimeSpan.Zero) // 週二 20:00 TPE
         )), Times.Once);
     }
 

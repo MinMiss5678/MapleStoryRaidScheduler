@@ -37,8 +37,8 @@ public class SystemConfigServiceTests
         // Act
         var result = await _service.GetAsync();
 
-        // Assert
-        Assert.Equal(DayOfWeek.Wednesday, result.DeadlineDayOfWeek);
+        // Assert（預設截止日 = 重製日前一天，重製週二 → 截止週一）
+        Assert.Equal(DayOfWeek.Monday, result.DeadlineDayOfWeek);
         Assert.False(result.IsDeadlineNotified);
     }
 

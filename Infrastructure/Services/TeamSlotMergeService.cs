@@ -149,8 +149,8 @@ public class TeamSlotMergeService : ITeamSlotMergeService
             }
         }
 
-        // 楓之谷週期排序：週四(4), 週五(5), 週六(6), 週日(0), 週一(1), 週二(2), 週三(3)
-        var weekdays = new[] { 4, 5, 6, 0, 1, 2, 3 };
+        // 楓之谷週期排序：重製日優先（見 SlotDateCalculator.ResetDay）。例：週二起 → 2,3,4,5,6,0,1
+        var weekdays = SlotDateCalculator.CycleWeekdayOrder();
 
         foreach (var day in weekdays)
         {

@@ -24,11 +24,11 @@ public class SystemConfigService : ISystemConfigService
 
         if (dbModel == null)
         {
-            // 預設給一個時間，例如週三 23:59:59
+            // 預設截止日設在重製日前一天（重製=週二 → 截止週一 23:59:59）
             return new SystemConfig
             {
                 Id = 1,
-                DeadlineDayOfWeek = DayOfWeek.Wednesday,
+                DeadlineDayOfWeek = DayOfWeek.Monday,
                 DeadlineTime = new TimeSpan(23, 59, 59),
                 IsDeadlineNotified = false
             };

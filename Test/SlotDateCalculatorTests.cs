@@ -86,53 +86,53 @@ public class SlotDateCalculatorTests
     }
 
     [Fact]
-    public void GetBestAvailability_ShouldPreferThursdayAfterReset()
+    public void GetBestAvailability_ShouldPreferResetDayAfterReset()
     {
-        // 楓之谷週期：週四是第一天，但週四 08:00 之前算上週結算
+        // 楓之谷週期：重製日（週二）是第一天，但週二 08:00 之前算上週結算
         var period = new Period
         {
-            StartDate = new DateTimeOffset(2026, 4, 2, 0, 0, 0, TimeSpan.Zero), // 週四 00:00 UTC = 08:00 TPE
-            EndDate = new DateTimeOffset(2026, 4, 8, 23, 59, 59, TimeSpan.Zero)
+            StartDate = new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero), // 週二 00:00 UTC = 08:00 TPE
+            EndDate = new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero)
         };
 
         var register = new Register
         {
             Availabilities = new List<PlayerAvailability>
             {
-                new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(20, 0) }, // 週四 20:00 → 排最前
-                new PlayerAvailability { Weekday = 1, StartTime = new TimeOnly(20, 0) }  // 週一 20:00
+                new PlayerAvailability { Weekday = 2, StartTime = new TimeOnly(20, 0) }, // 週二 20:00 → 排最前
+                new PlayerAvailability { Weekday = 1, StartTime = new TimeOnly(20, 0) }  // 週一（週期最後一天）20:00
             }
         };
 
         var result = SlotDateCalculator.GetBestAvailability(register, period);
 
-        // 週四 20:00 應該排在週一前面
-        Assert.Equal(4, result.Weekday);
+        // 週二 20:00 應該排在週一前面
+        Assert.Equal(2, result.Weekday);
         Assert.Equal(20, result.StartTime.Hour);
     }
 
     [Fact]
-    public void GetBestAvailability_ShouldPushThursdayBeforeResetToLast()
+    public void GetBestAvailability_ShouldPushResetDayBeforeResetToLast()
     {
-        // 週四 07:00 (早於 reset 08:00) 應被排在最後
+        // 週二 07:00 (早於 reset 08:00) 應被排在最後
         var period = new Period
         {
-            StartDate = new DateTimeOffset(2026, 4, 2, 0, 0, 0, TimeSpan.Zero),
-            EndDate = new DateTimeOffset(2026, 4, 8, 23, 59, 59, TimeSpan.Zero)
+            StartDate = new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
+            EndDate = new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero)
         };
 
         var register = new Register
         {
             Availabilities = new List<PlayerAvailability>
             {
-                new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(7, 0) }, // 早於 08:00 TPE → 排最後
-                new PlayerAvailability { Weekday = 5, StartTime = new TimeOnly(20, 0) }  // 週五 → 排前面
+                new PlayerAvailability { Weekday = 2, StartTime = new TimeOnly(7, 0) }, // 早於 08:00 TPE → 排最後
+                new PlayerAvailability { Weekday = 3, StartTime = new TimeOnly(20, 0) }  // 週三 → 排前面
             }
         };
 
         var result = SlotDateCalculator.GetBestAvailability(register, period);
 
-        // 週五應排在週四 07:00 之前
-        Assert.Equal(5, result.Weekday);
+        // 週三應排在週二 07:00 之前
+        Assert.Equal(3, result.Weekday);
     }
 }

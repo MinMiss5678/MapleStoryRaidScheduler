@@ -2,6 +2,7 @@
 using Application.Interface;
 using Application.Options;
 using Application.Queries;
+using Domain.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -78,7 +79,7 @@ public class RegistrationDeadlineJob : BackgroundService
                             
                             _logger.LogInformation("Registration deadline notification sent.");
                             
-                            // 通知發送後，直接等待到下一個週四 00:00 (WeeklyPeriodJob 重置時間)
+                            // 通知發送後，直接等待到下一個重製日 00:00 (WeeklyPeriodJob 重置時間)
                             delay = GetDelayUntilNextReset(now);
                         }
                         else
@@ -102,7 +103,7 @@ public class RegistrationDeadlineJob : BackgroundService
                 }
                 else
                 {
-                    // 已發送過通知，直接等待到下一個週四 00:00 (WeeklyPeriodJob 重置時間)
+                    // 已發送過通知，直接等待到下一個重製日 00:00 (WeeklyPeriodJob 重置時間)
                     // 加上一點 Buffer 確保重置工作已經完成
                     delay = GetDelayUntilNextReset(now).Add(TimeSpan.FromSeconds(5));
                 }
@@ -133,12 +134,7 @@ public class RegistrationDeadlineJob : BackgroundService
 
     private TimeSpan GetDelayUntilNextReset(DateTimeOffset now)
     {
-        // 計算下一個週四 00:00 (與 WeeklyPeriodJob 邏輯一致)
-        int daysUntilThursday = ((int)DayOfWeek.Thursday - (int)now.DayOfWeek + 7) % 7;
-        if (daysUntilThursday == 0)
-            daysUntilThursday = 7;
-
-        var nextThursday = now.Date.AddDays(daysUntilThursday);
-        return nextThursday - now;
+        // 計算下一個重製日 00:00（與 WeeklyPeriodJob 共用同一來源）
+        return SlotDateCalculator.NextReset(now) - now;
     }
 }
