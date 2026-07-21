@@ -15,6 +15,7 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
     private readonly IBossRepository _bossRepository;
     private readonly IPlayerRepository _playerRepository;
     private readonly ITeamSlotMergeService _mergeService;
+    private readonly IRegistrationLock _registrationLock;
 
     public TeamSlotAutoAssignService(
         ITeamSlotRepository teamSlotRepository,
@@ -23,7 +24,8 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
         ICharacterQuery characterQuery,
         IBossRepository bossRepository,
         IPlayerRepository playerRepository,
-        ITeamSlotMergeService mergeService)
+        ITeamSlotMergeService mergeService,
+        IRegistrationLock registrationLock)
     {
         _teamSlotRepository = teamSlotRepository;
         _teamSlotCharacterRepository = teamSlotCharacterRepository;
@@ -32,10 +34,15 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
         _bossRepository = bossRepository;
         _playerRepository = playerRepository;
         _mergeService = mergeService;
+        _registrationLock = registrationLock;
     }
 
     public async Task AutoAssignAsync(Register register)
     {
+        // 併發防護：序列化同一 period 的自動排隊，避免兩人同時報名各開一隊（read-then-write race）。
+        // 取在最前面（讀隊伍之前），鎖隨 UoW 交易結束自動釋放。
+        await _registrationLock.AcquireAutoAssignLockAsync(register.PeriodId);
+
         var period = await _periodQuery.GetByIdAsync(register.PeriodId);
         if (period == null) return;
 

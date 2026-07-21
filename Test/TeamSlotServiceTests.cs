@@ -129,6 +129,7 @@ public class TeamSlotAutoAssignServiceTests
     private readonly Mock<IBossRepository> _bossRepositoryMock;
     private readonly Mock<IPlayerRepository> _playerRepositoryMock;
     private readonly Mock<ITeamSlotMergeService> _mergeServiceMock;
+    private readonly Mock<IRegistrationLock> _registrationLockMock;
     private readonly TeamSlotAutoAssignService _autoAssignService;
 
     public TeamSlotAutoAssignServiceTests()
@@ -140,6 +141,9 @@ public class TeamSlotAutoAssignServiceTests
         _bossRepositoryMock = new Mock<IBossRepository>();
         _playerRepositoryMock = new Mock<IPlayerRepository>();
         _mergeServiceMock = new Mock<ITeamSlotMergeService>();
+        _registrationLockMock = new Mock<IRegistrationLock>();
+        _registrationLockMock.Setup(x => x.AcquireAutoAssignLockAsync(It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
 
         _autoAssignService = new TeamSlotAutoAssignService(
             _teamSlotRepositoryMock.Object,
@@ -148,7 +152,8 @@ public class TeamSlotAutoAssignServiceTests
             _characterQueryMock.Object,
             _bossRepositoryMock.Object,
             _playerRepositoryMock.Object,
-            _mergeServiceMock.Object
+            _mergeServiceMock.Object,
+            _registrationLockMock.Object
         );
     }
 

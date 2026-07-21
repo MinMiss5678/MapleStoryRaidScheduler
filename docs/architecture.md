@@ -200,8 +200,8 @@ Controller / Service
 
 > **限流為何按身分不按 IP**：`discordId` 來自已驗證的 session/JWT，client 偽造不了，換 IP 也繞不掉；且前端 proxy 會剝除 `X-Forwarded-For`／`cf-connecting-ip`，後端本就看不到真實 IP。未登入端點（登入前暴力破解）不在此限——那需 IP／CAPTCHA／帳號鎖定，屬另案。
 
-> **健康檢查端點例外**：`/health/live`、`/health/ready` 以 `UseHealthChecks` **終端中介軟體**掛在這條管線**之前**，完全繞過上述四個中介軟體。
-> 原因：`AuthenticationMiddleware` 的相依鏈（session/player service → repo → `IDbConnection`）在**建構時**就 eager 開 DB 連線；若讓健康檢查走進管線，DB 掛掉時 readiness 會因「建不出 auth 中介軟體」回 500 而非乾淨 503，liveness 更會誤殺存活的 pod。詳見 `docs/cd-deploy-setup.md`。
+> **健康檢查端點例外**：`/health/live`、`/health/ready` 以 `UseHealthChecks` **終端中介軟體**掛在這條管線**之前**，完全繞過後面所有中介軟體。
+> 原因：探針不該需要認證、也不該開交易；readiness 的 DB 檢查走專屬 `DatabaseHealthCheck`（不經請求管線）→ DB 掛掉乾淨回 503，liveness 不查 DB 故不誤殺 pod。詳見 `docs/cd-deploy-setup.md`。
 
 ---
 
@@ -230,6 +230,18 @@ flowchart TD
 ### 補位保護機制
 
 手動補位的成員標記 `IsManual = true`，批次重新分配時跳過含 `IsManual` 成員的隊伍，防止人工調整被覆蓋。
+
+### 併發控制（避免重複開隊）
+
+`AutoAssignAsync` 的「讀現有隊 → 沒有就開新隊」是 **read-then-write**。兩人同時報名同一 period 時，在 READ COMMITTED 下兩交易互相看不到對方未提交的隊 → **各自開一隊 → 重複**（`MergeTeamsAsync` 只能事後補救，併發當下補不了）。
+
+解法：`AutoAssignAsync` 開頭對 `(classId, periodId)` 取 **交易級 advisory lock**（`pg_advisory_xact_lock`，見 `IRegistrationLock`）：
+
+- 同一 period 的自動排隊**序列化** → 第二個看得到第一個建的隊
+- **不同 period 不互斥**（並行保留，per-key 粒度）
+- 交易級鎖隨 UoW commit/rollback **自動釋放**；鎖在 DB → **多 pod 安全**（不像 C# 程序內鎖，多副本會失效）
+
+> 選型：本規模用 advisory lock（targeted + 多 pod 安全 + 一行 SQL）即可；SERIALIZABLE 需重試迴圈、MQ 需常駐 broker，對一團數十人過重。公開路人配對、熱門本高併發 + 尖峰時，才會走「非同步配對管線（佇列 + worker）」重設計。
 
 ### Source 語意（provenance）
 
