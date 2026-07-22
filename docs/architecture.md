@@ -207,6 +207,45 @@ Controller / Service
 > **健康檢查端點例外**：`/health/live`、`/health/ready` 以 `UseHealthChecks` **終端中介軟體**掛在這條管線**之前**，完全繞過後面所有中介軟體。
 > 原因：探針不該需要認證、也不該開交易；readiness 的 DB 檢查走專屬 `DatabaseHealthCheck`（不經請求管線）→ DB 掛掉乾淨回 503，liveness 不查 DB 故不誤殺 pod。詳見 `docs/cd-deploy-setup.md`。
 
+### 請求生命週期（交易邊界）
+
+上面是「管線順序」；下圖是「一個請求的時間流」，重點在 **UnitOfWork 的交易邊界**與 **Dapper 沿用同一連線／交易**：
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant MW as Middleware<br/>(Exception→Idempotency→Auth→RateLimiter)
+    participant UoW as UnitOfWorkMiddleware
+    participant Ctrl as Controller / Service
+    participant Repo as Repository (Dapper)
+    participant DB as PostgreSQL
+
+    C->>MW: HTTP 請求
+    Note over MW: 任一中介軟體擋下即短路回應<br/>（不進 UoW、不開交易）
+    MW->>UoW: 通過驗證 / 限流
+    alt 寫入（POST/PUT/PATCH/DELETE）
+        UoW->>DB: BeginTransaction
+        UoW->>Ctrl: next()
+        Ctrl->>Repo: 呼叫 Repository
+        Repo->>DB: Dapper 執行 SQL（同一連線／交易）
+        DB-->>Repo: 結果
+        Repo-->>Ctrl: 物化為實體
+        Ctrl-->>UoW: 回應（設定 status code）
+        alt status < 400
+            UoW->>DB: Commit
+        else status >= 400 或拋例外
+            UoW->>DB: Rollback（例外再往外拋）
+        end
+    else 讀取（GET 等）
+        UoW->>Ctrl: next()（不開交易）
+        Ctrl->>Repo: Query
+        Repo->>DB: Dapper 讀取（連線自動開／關）
+    end
+    UoW-->>C: HTTP 回應
+```
+
+> 交易邊界由中介軟體統一掌控，**Controller／Repository 不碰交易生命週期**——這是 Unit of Work 的核心：一個請求一個交易，成功才 Commit，任何失敗（4xx 或例外）整批 Rollback。詳見上方「關鍵設計決策 §3」。
+
 ---
 
 ## 自動分配引擎
@@ -570,6 +609,50 @@ frontend → cloudflared
 
 Secrets 以 volume mount 方式掛載至 `/run/secrets/`，與 Docker secrets 路徑一致，應用程式設定無需因部署平台而異。
 
+執行拓樸（namespace `maple-raid`）：
+
+```mermaid
+graph TD
+    subgraph ns["k8s namespace: maple-raid"]
+        mig[["migrate Job（執行後完成）"]]
+        be["backend Deployment<br/>liveness / readiness 探針"]
+        fe["frontend Deployment"]
+        bot["bot Deployment"]
+        db[("PostgreSQL<br/>Deployment + PVC")]
+        seq["Seq 日誌"]
+        cf["cloudflared Tunnel"]
+        sec{{"Secret（掛載 /run/secrets）"}}
+    end
+    cf --> fe --> be --> db
+    bot --> db
+    be --> seq
+    bot --> seq
+    mig -->|先於 backend 完成| db
+    sec -. 掛載 .-> be
+    sec -. 掛載 .-> bot
+    sec -. 掛載 .-> db
+```
+
 - **CI（MR 流程）**：feature 分支 → 開 MR → CI 在 MR 上跑 **format（Roslyn 格式檢查）→ build（含 `WarningsAsErrors=nullable`）→ 單元 + 整合測試（dind + Testcontainers）→ 覆蓋率合併 → E2E**，綠燈才 merge。純文件 MR 只跑秒過的 `docs-ok`（滿足 merge check、不燒重的 job）。見 `docs/e2e-testing-setup.md`、`docs/gitlab-selfhost-ci-setup.md`（自架學習參考，實際已用 gitlab.com）。
 - **CD**：merge 進 main → main pipeline **只留 `deploy`（manual、限 main）**，不重跑驗證。點下去 → 推 **SHA 版本化**的 `minqq/*` 映像 → migrate Job → **Kustomize `kubectl apply -k`**（映像 pin git SHA、可真回滾）。見 `docs/cd-deploy-setup.md`。
 - **手動部署**（不走 CI）：`docs/deployment.md`（`deploy.ps1` / `rollout.ps1`）。
+
+### CI/CD 流程（總覽）
+
+把散在 `gitlab-selfhost-ci-setup` / `cd-deploy-setup` / `e2e-testing-setup` 三份筆記的流程縫成一張：
+
+```mermaid
+flowchart LR
+    dev["feature 分支"] -->|開 MR| mr{"MR pipeline"}
+    mr -->|純文件| docsok["docs-ok（秒過）"]
+    mr -->|動到程式碼| ci["format → build → 單元+整合 → 覆蓋率 → E2E"]
+    docsok --> merge["merge 進 main"]
+    ci -->|全綠| merge
+    merge --> mainpl["main pipeline：只留 deploy（manual）"]
+    mainpl -->|人工點擊| deploy["推 SHA 版本化映像 minqq/*"]
+    deploy --> mig["migrate Job"]
+    mig --> k["Kustomize：kubectl apply -k"]
+    k --> roll["k8s 滾動更新（readiness 綠才收舊 pod）"]
+```
+
+> CI 閘在 **MR** 上把關（綠燈才 merge）；**main 不重跑驗證、只等人工點 deploy**。映像以 git SHA 版本化 → 可追溯、可真回滾（`kubectl rollout undo` 或指定 SHA）。
