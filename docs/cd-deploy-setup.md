@@ -41,11 +41,16 @@ kubectl set image deployment/backend backend=minqq/presentation.webapi:<舊SHA> 
 
 > **readiness 探針是安全網**：新 pod `/health/ready` 沒綠，k8s 不會把它加進 Service、也不收舊 pod → 壞版本不會接到流量（見 `k8s/backend.yaml`）。但 `rollout status` 會等到 timeout 才失敗，別以為卡住。
 
-## 已知坑 / 未決
+## 設計說明（常被誤認成坑，其實是刻意設計）
 
-- **frontend `NEXT_PUBLIC_*`**：Next.js 這類變數是 **build 時**烤進去的。目前 build 沒帶 `--build-arg`（照 `rollout.ps1`）→ 靠 Dockerfile 內建預設值；若要換域名得改 Dockerfile 或加 build-arg。
 - **`imagePullPolicy` / SHA tag**：`kustomization.yaml` 的 `newTag` committed 值是 `latest`（佔位），部署時 `sed` 成 SHA。SHA 是新 tag → kubelet 沒有 → 一定拉；回滾到舊 SHA 命中節點快取（不可變、正確）。不需額外設 policy。
 - **三條路徑一致（無漂移）**：CD 與 `deploy.ps1` 都 `apply -k` 同一份 kustomization（映像 = 當次 git SHA）；`rollout.ps1` 是單一服務快速更新，用 `set image`（重建那一個服務的 SHA）。因映像都 pin git SHA，重跑任一路徑得到的都是該 commit 的版本 → 不會意外打回 `:latest`。
+
+## 已知坑 / 未決
+
+- **frontend `NEXT_PUBLIC_*`（server 端使用、runtime 帶入）**：這些變數目前**只在 server 端 route handler**（`app/api/auth/discord`）使用；prod 走 standalone `node server.js`，在 request 時讀 **runtime env**（由 `k8s/frontend.yaml` 的 `env` / compose 的 `environment:` 提供）。**換域名只需改 k8s env，不必 rebuild / build-arg。**
+  - ⚠️ footgun：`next build` **沒烤入任何值** → 若日後在 **client component** 用這些 `NEXT_PUBLIC_*`，prod 會是 `undefined`、且 runtime env 救不了（命名誤導）。那時才需要在 build 階段用 `--build-arg` + Dockerfile `ARG/ENV` 注入。
 - **前提：SHA 映像須先存在**：`deploy.ps1`/CD 部署當前 commit 的 SHA 前，該映像要已推上 Docker Hub。全新 bootstrap（還沒任何映像）先用 `rollout.ps1` 各建一次或推 `:latest`。
 - **migrate 失敗**：job 失敗會讓 deploy 中止在 migration 那步（滾動更新不會跑）→ 半發版風險低（映像已推但沒 rollout）。修好 migration 重跑即可。
 - **首次跑**：kubectl 是每次 `curl` 下載（docker:27 alpine 無內建）——想省時可改用含 kubectl 的映像。
+- **rollout 後無功能煙霧測試（未做）**：readiness 只查 `/health/ready`（DB 連通），**邏輯壞但能連 DB 的版本仍會通過 rollout**。目前 readiness 擋得住「起不來」的壞版本，擋不住「起得來但邏輯錯」。補法：rollout 綠後打一兩個關鍵端點驗回應。規模小暫可接受。
