@@ -10,10 +10,10 @@ export const characterService = {
         const encodedId = encodeURIComponent(id);
         await apiClient.delete(`/api/character/${encodedId}`);
     },
-    async createCharacter(character: Omit<Character, 'id'>): Promise<Character> {
-        return apiClient.post<Character>("/api/character", character);
+    async createCharacter(character: Omit<Character, 'id'>, idempotencyKey?: string): Promise<Character> {
+        return apiClient.post<Character>("/api/character", character, { idempotencyKey });
     },
-    async updateCharacter(character: Character): Promise<Character> {
-        return apiClient.put<Character>(`/api/character/${character.id}`, character);
+    async updateCharacter(character: Character, idempotencyKey?: string): Promise<Character> {
+        return apiClient.put<Character>(`/api/character/${character.id}`, character, { idempotencyKey });
     }
 };

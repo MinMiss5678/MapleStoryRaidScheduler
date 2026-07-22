@@ -4,9 +4,9 @@
 
 ## 技術亮點
 
-- **自製 SqlBuilder**：不依賴 EF Core，以 Lambda 表達式解析（`Expression<Func<T, bool>>`）實作型別安全的 SQL 建構工具，支援 CTE、條件群組（AND/OR）、NULL 比較，避免字串拼接錯誤。
+- **自製 SqlBuilder**：不依賴 EF Core，以 Lambda 表達式（`Expression<Func<T, bool>>`）解析欄位與條件建構 SQL，支援 CTE、條件群組（AND/OR）、NULL 比較；欄位參照走屬性、編譯期就能抓到打錯，避免字串拼接。
 - **CQRS-Lite 讀寫分離**：寫入路徑走 Service + Repository（逐筆操作、語意清晰），讀取路徑走獨立 Query 介面（不受寫入模型約束，可自由使用 JOIN 等最佳化 SQL 一次查回所需資料）。
-- **冪等性保護**：所有 POST/PUT/DELETE 請求強制帶 `X-Idempotency-Key`，由 Middleware 統一攔截並快取結果，防止網路重試造成重複操作。
+- **重複提交防護**：POST/PUT/DELETE 強制帶合法 UUID 的 `X-Idempotency-Key`（否則 400），同一 key 60 秒內重送回 409，防止連點 / 網路重試造成重複寫入。（擋重送，非重播原結果的完整冪等）
 - **雙軌身分驗證**：一般玩家使用自定義 JWT，管理員使用 Session（儲存於 DB），兩者在同一 Middleware 中統一驗證，依 Discord 身分組自動分流。
 - **按身分限流**：以已驗證的 `discordId`（session/JWT claim）為 key 做 per-user 限流（換 IP 也繞不掉），Middleware 掛在驗證之後、交易之前，被擋的請求不白開 DB 交易。
 - **自動分配引擎**：玩家報名後即時觸發，根據可用時段比對現有隊伍空位，無匹配則建立新暫時隊伍。
@@ -21,7 +21,7 @@
 |---|---|
 | **後端** | .NET 9 (C# 13)、ASP.NET Core Web API |
 | **前端** | Next.js 15 (App Router)、Tailwind CSS、Shadcn/UI |
-| **資料庫** | PostgreSQL 18（Dapper 手寫 SQL，無 EF Core） |
+| **資料庫** | PostgreSQL 18（手寫 SQL + Dapper 對映，無 EF Core） |
 | **Schema 管理** | golang-migrate（up/down SQL，版本追蹤） |
 | **身分驗證** | Discord OAuth2、自定義 JWT、DB Session |
 | **通知** | DSharpPlus Discord Bot |

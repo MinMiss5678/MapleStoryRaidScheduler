@@ -116,11 +116,13 @@ await _unitOfWork.CommitAsync();
 
 Discord 身分組 → 系統角色的對應由 `DiscordRoleMapping` 表管理，可動態調整。
 
-### 5. 冪等性保護
+### 5. 重複提交防護（非完整冪等）
 
-**決策原因**：前端重試或網路重送可能造成重複操作（如重複報名、重複補位）。
+**決策原因**：前端連點或網路重送可能造成重複寫入（如重複報名、重複補位）。
 
-**實作方式**：所有 POST/PUT/DELETE 請求必須帶 `X-Idempotency-Key`，`IdempotencyMiddleware` 以此 Key 為快取鍵，相同 Key 的重複請求直接回傳快取結果，不重新執行業務邏輯。
+**實作方式**：POST/PUT/DELETE 必須帶合法 UUID 的 `X-Idempotency-Key`（缺少或非 UUID 回 400）；`IdempotencyMiddleware` 以此 Key 為快取鍵，同一 Key 在 60 秒內重送直接回 **409 Conflict**、不進入業務邏輯。
+
+> 注意：這是「擋重送」而非完整冪等——重試不會重播第一次的回應內容（只快取一個標記，非結果）。真冪等需快取並重播原始回應；此處刻意簡化為 de-dup，因寫入操作重送應由使用者感知（409）而非默默視為成功。
 
 ### 6. Schema 版本管理（golang-migrate）
 
@@ -185,7 +187,7 @@ Request
 ExceptionHandlerMiddleware   ← 全域例外捕捉，統一回傳 ProblemDetails
   │
   ▼
-IdempotencyMiddleware        ← 強制 X-Idempotency-Key，防重複操作
+IdempotencyMiddleware        ← 強制 X-Idempotency-Key（否則 400），重送回 409 擋重複提交
   │
   ▼
 AuthenticationMiddleware     ← 驗證 JWT（玩家）或 SessionId（管理員），設 discordId claim
