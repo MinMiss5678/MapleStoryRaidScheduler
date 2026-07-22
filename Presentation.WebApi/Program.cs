@@ -91,8 +91,10 @@ builder.Services.AddRateLimiter(rateLimiterOptions =>
     rateLimiterOptions.OnRejected = (context, _) =>
     {
         var discordId = context.HttpContext.User.FindFirst("discordId")?.Value ?? "unknown";
-        Log.Warning("Rate limit 觸發：discordId={DiscordId} path={Path}",
-            discordId, context.HttpContext.Request.Path);
+        // 真實 client IP 由前端 proxy 覆寫、UseForwardedHeaders 還原（見 ForwardedHeaders 設定）
+        var clientIp = context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        Log.Warning("Rate limit 觸發：discordId={DiscordId} ip={ClientIp} path={Path}",
+            discordId, clientIp, context.HttpContext.Request.Path);
         context.HttpContext.Response.Headers["Retry-After"] = "10";
         return ValueTask.CompletedTask;
     };
@@ -152,12 +154,18 @@ if (app.Environment.IsDevelopment())
 
 var options = new ForwardedHeadersOptions
 {
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    ForwardLimit = 1 // 只信最後一跳（前端 proxy）設的那一筆 X-Forwarded-For
 };
 
-// 允許 Docker bridge network
-options.KnownNetworks.Clear(); // 清掉預設 127.0.0.1/8
+// backend 只在叢集內部可達（非公開）；前端 proxy 已刪掉 client 可偽造的 header、
+// 改設 cf-connecting-ip 的真 IP。這裡信任「內部私有網段」送來的 forwarded header
+// → 取得真實 client IP 且不可偽造（公網無法從私有 IP 連到 backend）。
+options.KnownNetworks.Clear();
 options.KnownProxies.Clear();
+options.KnownNetworks.Add(new IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8));
+options.KnownNetworks.Add(new IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
+options.KnownNetworks.Add(new IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16));
 app.UseForwardedHeaders(options);
 
 // 健康檢查放最前面（auth/uow/serilog 之前）當「終端中介軟體」短路——完全繞過後面整條管線。

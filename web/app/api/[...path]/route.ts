@@ -13,13 +13,22 @@ async function handleProxy(req: NextRequest, { params }: { params: Promise<{ pat
     const targetPath = path.join('/');
     const targetUrl = `${process.env.BACKEND_API_URL}/api/${targetPath}${req.nextUrl.search}`;
 
+    // 取真實 client IP：來源是 Cloudflare 設的 cf-connecting-ip（可信；流量必經 Cloudflare）。
+    // 退而求其次取 x-forwarded-for 的第一段（cloudflared 也會帶）。
+    const realIp = req.headers.get('cf-connecting-ip')
+        ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        ?? '';
+
     // 複製 headers（避免 Host / Connection 導致問題）
     const headers = new Headers(req.headers);
     headers.delete('host');
     headers.delete('connection');
     headers.delete('content-length');
-    headers.delete('x-forwarded-for');
-    headers.delete("cf-connecting-ip");
+    // 先刪掉 client 可偽造的 header，再由本 proxy 設「乾淨、單一、可信」的真 IP 給後端。
+    // 後端只在叢集內部可達（非公開），且只信本 proxy 送來的 x-forwarded-for → 不會被偽造。
+    headers.delete('cf-connecting-ip');
+    if (realIp) headers.set('x-forwarded-for', realIp);
+    else headers.delete('x-forwarded-for');
 
     // 複製 body（GET/HEAD/DELETE 不應該有 body）
     const hasBody = !['GET', 'HEAD', 'DELETE'].includes(req.method);
