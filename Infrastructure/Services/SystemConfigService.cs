@@ -75,6 +75,9 @@ public class SystemConfigService : ISystemConfigService
             await repository.UpdateAsync(existing);
         }
 
-        _notifier.Notify();
+        // 設定變更事件改在「交易 Commit 成功後」才發：
+        // 否則會在 commit 前搶跑 → RegistrationDeadlineJob 被喚醒後以另一條連線重讀 DB，
+        // 讀到未提交的舊值、用舊值重算排程；且請求若 rollback，事件已白發。
+        _dbContext.AfterCommit(_notifier.Notify);
     }
 }
