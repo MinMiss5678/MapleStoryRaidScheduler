@@ -131,7 +131,9 @@ public class ScheduleServiceAutoScheduleTests
         // 保留隊：週四 20:00，已有手動成員 c1(Hero)，缺 1 人
         var protectedTeam = new TeamSlot
         {
-            Id = 100, BossId = bossId, TemplateId = templateId,
+            Id = 100,
+            BossId = bossId,
+            TemplateId = templateId,
             SlotDateTime = new DateTimeOffset(2026, 4, 2, 20, 0, 0, TimeSpan.FromHours(8)),
             Source = TeamSlotSource.Admin,
             Characters = new List<TeamSlotCharacter>

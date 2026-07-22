@@ -82,17 +82,17 @@ public class SystemConfigServiceTests
     {
         // Arrange
         var existing = new SystemConfigDbModel { Id = 1, DeadlineDayOfWeek = (int)DayOfWeek.Monday, DeadlineTime = new TimeSpan(10, 0, 0), IsDeadlineNotified = true };
-        
+
         _repoMock.Setup(r => r.GetAllAsync<SystemConfigDbModel>(null))
             .ReturnsAsync(new List<SystemConfigDbModel> { existing });
-        
+
         var updateConfig = new SystemConfig { DeadlineDayOfWeek = DayOfWeek.Tuesday, DeadlineTime = new TimeSpan(10, 0, 0), IsDeadlineNotified = true };
 
         // Act
         await _service.UpdateAsync(updateConfig);
 
         // Assert
-        _repoMock.Verify(r => r.UpdateAsync(It.Is<SystemConfigDbModel>(m => 
+        _repoMock.Verify(r => r.UpdateAsync(It.Is<SystemConfigDbModel>(m =>
             m.DeadlineDayOfWeek == (int)DayOfWeek.Tuesday && m.IsDeadlineNotified == false)), Times.Once);
     }
 
@@ -102,10 +102,10 @@ public class SystemConfigServiceTests
         // Arrange
         bool eventInvoked = false;
         _notifier.OnChanged += () => eventInvoked = true;
-        
+
         _repoMock.Setup(r => r.GetAllAsync<SystemConfigDbModel>(null))
             .ReturnsAsync(new List<SystemConfigDbModel>());
-        
+
         var config = new SystemConfig { DeadlineDayOfWeek = DayOfWeek.Wednesday };
 
         // Act

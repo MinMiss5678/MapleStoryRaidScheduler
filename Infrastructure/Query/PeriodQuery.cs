@@ -14,7 +14,7 @@ public class PeriodQuery : IPeriodQuery
     {
         _dbContext = dbContext;
     }
-    
+
     public async Task<int> GetActivePeriodIdAsync()
     {
         var period = await GetActivePeriodAsync();
@@ -53,11 +53,11 @@ public class PeriodQuery : IPeriodQuery
         // WeeklyPeriodJob 每週四建立下一個 period，建立後自動切換
         var sql = new QueryBuilder();
         sql.Select<PeriodDbModel>(x => new
-            {
-                x.Id,
-                x.StartDate,
-                x.EndDate
-            })
+        {
+            x.Id,
+            x.StartDate,
+            x.EndDate
+        })
             .From<PeriodDbModel>()
             .OrderByDescending<PeriodDbModel>(x => x.StartDate)
             .Limit(1);
@@ -70,11 +70,11 @@ public class PeriodQuery : IPeriodQuery
         var now = DateTimeOffset.UtcNow;
         var sql = new QueryBuilder();
         sql.Select<PeriodDbModel>(x => new
-            {
-                x.Id,
-                x.StartDate,
-                x.EndDate
-            })
+        {
+            x.Id,
+            x.StartDate,
+            x.EndDate
+        })
             .From<PeriodDbModel>()
             .Where<PeriodDbModel>(x => x.StartDate > now)
             .OrderBy<PeriodDbModel>(x => x.StartDate)
@@ -87,11 +87,11 @@ public class PeriodQuery : IPeriodQuery
     {
         var sql = new QueryBuilder();
         sql.Select<PeriodDbModel>(x => new
-            {
-                x.Id,
-                x.StartDate,
-                x.EndDate
-            })
+        {
+            x.Id,
+            x.StartDate,
+            x.EndDate
+        })
             .From<PeriodDbModel>()
             .Where<PeriodDbModel>(x => x.Id == id);
 

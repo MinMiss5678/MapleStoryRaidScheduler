@@ -19,13 +19,13 @@ public class UnitOfWorkMiddleware
             await _next(context);
             return;
         }
-        
+
         if (context.Items.ContainsKey("SkipUow"))
         {
             await _next(context);
             return;
         }
-        
+
         await uow.BeginAsync();
 
         try

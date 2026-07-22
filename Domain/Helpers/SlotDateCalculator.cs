@@ -64,7 +64,7 @@ public static class SlotDateCalculator
 
         // 週期內天數偏移：重製日=0, 隔天=1, ..., 前一天=6
         int targetOffset = CycleDayOffset(targetDayOfWeek);
-        
+
         var slotDate = startDate.AddDays(targetOffset).Add(slotTime);
 
         if (new DateTimeOffset(slotDate, TimeSpan.FromHours(8)) < period.StartDate)

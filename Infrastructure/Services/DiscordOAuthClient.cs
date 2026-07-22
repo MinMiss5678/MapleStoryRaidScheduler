@@ -9,7 +9,7 @@ using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace Infrastructure.Services;
 
-public class DiscordOAuthClient: IDiscordOAuthClient
+public class DiscordOAuthClient : IDiscordOAuthClient
 {
     private readonly DiscordOptions _discordOptions;
     private readonly HttpClient _http;

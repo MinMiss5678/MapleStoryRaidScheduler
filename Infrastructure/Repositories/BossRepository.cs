@@ -85,7 +85,7 @@ public class BossRepository : IBossRepository
 
         var reqSql = new QueryBuilder()
             .Select<BossTemplateRequirementDbModel>(x => new
-                { x.Id, x.BossTemplateId, x.JobCategory, x.Count, x.Priority })
+            { x.Id, x.BossTemplateId, x.JobCategory, x.Count, x.Priority })
             .From<BossTemplateRequirementDbModel>()
             .Where<BossTemplateRequirementDbModel>(x => x.BossTemplateId == template.Id);
 

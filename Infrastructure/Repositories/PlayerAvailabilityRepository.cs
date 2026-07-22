@@ -37,13 +37,13 @@ public class PlayerAvailabilityRepository : IPlayerAvailabilityRepository
     {
         var sql = new QueryBuilder();
         sql.Select<PlayerAvailabilityDbModel>(x => new
-            {
-                x.Id,
-                x.PlayerRegisterId,
-                x.Weekday,
-                x.StartTime,
-                x.EndTime
-            })
+        {
+            x.Id,
+            x.PlayerRegisterId,
+            x.Weekday,
+            x.StartTime,
+            x.EndTime
+        })
             .From<PlayerAvailabilityDbModel>()
             .Where<PlayerAvailabilityDbModel>(x => x.PlayerRegisterId == playerRegisterId);
         return await _dbContext.QueryAsync<PlayerAvailability>(sql);
@@ -53,13 +53,13 @@ public class PlayerAvailabilityRepository : IPlayerAvailabilityRepository
     {
         var sql = new QueryBuilder();
         sql.Select<PlayerAvailabilityDbModel>(x => new
-            {
-                x.Id,
-                x.PlayerRegisterId,
-                x.Weekday,
-                x.StartTime,
-                x.EndTime
-            })
+        {
+            x.Id,
+            x.PlayerRegisterId,
+            x.Weekday,
+            x.StartTime,
+            x.EndTime
+        })
             .Select<PlayerRegisterDbModel>(x => new
             {
                 x.DiscordId
@@ -72,18 +72,18 @@ public class PlayerAvailabilityRepository : IPlayerAvailabilityRepository
 
         return await _dbContext.QueryAsync<PlayerAvailability>(sql);
     }
-    
+
     public async Task<IEnumerable<PlayerAvailability>> GetByDiscordIdsAndPeriodIdAsync(List<ulong> discordIds, int periodId)
     {
         var sql = new QueryBuilder();
         sql.Select<PlayerAvailabilityDbModel>(x => new
-            {
-                x.Id,
-                x.PlayerRegisterId,
-                x.Weekday,
-                x.StartTime,
-                x.EndTime
-            })
+        {
+            x.Id,
+            x.PlayerRegisterId,
+            x.Weekday,
+            x.StartTime,
+            x.EndTime
+        })
             .Select<PlayerRegisterDbModel>(x => new
             {
                 x.DiscordId

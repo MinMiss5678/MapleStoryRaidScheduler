@@ -21,7 +21,7 @@ public class DeleteBuilder<T> : SqlCommandBuilder<T>
         _rootGroup.Add(group);
         return this;
     }
-    
+
     public DeleteBuilder<T> WhereRaw(string sql)
     {
         _rootGroup.Add(new SqlCondition("AND", sql));

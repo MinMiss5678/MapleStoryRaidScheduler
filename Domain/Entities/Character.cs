@@ -8,7 +8,7 @@ public class Character
     [Required]
     public required string Id { get; set; }
     public ulong DiscordId { get; set; }
-    
+
     [MaxLength(20)]
     public required string Name { get; set; }
     [MaxLength(5)]

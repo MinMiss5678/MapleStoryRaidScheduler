@@ -37,7 +37,7 @@ public class AuthenticationMiddleware : IMiddleware
         var identity = new ClaimsIdentity();
 
         context.Request.Cookies.TryGetValue("discordId", out var discordId);
-            
+
         if (context.Request.Cookies.TryGetValue($"sessionId{discordId}", out var sessionId))
         {
             if (string.IsNullOrEmpty(sessionId))
@@ -61,7 +61,7 @@ public class AuthenticationMiddleware : IMiddleware
                 SameSite = SameSiteMode.Strict,
                 Expires = DateTimeOffset.UtcNow.AddDays(30)
             });
-            
+
             var player = await _playerService.GetAsync(session.DiscordId);
 
             identity = new ClaimsIdentity(new[]

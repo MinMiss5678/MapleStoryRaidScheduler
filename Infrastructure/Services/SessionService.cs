@@ -53,7 +53,7 @@ public class SessionService : ISessionService
                 {
                     return null;
                 }
-                
+
                 var newSession = new Session()
                 {
                     SessionId = session.SessionId,
@@ -62,7 +62,7 @@ public class SessionService : ISessionService
                     RefreshToken = newToken.RefreshToken,
                     Expiry = DateTimeOffset.UtcNow.AddSeconds(newToken.ExpiresIn),
                 };
-                
+
                 await _sessionRepository.UpdateAsync(newSession);
 
                 // 更新快取 TTL

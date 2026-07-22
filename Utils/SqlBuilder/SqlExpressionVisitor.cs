@@ -116,7 +116,7 @@ public class SqlExpressionVisitor : ExpressionVisitor
                     Visit(memberExp);
                     return node;
                 }
-                
+
                 var value = Expression.Lambda(memberExp).Compile().DynamicInvoke();
                 value = Convert.ChangeType(value, Nullable.GetUnderlyingType(node.Type) ?? node.Type);
                 AddParameter(memberExp.Member.Name, Convert.ChangeType(value, node.Type));
@@ -161,11 +161,11 @@ public class SqlExpressionVisitor : ExpressionVisitor
                 }
 
                 var item = node.Object != null ? node.Arguments[0] : node.Arguments[1];
-                
+
                 var elementType = collection.GetType().GetGenericArguments().FirstOrDefault()
                                   ?? collection.GetType().GetElementType()
                                   ?? typeof(object);
-                
+
                 var toArrayMethod = typeof(Enumerable)
                     .GetMethod(nameof(Enumerable.ToArray))!
                     .MakeGenericMethod(elementType);
@@ -192,7 +192,7 @@ public class SqlExpressionVisitor : ExpressionVisitor
         _sb.Append($"@{name}");
         _parameters.Add(name, value);
     }
-    
+
     private string FormatColumn(string columnName)
         => _alias != null ? $"{_alias}.\"{columnName}\"" : $"\"{columnName}\"";
 }

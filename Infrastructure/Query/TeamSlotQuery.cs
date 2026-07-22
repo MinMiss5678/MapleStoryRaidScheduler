@@ -15,17 +15,17 @@ public class TeamSlotQuery : ITeamSlotQuery
     {
         _dbContext = dbContext;
     }
-    
+
     public async Task<IEnumerable<TeamSlotCharacterDto>> GetByPeriodAndBossIdAsync(Period period, int bossId)
     {
         var sql = new QueryBuilder();
         sql.Select<TeamSlotDbModel>(x => new
-            {
-                TeamSlotId = x.Id,
-                x.BossId,
-                x.SlotDateTime
-            })
-            .Select<TeamSlotCharacterDbModel>(x=> new
+        {
+            TeamSlotId = x.Id,
+            x.BossId,
+            x.SlotDateTime
+        })
+            .Select<TeamSlotCharacterDbModel>(x => new
             {
                 TeamSlotCharacterId = x.Id,
                 x.CharacterId,
@@ -49,21 +49,21 @@ public class TeamSlotQuery : ITeamSlotQuery
                                    a."BossId" = c."Id"
                                    """
             )
-            .Where<TeamSlotDbModel>(x=> period.StartDate <= x.SlotDateTime && period.EndDate >= x.SlotDateTime)
+            .Where<TeamSlotDbModel>(x => period.StartDate <= x.SlotDateTime && period.EndDate >= x.SlotDateTime)
             .Where<TeamSlotDbModel>(x => x.BossId == bossId);
 
         return await _dbContext.QueryAsync<TeamSlotCharacterDto>(sql);
     }
-    
+
     public async Task<IEnumerable<TeamSlotCharacterDto>> GetByPeriodAndDiscordIdAsync(Period period, ulong discordId)
     {
         var sql = new QueryBuilder();
         sql.Select<TeamSlotDbModel>(x => new
-            {
-                TeamSlotId = x.Id,
-                x.BossId,
-                x.SlotDateTime
-            })
+        {
+            TeamSlotId = x.Id,
+            x.BossId,
+            x.SlotDateTime
+        })
             .Select<TeamSlotCharacterDbModel>(x => new
             {
                 TeamSlotCharacterId = x.Id,
@@ -92,18 +92,18 @@ public class TeamSlotQuery : ITeamSlotQuery
 
         return await _dbContext.QueryAsync<TeamSlotCharacterDto>(sql);
     }
-    
+
     public async Task<IEnumerable<TeamSlotCharacterDto>> GetBySlotDateTimeAsync(DateTimeOffset slotDateTime)
     {
-        var end = slotDateTime.AddDays(1);  
-        
+        var end = slotDateTime.AddDays(1);
+
         var sql = new QueryBuilder();
         sql.Select<TeamSlotDbModel>(x => new
-            {
-                TeamSlotId = x.Id,
-                x.SlotDateTime
-            })
-            .Select<TeamSlotCharacterDbModel>(x=> new
+        {
+            TeamSlotId = x.Id,
+            x.SlotDateTime
+        })
+            .Select<TeamSlotCharacterDbModel>(x => new
             {
                 TeamSlotCharacterId = x.Id,
                 x.CharacterId,
@@ -114,7 +114,7 @@ public class TeamSlotQuery : ITeamSlotQuery
                 x.DiscordName,
                 x.Rounds
             }, "b")
-            .Select<BossDbModel>(x=> new
+            .Select<BossDbModel>(x => new
             {
                 BossName = x.Name
             }, "e")

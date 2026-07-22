@@ -25,6 +25,6 @@ public class PeriodRepository : IPeriodRepository
 
     public async Task<bool> ExistByStartDateAsync(DateTimeOffset startDate)
     {
-        return await _dbContext.Repository<PeriodDbModel>().ExistAsync(x=>x.StartDate == startDate);
+        return await _dbContext.Repository<PeriodDbModel>().ExistAsync(x => x.StartDate == startDate);
     }
 }

@@ -13,7 +13,7 @@ public class PeriodController : ControllerBase
     {
         _periodService = periodService;
     }
-    
+
     [HttpGet("GetByNow")]
     public async Task<IActionResult> GetByNowAsync()
     {

@@ -26,11 +26,11 @@ public class ExceptionHandlerMiddleware(RequestDelegate next, ILogger<ExceptionH
     {
         var (status, title) = ex switch
         {
-            NotFoundException  => (StatusCodes.Status404NotFound,          "Not Found"),
-            BusinessException  => (StatusCodes.Status400BadRequest,        "Bad Request"),
-            ForbiddenException => (StatusCodes.Status403Forbidden,         "Forbidden"),
-            AppException       => (StatusCodes.Status400BadRequest,        "Bad Request"),
-            _                  => (StatusCodes.Status500InternalServerError, "Internal Server Error")
+            NotFoundException => (StatusCodes.Status404NotFound, "Not Found"),
+            BusinessException => (StatusCodes.Status400BadRequest, "Bad Request"),
+            ForbiddenException => (StatusCodes.Status403Forbidden, "Forbidden"),
+            AppException => (StatusCodes.Status400BadRequest, "Bad Request"),
+            _ => (StatusCodes.Status500InternalServerError, "Internal Server Error")
         };
 
         // 5xx 才記 Error；4xx 記 Warning 即可
@@ -42,12 +42,12 @@ public class ExceptionHandlerMiddleware(RequestDelegate next, ILogger<ExceptionH
         var problem = new ProblemDetails
         {
             Status = status,
-            Title  = title,
+            Title = title,
             // 非開發環境隱藏 5xx 內部細節
             Detail = (status < 500 || env.IsDevelopment()) ? ex.Message : null,
         };
 
-        context.Response.StatusCode  = status;
+        context.Response.StatusCode = status;
         context.Response.ContentType = "application/problem+json";
         await context.Response.WriteAsJsonAsync(problem);
     }

@@ -22,19 +22,19 @@ public class CharacterQuery : ICharacterQuery
     {
         var sql = new QueryBuilder();
         sql.Select<CharacterDbModel>(x => new
-            {
-                x.Id,
-                x.DiscordId,
-                x.Name,
-                x.Job,
-                x.AttackPower
-            })
+        {
+            x.Id,
+            x.DiscordId,
+            x.Name,
+            x.Job,
+            x.AttackPower
+        })
             .From<CharacterDbModel>()
             .Where<CharacterDbModel>(x => x.DiscordId == (long)discordId);
 
         return await _dbContext.QueryAsync<Character>(sql);
     }
-    
+
     public async Task<IEnumerable<CharacterDto>> GetWithDiscordNameAsync(ulong discordId, int? bossId = null)
     {
         // CTE 預先聚合當期 Rounds，避免 correlated subquery N 次執行

@@ -129,7 +129,7 @@ builder.Services.AddOptions<DiscordOptions>()
             options.BotToken =
                 File.ReadAllText(options.BotTokenFile).Trim();
         }
-        
+
         if (!string.IsNullOrEmpty(options.ClientSecretFile) &&
             File.Exists(options.ClientSecretFile))
         {

@@ -22,8 +22,8 @@ public class DiscordRoleMappingRepository : IDiscordRoleMappingRepository
         var sql = new QueryBuilder();
         sql.Select<DiscordRoleMappingDbModel>(x => new { x.Role })
             .From<DiscordRoleMappingDbModel>()
-            .Where<DiscordRoleMappingDbModel>(x=> roleIds.Contains(x.DiscordRoleId))
-            .OrderByDescending<DiscordRoleMappingDbModel>(x=> x.Priority)
+            .Where<DiscordRoleMappingDbModel>(x => roleIds.Contains(x.DiscordRoleId))
+            .OrderByDescending<DiscordRoleMappingDbModel>(x => x.Priority)
             .Limit(1);
 
         var result = await _dbContext.QuerySingleOrDefaultAsync<DiscordRoleMappingDbModel>(sql);

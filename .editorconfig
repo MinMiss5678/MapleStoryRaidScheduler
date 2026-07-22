@@ -1,0 +1,15 @@
+# EditorConfig — 專案格式標準（CI 以 dotnet format --verify-no-changes 檢查）
+# 刻意保持最小：只定縮排 / 尾端空白 / 檔案結尾換行，不強加命名或風格重寫，避免大量 churn。
+# 不設 end_of_line，避免 CRLF/LF 大量轉換（交給 git 處理）。
+root = true
+
+[*]
+indent_style = space
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.cs]
+indent_size = 4
+
+[*.{json,yml,yaml,csproj,props,targets}]
+indent_size = 2
