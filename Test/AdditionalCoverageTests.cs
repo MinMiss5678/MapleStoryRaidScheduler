@@ -105,8 +105,8 @@ public class AdditionalCoverageTests
         mockConn.Setup(c => c.BeginTransaction()).Returns(mockTx.Object);
 
         var ctx = new DbContext(mockConn.Object);
-        ctx.Begin();
-        ctx.Commit();
+        await ctx.BeginAsync();
+        await ctx.CommitAsync();
 
         // 提交後再呼叫 ExecuteAsync 應該拋例外（EnsureNotCompleted）
         var builder = new InsertBuilder<TestCharacter>()

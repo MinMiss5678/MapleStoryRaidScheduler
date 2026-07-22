@@ -11,21 +11,10 @@ public class UnitOfWork : IUnitOfWork
         _context = context;
     }
 
-    public Task BeginAsync()
-    {
-        _context.Begin();
-        return Task.CompletedTask;
-    }
+    // 直接委派給 DbContext 的真非同步交易方法（不再包成 Task.CompletedTask 的假 async）
+    public Task BeginAsync() => _context.BeginAsync();
 
-    public Task CommitAsync()
-    {
-        _context.Commit();
-        return Task.CompletedTask;
-    }
+    public Task CommitAsync() => _context.CommitAsync();
 
-    public Task RollbackAsync()
-    {
-        _context.Rollback();
-        return Task.CompletedTask;
-    }
+    public Task RollbackAsync() => _context.RollbackAsync();
 }
