@@ -97,7 +97,7 @@ public class SystemConfigServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_ShouldInvokeOnConfigUpdated()
+    public async Task UpdateAsync_設定變更事件_在Commit後才觸發()
     {
         // Arrange
         bool eventInvoked = false;
@@ -111,7 +111,27 @@ public class SystemConfigServiceTests
         // Act
         await _service.UpdateAsync(config);
 
-        // Assert
+        // Assert：commit 前不觸發（不對未提交狀態搶跑），Commit 後才觸發
+        Assert.False(eventInvoked);
+        _dbContextMock.Object.Commit();
         Assert.True(eventInvoked);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Rollback時_設定變更事件不觸發()
+    {
+        // Arrange
+        bool eventInvoked = false;
+        _notifier.OnChanged += () => eventInvoked = true;
+
+        _repoMock.Setup(r => r.GetAllAsync<SystemConfigDbModel>(null))
+            .ReturnsAsync(new List<SystemConfigDbModel>());
+
+        // Act
+        await _service.UpdateAsync(new SystemConfig { DeadlineDayOfWeek = DayOfWeek.Wednesday });
+        _dbContextMock.Object.Rollback();
+
+        // Assert：回滾 → 登記的事件被丟棄、不發
+        Assert.False(eventInvoked);
     }
 }
