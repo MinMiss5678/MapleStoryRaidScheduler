@@ -49,7 +49,7 @@ public static class SlotDateCalculator
                 return dayWeight;
             })
             .ThenBy(a => a.StartTime) // 同一天則按時間排序
-            .FirstOrDefault();
+            .First(); // 呼叫端保證 Availabilities 非空（AutoAssign 前已檢查 .Any()）
     }
 
     public static DateTime GetNextSlotDate(PlayerAvailability avail, Period period)

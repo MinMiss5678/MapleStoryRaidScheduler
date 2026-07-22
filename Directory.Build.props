@@ -1,0 +1,9 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- 可空性（nullable）警告視為錯誤：null 不安全的程式碼直接擋（本機與 CI 一致）。
+         只針對 CS86xx 一族，不動其他警告；未啟用 <Nullable> 的專案不受影響。 -->
+    <WarningsAsErrors>nullable</WarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

@@ -4,7 +4,7 @@ namespace Utils.SqlBuilder;
 
 public class UpdateBuilder<T> : SqlCommandBuilder<T>
 {
-    private Dictionary<string, object> _set = new();
+    private Dictionary<string, object?> _set = new();
 
     public UpdateBuilder<T> Set<TProp>(Expression<Func<T, TProp>> column, TProp value)
     {

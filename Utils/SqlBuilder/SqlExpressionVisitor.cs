@@ -187,8 +187,9 @@ public class SqlExpressionVisitor : ExpressionVisitor
         return base.VisitMethodCall(node);
     }
 
-    private void AddParameter(string name, object value)
+    private void AddParameter(string name, object? value)
     {
+        // SQL 參數值可為 null（對應 SQL NULL）；Dapper 的 DynamicParameters 接受 null。
         _sb.Append($"@{name}");
         _parameters.Add(name, value);
     }

@@ -47,7 +47,8 @@ public class Program
                  }
                  else
                  {
-                     var token = config["Discord:BotToken"];
+                     var token = config["Discord:BotToken"]
+                                 ?? throw new InvalidOperationException("Discord:BotToken 未設定");
                      var intents = DiscordIntents.AllUnprivileged |
                                    DiscordIntents.MessageContents |
                                    DiscordIntents.Guilds |
