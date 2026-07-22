@@ -16,7 +16,7 @@ graph TD
     subgraph "Docker 容器環境"
         Cloudflared -->|HTTP| Frontend["Next.js 15 前端"]
         Frontend -->|REST API| Backend["ASP.NET Core Web API"]
-        Backend --> Middleware["Middleware 管線\n(Auth / UnitOfWork / Idempotency / ExceptionHandler)"]
+        Backend --> Middleware["Middleware 管線\n(ExceptionHandler / Idempotency / Auth / RateLimiter / UnitOfWork)"]
         Middleware --> Application["Application Layer\n(DTOs, Interfaces, CQRS-Lite)"]
         Application --> Domain["Domain Layer\n(Entities, Repository Interfaces)"]
         Infrastructure["Infrastructure Layer\n(Dapper, Discord, Background Jobs)"] --> Domain
@@ -568,8 +568,6 @@ frontend → cloudflared
 
 Secrets 以 volume mount 方式掛載至 `/run/secrets/`，與 Docker secrets 路徑一致，應用程式設定無需因部署平台而異。
 
-### CI/CD
-
-- **CI**：`.gitlab-ci.yml` build → 單元 + 整合測試（dind + Testcontainers）→ 覆蓋率合併 → E2E（自動，coverage 全過後觸發）。見 `docs/e2e-testing-setup.md`、`docs/gitlab-selfhost-ci-setup.md`。
-- **CD**：`deploy` stage（manual、限 main）→ 推 `minqq/*` 映像 → migrate Job → `kubectl rollout restart`。見 `docs/cd-deploy-setup.md`。
+- **CI（MR 流程）**：feature 分支 → 開 MR → CI 在 MR 上跑 **format（Roslyn 格式檢查）→ build（含 `WarningsAsErrors=nullable`）→ 單元 + 整合測試（dind + Testcontainers）→ 覆蓋率合併 → E2E**，綠燈才 merge。純文件 MR 只跑秒過的 `docs-ok`（滿足 merge check、不燒重的 job）。見 `docs/e2e-testing-setup.md`、`docs/gitlab-selfhost-ci-setup.md`（自架學習參考，實際已用 gitlab.com）。
+- **CD**：merge 進 main → main pipeline **只留 `deploy`（manual、限 main）**，不重跑驗證。點下去 → 推 **SHA 版本化**的 `minqq/*` 映像 → migrate Job → **Kustomize `kubectl apply -k`**（映像 pin git SHA、可真回滾）。見 `docs/cd-deploy-setup.md`。
 - **手動部署**（不走 CI）：`docs/deployment.md`（`deploy.ps1` / `rollout.ps1`）。
