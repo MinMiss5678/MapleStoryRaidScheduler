@@ -28,8 +28,13 @@ async function handleResponse<T>(res: Response): Promise<T> {
     return undefined as T;
 }
 
-function idempotencyHeader(): Record<string, string> {
-    return { 'X-Idempotency-Key': crypto.randomUUID() };
+/** 寫入操作選項。idempotencyKey：同一邏輯操作重送沿用同一把，後端才 de-dup 得掉；省略則現產一把（等同「不特別去重」）。 */
+export interface MutationOptions {
+    idempotencyKey?: string;
+}
+
+function idempotencyHeader(key?: string): Record<string, string> {
+    return { 'X-Idempotency-Key': key ?? crypto.randomUUID() };
 }
 
 export const apiClient = {
@@ -45,26 +50,26 @@ export const apiClient = {
         return handleResponse<T>(res);
     },
 
-    async post<T = unknown>(url: string, body?: unknown): Promise<T> {
+    async post<T = unknown>(url: string, body?: unknown, opts?: MutationOptions): Promise<T> {
         const res = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...idempotencyHeader() },
+            headers: { 'Content-Type': 'application/json', ...idempotencyHeader(opts?.idempotencyKey) },
             body: body !== undefined ? JSON.stringify(body) : undefined,
         });
         return handleResponse<T>(res);
     },
 
-    async put<T = unknown>(url: string, body?: unknown): Promise<T> {
+    async put<T = unknown>(url: string, body?: unknown, opts?: MutationOptions): Promise<T> {
         const res = await fetch(url, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', ...idempotencyHeader() },
+            headers: { 'Content-Type': 'application/json', ...idempotencyHeader(opts?.idempotencyKey) },
             body: body !== undefined ? JSON.stringify(body) : undefined,
         });
         return handleResponse<T>(res);
     },
 
-    async delete<T = unknown>(url: string): Promise<T> {
-        const res = await fetch(url, { method: 'DELETE', headers: idempotencyHeader() });
+    async delete<T = unknown>(url: string, opts?: MutationOptions): Promise<T> {
+        const res = await fetch(url, { method: 'DELETE', headers: idempotencyHeader(opts?.idempotencyKey) });
         return handleResponse<T>(res);
     },
 };

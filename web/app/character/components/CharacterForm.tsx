@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Character } from "@/types/character";
 import { characterService } from '@/services/characterService';
+import { ApiError } from '@/services/apiClient';
+import { useIdempotencyKey } from '@/hooks/useIdempotencyKey';
 import { Button, Input, Select } from '@/components/ui/FormControls';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 
@@ -20,6 +22,8 @@ export default function CharacterForm({ editingCharacter, onSuccess, onReset, se
     const [job, setJob] = useState(jobs[0] || '主教');
     const [attackPower, setAttackPower] = useState<number>(50);
     const [errors, setErrors] = useState<{ [k: string]: string }>({});
+    // 同一次建立/修改用固定 idempotency key（雙擊/重送沿用同一把 → 後端 de-dup）
+    const { next: nextIdempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey();
 
     const handleReset = useCallback(() => {
         setName('');
@@ -55,22 +59,29 @@ export default function CharacterForm({ editingCharacter, onSuccess, onReset, se
             return;
         }
 
+        // 同一操作固定一把 key；此輪收到終端回應後（finally）換新，避免失敗重試被自己的舊 key 誤擋
+        const idempotencyKey = nextIdempotencyKey();
         try {
             const characterData = { name, id, job, attackPower };
             if (editingCharacter) {
                 // 修改角色
-                const updated = await characterService.updateCharacter({ ...characterData });
+                const updated = await characterService.updateCharacter({ ...characterData }, idempotencyKey);
                 onSuccess(updated, true);
             } else {
                 // 建立角色
-                const newCharacter = await characterService.createCharacter(characterData);
+                const newCharacter = await characterService.createCharacter(characterData, idempotencyKey);
                 onSuccess(newCharacter, false);
             }
             handleReset();
         } catch (error) {
+            // 409 = 相同 key 的另一請求（雙擊/重送）已在處理 → 靜默略過，不誤報「操作失敗」
+            if (error instanceof ApiError && error.status === 409) {
+                return;
+            }
             console.error(error);
             alert("操作失敗，請稍後再試");
         } finally {
+            resetIdempotencyKey();
             setLoading(false);
         }
     };
