@@ -20,7 +20,7 @@ public class MemberUpdatedHandler : IEventHandler<GuildMemberUpdatedEventArgs>
         _roleMappingRepository = roleMappingRepository;
         _playerService = playerService;
     }
-    
+
     public async Task HandleEventAsync(DiscordClient sender, GuildMemberUpdatedEventArgs eventArgs)
     {
         var beforeIds = eventArgs.RolesBefore.Select(r => r.Id);

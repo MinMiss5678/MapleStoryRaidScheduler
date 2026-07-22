@@ -74,13 +74,13 @@ public class AuthController : ControllerBase
         {
             var result = await _authAppService.LogoutAsync(sessionId, discordId!);
             if (!result)
-                return StatusCode(500, new { message = "Failed to delete session" });    
+                return StatusCode(500, new { message = "Failed to delete session" });
         }
 
         Response.Cookies.Delete($"sessionId{discordId}");
         Response.Cookies.Delete("jwtToken");
         Response.Cookies.Delete("discordId");
-        
+
         return Ok();
     }
 }

@@ -7,9 +7,9 @@ public class BigIntStringConverter : JsonConverter
 {
     public override bool CanConvert(Type objectType)
     {
-        return objectType == typeof(long) || 
-               objectType == typeof(ulong) || 
-               objectType == typeof(long?) || 
+        return objectType == typeof(long) ||
+               objectType == typeof(ulong) ||
+               objectType == typeof(long?) ||
                objectType == typeof(ulong?);
     }
 

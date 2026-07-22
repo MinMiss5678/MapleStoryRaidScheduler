@@ -51,8 +51,8 @@ public class DbContext
         EnsureNotCompleted();
         var (sql, param) = builder.Build();
         return await Connection.ExecuteAsync(sql, param, Transaction);
-    }  
-    
+    }
+
     public virtual async Task<int> ExecuteAsync(string sql, object param)
     {
         EnsureNotCompleted();
@@ -76,11 +76,11 @@ public class DbContext
         var (sql, param) = builder.Build();
         return await Connection.QuerySingleAsync<TResult>(sql, param, Transaction);
     }
-    
+
     public virtual async Task<TResult?> QuerySingleOrDefaultAsync<TResult>(QueryBuilder builder)
     {
         var (sql, param) = builder.Build();
-        return await Connection.QuerySingleOrDefaultAsync<TResult?>(sql, param, Transaction) ;
+        return await Connection.QuerySingleOrDefaultAsync<TResult?>(sql, param, Transaction);
     }
 
     public virtual async Task<IEnumerable<TResult>> QueryAsync<TResult>(QueryBuilder builder)
@@ -88,7 +88,7 @@ public class DbContext
         var (sql, param) = builder.Build();
         return await Connection.QueryAsync<TResult>(sql, param, Transaction);
     }
-    
+
     public virtual IRepository<T> Repository<T>() where T : class
     {
         return new DapperRepository<T>(Connection, Transaction);

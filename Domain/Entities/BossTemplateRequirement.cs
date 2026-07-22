@@ -7,7 +7,7 @@ public class BossTemplateRequirement
     public required string JobCategory { get; set; }
     public int Count { get; set; }
     public int Priority { get; set; } // 優先級，排團時先填滿高優先級
-    
+
     public int? MinLevel { get; set; } // 最低等級門檻
     public int? MinAttribute { get; set; } // 最低屬性值 (如 AP)
     public bool IsOptional { get; set; } // 是否為選配/盡量安排

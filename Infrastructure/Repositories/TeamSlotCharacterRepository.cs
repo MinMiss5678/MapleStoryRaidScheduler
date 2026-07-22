@@ -43,7 +43,7 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
     {
         var deleteCharacters = new DeleteBuilder<TeamSlotCharacterDbModel>()
             .Where(x => x.Id == teamSlotCharacter.Id);
-            
+
         await _dbContext.ExecuteAsync(deleteCharacters);
 
         // 只清除系統自動分配的空團（Source=auto），admin 手動開團不自動刪除
@@ -57,7 +57,7 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
                       WHERE tsc."TeamSlotId" = a."Id"
                       AND tsc."CharacterId" IS NOT NULL)
                       """);
-        
+
         await _dbContext.ExecuteAsync(deleteEmptySlots);
     }
 
@@ -70,7 +70,7 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
             .WhereGroup(g =>
             {
                 g.Where<TeamSlotDbModel>(x => x.SlotDateTime >= startDateTime)
-                    .Where<TeamSlotDbModel>(x => x.SlotDateTime <=  endDateTime);
+                    .Where<TeamSlotDbModel>(x => x.SlotDateTime <= endDateTime);
             });
 
         var targetSlotIds = (await _dbContext.QueryAsync<long>(targetSlotsQuery)).ToList();

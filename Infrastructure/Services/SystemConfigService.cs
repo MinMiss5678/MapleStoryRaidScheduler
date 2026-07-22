@@ -60,7 +60,7 @@ public class SystemConfigService : ISystemConfigService
         else
         {
             // 如果期限有變動，重置通知狀態
-            if (existing.DeadlineDayOfWeek != (int)config.DeadlineDayOfWeek || 
+            if (existing.DeadlineDayOfWeek != (int)config.DeadlineDayOfWeek ||
                 existing.DeadlineTime != config.DeadlineTime)
             {
                 existing.IsDeadlineNotified = false;
@@ -69,7 +69,7 @@ public class SystemConfigService : ISystemConfigService
             {
                 existing.IsDeadlineNotified = config.IsDeadlineNotified;
             }
-            
+
             existing.DeadlineDayOfWeek = (int)config.DeadlineDayOfWeek;
             existing.DeadlineTime = config.DeadlineTime;
             await repository.UpdateAsync(existing);

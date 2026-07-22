@@ -26,18 +26,18 @@ public class SessionRepository : ISessionRepository
             Expiry = DateTime.UtcNow.AddSeconds(token.ExpiresIn)
         });
     }
-    
+
     public async Task<int> UpdateAsync(Session session)
     {
         var sql = new UpdateBuilder<SessionDbModel>();
-        sql.Set(x=>x.SessionId, session.SessionId)
-            .Set(x=>x.DiscordId, (long)session.DiscordId)
-            .Set(x=>x.AccessToken, session.AccessToken)
-            .Set(x=>x.RefreshToken, session.RefreshToken)
-            .Set(x=>x.Expiry, session.Expiry)
-            .Where(x=>x.SessionId == session.SessionId);
+        sql.Set(x => x.SessionId, session.SessionId)
+            .Set(x => x.DiscordId, (long)session.DiscordId)
+            .Set(x => x.AccessToken, session.AccessToken)
+            .Set(x => x.RefreshToken, session.RefreshToken)
+            .Set(x => x.Expiry, session.Expiry)
+            .Where(x => x.SessionId == session.SessionId);
 
-        return await _dbContext.ExecuteAsync(sql); 
+        return await _dbContext.ExecuteAsync(sql);
     }
 
     public async Task<bool> DeleteAsync(string id)
@@ -48,7 +48,7 @@ public class SessionRepository : ISessionRepository
     public async Task DeleteByDiscordAsync(ulong discordId)
     {
         var sql = new DeleteBuilder<SessionDbModel>();
-        sql.Where(x=>x.DiscordId == (long)discordId);
+        sql.Where(x => x.DiscordId == (long)discordId);
 
         await _dbContext.ExecuteAsync(sql);
     }

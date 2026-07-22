@@ -99,7 +99,7 @@ public class PlayerRegisterRepository : IPlayerRegisterRepository
         var sql = new DeleteBuilder<PlayerRegisterDbModel>();
         sql.Where(x => x.Id == id)
             .Where(x => x.DiscordId == (long)discordId);
-        
+
         await _dbContext.ExecuteAsync(sql);
     }
 }

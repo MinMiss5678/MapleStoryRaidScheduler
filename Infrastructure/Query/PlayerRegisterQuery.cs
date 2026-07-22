@@ -32,17 +32,17 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
         _periodQuery = periodQuery;
         _dbContext = dbContext;
     }
-    
+
     public async Task<IEnumerable<PlayerRegisterSchedule>> GetByNowPeriodIdAsync(int bossId)
     {
         var period = await _periodQuery.GetActivePeriodIdAsync();
         var sql = new QueryBuilder();
         sql.Select<CharacterRegisterDbModel>(x => new
-            {
-                x.Id,
-                x.CharacterId,
-                x.Rounds
-            }, "b")
+        {
+            x.Id,
+            x.CharacterId,
+            x.Rounds
+        }, "b")
             .Select<PlayerDbModel>(x => new
             {
                 x.DiscordId,
@@ -77,10 +77,11 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
             .Where<CharacterRegisterDbModel>(x => x.BossId == bossId);
 
         var data = await _dbContext.QueryAsync<PlayerRegisterDbRow>(sql);
-        
+
         // 由於 Join 會產生重複的角色行（不同的 Availability），需要進行 GroupBy
         var result = data.GroupBy(x => x.Id)
-            .Select(g => {
+            .Select(g =>
+            {
                 var first = g.First();
                 return new PlayerRegisterSchedule
                 {
@@ -103,15 +104,15 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
 
         return result;
     }
-    
+
     public async Task<IEnumerable<PlayerRegisterSchedule>> GetByQueryAsync(RegisterGetByQueryRequest request, int periodId)
     {
         var sql = new QueryBuilder();
         sql.Select<CharacterRegisterDbModel>(x => new
-            {
-                x.CharacterId,
-                x.Rounds
-            }, "b")
+        {
+            x.CharacterId,
+            x.Rounds
+        }, "b")
             .Select<PlayerDbModel>(x => new
             {
                 x.DiscordId,
@@ -135,7 +136,7 @@ public class PlayerRegisterQuery : IPlayerRegisterQuery
                                         """)
             .Where<PlayerRegisterDbModel>(x => x.PeriodId == periodId)
             .Where<CharacterRegisterDbModel>(x => x.BossId == request.BossId);
-            
+
         bool hasQuery = !string.IsNullOrEmpty(request.Query);
         bool hasJob = !string.IsNullOrEmpty(request.Job);
         if (!hasQuery && hasJob)

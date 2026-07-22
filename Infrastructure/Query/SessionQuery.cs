@@ -14,16 +14,16 @@ public class SessionQuery : ISessionQuery
     {
         _dbContext = dbContext;
     }
-    
+
     public async Task<Session?> GetAsync(string sessionId)
     {
         var sql = new QueryBuilder();
         sql.Select<SessionDbModel>(x => new
-            {
-                x.DiscordId,
-                x.RefreshToken,
-                x.Expiry
-            })
+        {
+            x.DiscordId,
+            x.RefreshToken,
+            x.Expiry
+        })
             .From<SessionDbModel>()
             .Where<SessionDbModel>(x => x.SessionId == sessionId);
 

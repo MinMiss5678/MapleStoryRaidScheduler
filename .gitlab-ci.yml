@@ -57,6 +57,19 @@ docs-ok:
   script:
     - echo "docs / no-op gate passed"
 
+# Roslyn 靜態格式檢查（dotnet format 由 Roslyn 驅動）：程式碼未依 .editorconfig 格式化就擋 MR。
+# 本機修法：dotnet format（不帶 --verify-no-changes 即自動修）。
+format:
+  extends: .validate-rules
+  stage: build
+  script:
+    - dotnet restore
+    - dotnet format --no-restore --verify-no-changes
+  cache:
+    key: nuget
+    paths: [.nuget/packages]
+    policy: pull
+
 # 整個 solution 編得過（含 Presentation，測試專案未必涵蓋）
 build:
   extends: .validate-rules

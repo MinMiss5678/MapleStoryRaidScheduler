@@ -18,14 +18,14 @@ public class QueryBuilder
 
     private readonly Dictionary<string, string> _aliases = new();
     private int _aliasCounter = 0;
-    
+
     private QueryBuilder(DynamicParameters parameters, Dictionary<string, string> aliases, SqlConditionGroup group)
     {
         _parameters = parameters;
         _aliases = aliases;
         _rootGroup = group;
     }
-    
+
     public QueryBuilder() { }
 
     public QueryBuilder Select<TJoin>(Expression<Func<TJoin, object>> selector, string alias = "a")
@@ -34,7 +34,7 @@ public class QueryBuilder
         _selects.AddRange(cols);
         return this;
     }
-    
+
     public QueryBuilder From<TFrom>()
     {
         _from = GetTableName(typeof(TFrom));
@@ -83,7 +83,7 @@ public class QueryBuilder
         var visitor = new SqlExpressionVisitor(alias, _parameters);
         var condition = visitor.Translate(expression.Body);
         _rootGroup.Add(new SqlCondition(op, condition));
-        
+
         return this;
     }
 

@@ -63,9 +63,9 @@ public class AuthService : IAuthService
             })
             .Where(id => id.HasValue)
             .Select(id => id!.Value);
-        
+
         var role = await _roleMappingRepository.ResolveRoleAsync(roleIds);
-        
+
         if (role != null)
         {
             var player = await _playerRepository.GetAsync(discordId);

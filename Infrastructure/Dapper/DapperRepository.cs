@@ -70,7 +70,7 @@ public class DapperRepository<T> : IRepository<T> where T : class
         var sql = $"SELECT {columnList} FROM \"{_tableName}\"";
         return await _connection.QueryAsync<TResult>(sql, transaction: _transaction);
     }
-    
+
     public async Task<T?> GetByIdAsync(object id, params Expression<Func<T, object>>[] columns)
     {
         string columnList;
@@ -96,14 +96,14 @@ public class DapperRepository<T> : IRepository<T> where T : class
 
         return await _connection.QueryFirstOrDefaultAsync<T>(sql, new { Id = id }, _transaction);
     }
-    
+
     public async Task<bool> ExistAsync(object id)
     {
         var sql = $"SELECT 1 FROM \"{_tableName}\" WHERE \"{_keyName}\" = @Id LIMIT 1";
         var result = await _connection.ExecuteScalarAsync<int?>(sql, new { Id = id }, _transaction);
         return result.HasValue;
     }
-    
+
     public async Task<bool> ExistAsync(Expression<Func<T, bool>> predicate)
     {
         var builder = new QueryBuilder();

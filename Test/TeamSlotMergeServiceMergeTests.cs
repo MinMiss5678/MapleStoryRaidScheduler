@@ -84,7 +84,8 @@ public class TeamSlotMergeServiceMergeTests
         ulong discordId1 = 111, discordId2 = 222;
         var teamA = new TeamSlot
         {
-            Id = 1, BossId = 5,
+            Id = 1,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, DiscordName = "", Job = "", IsManual = true } // manual!
@@ -92,7 +93,8 @@ public class TeamSlotMergeServiceMergeTests
         };
         var teamB = new TeamSlot
         {
-            Id = 2, BossId = 5,
+            Id = 2,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, DiscordName = "", Job = "", IsManual = false }
@@ -147,7 +149,8 @@ public class TeamSlotMergeServiceMergeTests
         ulong discordId1 = 111, discordId2 = 222;
         var teamA = new TeamSlot
         {
-            Id = 1, BossId = 5,
+            Id = 1,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, DiscordName = "", Job = "", IsManual = false }
@@ -155,7 +158,8 @@ public class TeamSlotMergeServiceMergeTests
         };
         var teamB = new TeamSlot
         {
-            Id = 2, BossId = 5,
+            Id = 2,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, DiscordName = "", Job = "", IsManual = false }
@@ -213,7 +217,8 @@ public class TeamSlotMergeServiceMergeTests
         ulong discordId1 = 111, discordId2 = 222;
         var teamA = new TeamSlot
         {
-            Id = 1, BossId = 5,
+            Id = 1,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, DiscordName = "", Job = "Hero", IsManual = false }
@@ -221,7 +226,8 @@ public class TeamSlotMergeServiceMergeTests
         };
         var teamB = new TeamSlot
         {
-            Id = 2, BossId = 5,
+            Id = 2,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, DiscordName = "", Job = "Bishop", IsManual = false }
@@ -230,7 +236,8 @@ public class TeamSlotMergeServiceMergeTests
 
         var template = new BossTemplate
         {
-            Id = 10, BossId = 5,
+            Id = 10,
+            BossId = 5,
             Name = "",
             Requirements = new List<BossTemplateRequirement>
             {
@@ -293,7 +300,8 @@ public class TeamSlotMergeServiceMergeTests
         ulong sameDiscordId = 111;
         var teamA = new TeamSlot
         {
-            Id = 1, BossId = 5,
+            Id = 1,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c1", DiscordId = sameDiscordId, DiscordName = "", Job = "", IsManual = false }
@@ -301,7 +309,8 @@ public class TeamSlotMergeServiceMergeTests
         };
         var teamB = new TeamSlot
         {
-            Id = 2, BossId = 5,
+            Id = 2,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c2", DiscordId = sameDiscordId, DiscordName = "", Job = "", IsManual = false } // same!
@@ -339,7 +348,8 @@ public class TeamSlotMergeServiceMergeTests
         // requireMembers = 2, but combined = 3 → skip
         var teamA = new TeamSlot
         {
-            Id = 1, BossId = 5,
+            Id = 1,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c1", DiscordId = 111, DiscordName = "", Job = "", IsManual = false },
@@ -348,7 +358,8 @@ public class TeamSlotMergeServiceMergeTests
         };
         var teamB = new TeamSlot
         {
-            Id = 2, BossId = 5,
+            Id = 2,
+            BossId = 5,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { CharacterId = "c3", DiscordId = 333, DiscordName = "", Job = "", IsManual = false }

@@ -73,12 +73,12 @@ public class RegistrationDeadlineJob : BackgroundService
                                              $"請各位團員準時參加！";
 
                             await discordService.SendMessageAsync(message);
-                            
+
                             config.IsDeadlineNotified = true;
                             await configService.UpdateAsync(config);
-                            
+
                             _logger.LogInformation("Registration deadline notification sent.");
-                            
+
                             // 通知發送後，直接等待到下一個重製日 00:00 (WeeklyPeriodJob 重置時間)
                             delay = GetDelayUntilNextReset(now);
                         }
@@ -86,7 +86,7 @@ public class RegistrationDeadlineJob : BackgroundService
                         {
                             // 還沒到截止時間，計算到截止時間的剩餘時間
                             var timeToDeadline = deadline - now;
-                            
+
                             // 最小檢查間隔 5 秒 (即將截止時)，最大檢查間隔為到截止時間
                             if (timeToDeadline < TimeSpan.FromMinutes(1))
                             {
@@ -115,7 +115,7 @@ public class RegistrationDeadlineJob : BackgroundService
             }
 
             _logger.LogInformation("RegistrationDeadlineJob will delay for {Delay}", delay);
-            
+
             // 使用 Linked CancellationToken，當外部取消或設定更新時中斷等待
             var newCts = new CancellationTokenSource();
             Interlocked.Exchange(ref _changeCts, newCts);

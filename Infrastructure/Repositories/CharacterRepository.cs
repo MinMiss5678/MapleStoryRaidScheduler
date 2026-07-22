@@ -43,7 +43,7 @@ public class CharacterRepository : ICharacterRepository
     public async Task<int> DeleteAsync(ulong discordId, string id)
     {
         var sql = new DeleteBuilder<CharacterDbModel>();
-        sql.Where(x=>x.Id == id)
+        sql.Where(x => x.Id == id)
             .Where(x => x.DiscordId == (long)discordId);
 
         return await _dbContext.ExecuteAsync(sql);

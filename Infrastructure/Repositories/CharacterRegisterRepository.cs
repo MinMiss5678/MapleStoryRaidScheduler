@@ -32,7 +32,7 @@ public class CharacterRegisterRepository : ICharacterRegisterRepository
         updateSql.Set(x => x.CharacterId, characterRegister.CharacterId)
             .Set(x => x.BossId, characterRegister.BossId)
             .Set(x => x.Rounds, characterRegister.Rounds)
-            .Where(x=> x.Id == characterRegister.Id)
+            .Where(x => x.Id == characterRegister.Id)
             // 一併過濾 PlayerRegisterId，避免改到別人報名底下的角色（IDOR）
             .Where(x => x.PlayerRegisterId == characterRegister.PlayerRegisterId);
 

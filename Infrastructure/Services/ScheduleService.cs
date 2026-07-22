@@ -120,7 +120,7 @@ public class ScheduleService : IScheduleService
             foreach (var roundGroup in charGroupsByRounds)
             {
                 var currentRoundAvailableChars = roundGroup.ToList();
-                
+
                 // 持續嘗試從該場數分組的可用角色中組成團隊
                 while (true)
                 {
@@ -188,7 +188,7 @@ public class ScheduleService : IScheduleService
                             c.Rounds -= roundConsumption;
                             alreadyScheduled.Add(c.Id);
                         }
-                        
+
                         // 從當前場數分組列表中移除已使用的角色
                         currentRoundAvailableChars.RemoveAll(c => usedInThisTeam.Contains(c.Id));
                     }
@@ -284,9 +284,9 @@ public class ScheduleService : IScheduleService
         => JobCategoryHelper.IsInJobCategory(job, category, jobCategories);
 
     public DateTimeOffset GetDateTimeFromPeriod(
-        DateTimeOffset periodStart, 
-        DateTimeOffset periodEnd, 
-        int weekday, 
+        DateTimeOffset periodStart,
+        DateTimeOffset periodEnd,
+        int weekday,
         TimeOnly startTime,
         string timeZoneId = "Asia/Taipei")
     {
