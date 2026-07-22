@@ -13,11 +13,10 @@ async function handleProxy(req: NextRequest, { params }: { params: Promise<{ pat
     const targetPath = path.join('/');
     const targetUrl = `${process.env.BACKEND_API_URL}/api/${targetPath}${req.nextUrl.search}`;
 
-    // 取真實 client IP：來源是 Cloudflare 設的 cf-connecting-ip（可信；流量必經 Cloudflare）。
-    // 退而求其次取 x-forwarded-for 的第一段（cloudflared 也會帶）。
-    const realIp = req.headers.get('cf-connecting-ip')
-        ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-        ?? '';
+    // 取真實 client IP：只信 Cloudflare 設的 cf-connecting-ip（流量必經 Cloudflare tunnel，不可繞過偽造）。
+    // 刻意不 fallback 到 client 的 x-forwarded-for——那可偽造。沒有 cf-connecting-ip（如本機/e2e 無 Cloudflare）
+    // 就不帶真 IP，後端退回看到 proxy IP（可接受；那些環境不做 IP 安全決策）。
+    const realIp = req.headers.get('cf-connecting-ip') ?? '';
 
     // 複製 headers（避免 Host / Connection 導致問題）
     const headers = new Headers(req.headers);
