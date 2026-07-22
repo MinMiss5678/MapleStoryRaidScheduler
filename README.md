@@ -12,7 +12,7 @@
 - **自動分配引擎**：玩家報名後即時觸發，根據可用時段比對現有隊伍空位，無匹配則建立新隊（來源標記 `auto`）。
 - **併發控制**：自動排隊的「讀隊 → 開新隊」是 read-then-write，兩人同時報名同一 period 會重複開隊；以交易級 **advisory lock**（`pg_advisory_xact_lock`）按 period 序列化，不同 period 並行、鎖在 DB 故多 pod 安全。
 - **批次組隊預覽**：管理員以職業範本手動觸發，從所有報名者批次生成完整隊伍**預覽**（來源標記 `admin`、以未存檔的隊伍呈現），存檔後才寫入。
-- **補位保護機制**：手動補位的成員標記 `IsManual = true`，自動分配引擎會跳過這些成員，防止人工調整被覆蓋。
+- **補位保護機制**：手動補位 / 微調的成員標記 `IsManual = true`；批次重排時，**含 `IsManual` 成員的隊伍（與管理員隊）整隊保留、只自動補滿空位**，防止人工調整被覆蓋。
 - **Schema 版本管理**：以 golang-migrate 管理資料庫 migration，up/down 分開維護，Docker Compose 與 Kubernetes 皆整合 migrate 服務，確保各環境 schema 一致。
 
 ## 技術棧
