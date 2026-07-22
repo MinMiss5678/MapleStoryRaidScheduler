@@ -4,7 +4,7 @@ namespace Utils.SqlBuilder;
 
 public class InsertBuilder<T> : SqlCommandBuilder<T>
 {
-    private Dictionary<string, object> _columns = new();
+    private Dictionary<string, object?> _columns = new();
     private bool _returnId = false;
 
     public InsertBuilder<T> Set<TProp>(Expression<Func<T, TProp>> column, TProp value)

@@ -86,7 +86,7 @@ public class AuthenticationMiddleware : IMiddleware
             }
             else if (validateTokenResult.Exception is SecurityTokenExpiredException)
             {
-                var jwtTokenClaims = _jwtService.ReadJsonWebToken(token);
+                var jwtTokenClaims = _jwtService.ReadJsonWebToken(token!); // 走到過期分支代表 token 存在（非 null）
                 var newJwt = await _authService.RefreshToken(jwtTokenClaims.DiscordId);
                 if (newJwt != null)
                 {

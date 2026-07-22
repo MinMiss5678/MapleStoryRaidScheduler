@@ -12,9 +12,13 @@ namespace Test.Integration;
 /// </summary>
 public class PostgresFixture : IAsyncLifetime
 {
+    // Testcontainers 的無參數 PostgreSqlBuilder() 被標為 obsolete，但這是官方文件的標準用法
+    // （image 由 .WithImage 指定）；暫窄範圍抑制，待套件提供乾淨替代 API 再改。
+#pragma warning disable CS0618
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
         .WithImage("postgres:18")
         .Build();
+#pragma warning restore CS0618
 
     public string ConnectionString => _container.GetConnectionString();
 

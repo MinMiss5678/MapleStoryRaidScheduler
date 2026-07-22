@@ -165,7 +165,8 @@ public class QueryBuilder
     {
         if (selector.Body is NewExpression newExp)
         {
-            return newExp.Members.Select((m, i) =>
+            // 匿名型別投影的 NewExpression 一定帶 Members（非 null）
+            return newExp.Members!.Select((m, i) =>
             {
                 var name = m.Name;
                 // 取匿名型別對應的別名
