@@ -121,6 +121,22 @@ integration-test:
     paths:
       - coverage-integration/**/coverage.cobertura.xml
 
+# 前端元件/單元測試（Vitest + React Testing Library）：渲染元件 + 模擬互動 + mock API，測行為。
+# 跟 .NET 測試同層級（隔離、快），故放 test stage；與後端測試互不相依。
+# 用 node image（覆蓋 default 的 dotnet sdk）；npm ci 走 lockfile 快取。
+frontend-test:
+  extends: .validate-rules
+  stage: test
+  image: node:20-alpine
+  script:
+    - cd web
+    - npm ci
+    - npm run test:run
+  cache:
+    key:
+      files: [web/package-lock.json]
+    paths: [web/node_modules]
+
 # 合併 unit + integration 兩份覆蓋率 → 一份總報告（取聯集，不重複計）
 coverage:
   extends: .validate-rules
