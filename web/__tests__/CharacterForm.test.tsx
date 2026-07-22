@@ -6,6 +6,14 @@ import React from 'react';
 // Mock fetch
 global.fetch = vi.fn();
 
+// 回傳一個「完整」的 Response：apiClient.handleResponse 會讀 res.headers.get('content-type')，
+// 半殘的 { ok, json } 會讓它丟 TypeError（→ 進 catch → alert）。用真 Response 才忠實模擬後端回應。
+const jsonResponse = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+
 describe('CharacterForm', () => {
   const mockOnSuccess = vi.fn();
   const mockOnReset = vi.fn();
@@ -77,10 +85,9 @@ describe('CharacterForm', () => {
   });
 
   it('calls API and onSuccess when creating a character', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ id: 'NEW', name: 'Newbie', job: 'Hero', attackPower: 50 })
-    });
+    (global.fetch as any).mockResolvedValueOnce(
+      jsonResponse({ id: 'NEW', name: 'Newbie', job: 'Hero', attackPower: 50 })
+    );
 
     render(
       <CharacterForm
@@ -114,10 +121,9 @@ describe('CharacterForm', () => {
       attackPower: 100
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ ...editingCharacter, name: 'Alice Updated' })
-    });
+    (global.fetch as any).mockResolvedValueOnce(
+      jsonResponse({ ...editingCharacter, name: 'Alice Updated' })
+    );
 
     render(
       <CharacterForm
