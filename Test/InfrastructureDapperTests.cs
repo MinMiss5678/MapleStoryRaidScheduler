@@ -89,56 +89,56 @@ public class InfrastructureDapperTests
     // ========== DbContext ==========
 
     [Fact]
-    public void DbContext_Begin_StartsTransaction()
+    public async Task DbContext_Begin_StartsTransaction()
     {
         var mockConn = new Mock<IDbConnection>();
         var mockTx = new Mock<IDbTransaction>();
         mockConn.Setup(c => c.BeginTransaction()).Returns(mockTx.Object);
 
         var ctx = new DbContext(mockConn.Object);
-        ctx.Begin();
+        await ctx.BeginAsync(); // mock IDbConnection → 退回同步分支
 
         mockConn.Verify(c => c.BeginTransaction(), Times.Once);
     }
 
     [Fact]
-    public void DbContext_Begin_WhenTransactionAlreadyExists_DoesNotBeginAgain()
+    public async Task DbContext_Begin_WhenTransactionAlreadyExists_DoesNotBeginAgain()
     {
         var mockConn = new Mock<IDbConnection>();
         var mockTx = new Mock<IDbTransaction>();
         mockConn.Setup(c => c.BeginTransaction()).Returns(mockTx.Object);
 
         var ctx = new DbContext(mockConn.Object);
-        ctx.Begin();
-        ctx.Begin(); // 第二次應跳過
+        await ctx.BeginAsync();
+        await ctx.BeginAsync(); // 第二次應跳過
 
         mockConn.Verify(c => c.BeginTransaction(), Times.Once);
     }
 
     [Fact]
-    public void DbContext_Commit_CommitsTransaction()
+    public async Task DbContext_Commit_CommitsTransaction()
     {
         var mockConn = new Mock<IDbConnection>();
         var mockTx = new Mock<IDbTransaction>();
         mockConn.Setup(c => c.BeginTransaction()).Returns(mockTx.Object);
 
         var ctx = new DbContext(mockConn.Object);
-        ctx.Begin();
-        ctx.Commit();
+        await ctx.BeginAsync();
+        await ctx.CommitAsync();
 
         mockTx.Verify(t => t.Commit(), Times.Once);
     }
 
     [Fact]
-    public void DbContext_Rollback_RollsBackTransaction()
+    public async Task DbContext_Rollback_RollsBackTransaction()
     {
         var mockConn = new Mock<IDbConnection>();
         var mockTx = new Mock<IDbTransaction>();
         mockConn.Setup(c => c.BeginTransaction()).Returns(mockTx.Object);
 
         var ctx = new DbContext(mockConn.Object);
-        ctx.Begin();
-        ctx.Rollback();
+        await ctx.BeginAsync();
+        await ctx.RollbackAsync();
 
         mockTx.Verify(t => t.Rollback(), Times.Once);
     }

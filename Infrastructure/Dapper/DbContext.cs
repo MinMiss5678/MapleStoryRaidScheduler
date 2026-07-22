@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Data.Common;
 using Application.Interface;
 using Dapper;
 using Utils.SqlBuilder;
@@ -25,34 +26,54 @@ public class DbContext
     /// </summary>
     public void AfterCommit(Action action) => _afterCommitActions.Add(action);
 
-    public void Begin()
+    public async Task BeginAsync()
     {
         _completed = false;
-        // 連線改為延遲開啟（工廠不再 eager Open）→ 開交易前先確保連線已開
-        if (Connection.State != ConnectionState.Open)
-            Connection.Open();
-        if (Transaction == null)
-            Transaction = Connection.BeginTransaction();
+        // 真非同步：真 DbConnection 走 async I/O（等 DB 往返時把執行緒還給池子）；
+        // 測試用的 mock IDbConnection 沒有 async API → 退回同步。
+        // 連線延遲開啟（工廠不再 eager Open）→ 開交易前先確保連線已開。
+        if (Connection is DbConnection dbConnection)
+        {
+            if (dbConnection.State != ConnectionState.Open)
+                await dbConnection.OpenAsync();
+            Transaction ??= await dbConnection.BeginTransactionAsync();
+        }
+        else
+        {
+            if (Connection.State != ConnectionState.Open)
+                Connection.Open();
+            Transaction ??= Connection.BeginTransaction();
+        }
     }
 
-    public void Commit()
+    public async Task CommitAsync()
     {
-        Transaction?.Commit();
+        if (Transaction is DbTransaction dbTransaction)
+            await dbTransaction.CommitAsync();
+        else
+            Transaction?.Commit();
         Transaction = null;
         _completed = true;
-        // 交易「確定提交」後才觸發登記的副作用——不對未提交/將回滾的狀態搶跑
+        RunAfterCommitActions(); // 交易「確定提交」後才觸發登記的副作用——不對未提交/將回滾的狀態搶跑
+    }
+
+    public async Task RollbackAsync()
+    {
+        if (Transaction is DbTransaction dbTransaction)
+            await dbTransaction.RollbackAsync();
+        else
+            Transaction?.Rollback();
+        Transaction = null;
+        _completed = true;
+        _afterCommitActions.Clear(); // 回滾 → 登記的 commit 後動作丟棄、不執行
+    }
+
+    private void RunAfterCommitActions()
+    {
         var actions = _afterCommitActions.ToArray();
         _afterCommitActions.Clear();
         foreach (var action in actions)
             action();
-    }
-
-    public void Rollback()
-    {
-        Transaction?.Rollback();
-        Transaction = null;
-        _completed = true;
-        _afterCommitActions.Clear(); // 回滾 → 登記的 commit 後動作丟棄、不執行
     }
 
     private void EnsureNotCompleted()

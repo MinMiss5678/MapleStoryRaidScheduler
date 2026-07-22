@@ -113,7 +113,7 @@ public class SystemConfigServiceTests
 
         // Assert：commit 前不觸發（不對未提交狀態搶跑），Commit 後才觸發
         Assert.False(eventInvoked);
-        _dbContextMock.Object.Commit();
+        await _dbContextMock.Object.CommitAsync();
         Assert.True(eventInvoked);
     }
 
@@ -129,7 +129,7 @@ public class SystemConfigServiceTests
 
         // Act
         await _service.UpdateAsync(new SystemConfig { DeadlineDayOfWeek = DayOfWeek.Wednesday });
-        _dbContextMock.Object.Rollback();
+        await _dbContextMock.Object.RollbackAsync();
 
         // Assert：回滾 → 登記的事件被丟棄、不發
         Assert.False(eventInvoked);
