@@ -60,7 +60,16 @@ clean_sql() {
 }
 
 # ── Generate UP / DOWN SQL ────────────────────────────────────────────────────
-# FROM=0 is safe because the rebuilt DLL contains only this one migration.
+# FROM=0 is safe because the freshly-built DLL contains only this one migration.
+#
+# 為什麼要先顯式 build，再用 --no-build：
+#   `ef migrations add` 是「先 build、再 scaffold 新 .cs」，那次 build 的 DLL 不含剛加的 migration。
+#   → 直接 `script --no-build` 會用那顆舊 DLL → "migration not found"。
+#   → 但若拿掉 --no-build 讓 script 自己 build，build 的 "Build started/succeeded" 會被灌進 SQL 檔（非合法 SQL）。
+#   解法：這裡顯式 build 一次把新 .cs 編進 DLL，script 再用 --no-build →「找得到」且「輸出只有 SQL」。
+echo "==> Building to include the new migration in the DLL..."
+dotnet build "$PROJECT" -c Debug --nologo -v quiet
+
 echo "==> Generating UP SQL  → $UP_FILE"
 dotnet ef migrations script "0" "$EF_FULL_NAME" --project "$PROJECT" --no-build \
   | clean_sql > "$UP_FILE"
