@@ -353,14 +353,12 @@ namespace Infrastructure.Migrations
                     b.Property<int>("BossId")
                         .HasColumnType("integer");
 
-                    b.Property<bool>("IsPublished")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsTemporary")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTimeOffset>("SlotDateTime")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int?>("TemplateId")
                         .HasColumnType("integer");
