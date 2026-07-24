@@ -1,5 +1,7 @@
 # Message Queue 計畫
 
+> **狀態（2026-07-25）：Phase 1 已實作**。`OutboxRelay`（outbox → `XADD` stream）+ `OutboxStreamConsumer`（consumer group + `XACK` + `XAUTOCLAIM` 重投）取代原 `OutboxDispatcher`；broker = Redis Streams。整合測（relay 發布/標 processed、SKIP LOCKED、consumer ACK、PEL 重投、無 handler 丟棄）齊。
+>
 > 輕量 plan（動手前的 spec）：目標 / 範圍 / 決策 / 驗收 / 工時。做完可丟；穩定規則再收進 `docs/`。
 > **定位誠實**：readiness。現況 replicas=1、outbox + polling 已滿足可靠投遞——MQ 是「要 push 低延遲 / fanout / 獨立擴 consumer / per-consumer DLQ」時的下一步，**不是現在的 bug**。
 
