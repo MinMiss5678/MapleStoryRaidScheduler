@@ -21,6 +21,8 @@ spec:
               value: Asia/Taipei
             - name: ASPNETCORE_URLS
               value: http://+:5230
+            - name: Redis__Configuration
+              value: redis:6379
             - name: ConnectionStrings__DefaultConnection
               valueFrom:
                 secretKeyRef:

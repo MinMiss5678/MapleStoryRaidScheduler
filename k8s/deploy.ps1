@@ -16,9 +16,9 @@ Write-Host "==> 建立 Secret..."
 Write-Host "==> 建立 namespace..."
 kubectl apply -f "$PSScriptRoot/namespace.yaml"
 
-# 3. 基礎服務（database / seq / cloudflared）
+# 3. 基礎服務（database / seq / redis / cloudflared）
 Write-Host "==> 部署基礎服務..."
-kubectl apply -f "$PSScriptRoot/database.yaml" -f "$PSScriptRoot/seq.yaml" -f "$PSScriptRoot/cloudflared.yaml"
+kubectl apply -f "$PSScriptRoot/database.yaml" -f "$PSScriptRoot/seq.yaml" -f "$PSScriptRoot/redis.yaml" -f "$PSScriptRoot/cloudflared.yaml"
 
 # 4. 等待 database 就緒
 Write-Host "==> 等待 database 就緒..."

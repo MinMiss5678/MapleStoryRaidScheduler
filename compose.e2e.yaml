@@ -30,6 +30,14 @@ services:
       - "postgres://postgres:e2e@e2e-db:5432/presentationdb?sslmode=disable"
       - "up"
 
+  e2e-redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   e2e-backend:
     image: ${E2E_REGISTRY:-e2e}/backend:latest       # 本機由 build 產出並 tag；CI 預先 buildx 帶 cache 建好
     build:
@@ -38,10 +46,13 @@ services:
     depends_on:
       e2e-migrate:
         condition: service_completed_successfully
+      e2e-redis:
+        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Development          # ← test-login 端點只在非 Production 有效
       ASPNETCORE_URLS: http://+:5230
       ConnectionStrings__DefaultConnection: "Host=e2e-db;Port=5432;Database=presentationdb;Username=postgres;Password=e2e"
+      Redis__Configuration: "e2e-redis:6379"
       Jwt__SecretKey: "e2e-testing-secret-key-not-for-production"   # ≥32 bytes（HMAC-SHA256 需要）
       Jwt__Issuer: "e2e"
       Jwt__Audience: "e2e"

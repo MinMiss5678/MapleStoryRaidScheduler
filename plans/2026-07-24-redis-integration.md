@@ -1,0 +1,63 @@
+# Redis 導入計畫
+
+> 輕量 plan（動手前的 spec）：目標 / 範圍 / 決策 / 驗收 / 工時。做完可丟；穩定規則再收進 `docs/`。
+
+## 目標
+
+補掉**多 pod 漏洞**：目前 idempotency de-dup 與限流都用**行程內記憶體（per-pod）**，多副本時各自為政 → 去重/限流跨不了 pod。Redis 提供**共享狀態**解掉這個。
+附帶：一個誠實的 Redis 實戰點（面試用）——「把 de-dup 從單機記憶體搬到 Redis 解多 pod」。
+
+## 範圍（分階段，右尺寸）
+
+### Phase 1（做——高價值低成本，一個週末）
+**idempotency de-dup：`IMemoryCache` → Redis**
+- `IdempotencyMiddleware` 改用 Redis **`SET key NX EX 60`**（單一原子命令）。
+- 額外好處：`SET NX` 原子 → 順帶修掉現在 `TryGetValue → Set` 的微小 race（連記憶體版都有）。
+- **契約不變**：缺 key/非 UUID → 400、同 key 60 秒內 → 409。
+- 抽 `IIdempotencyStore`（`Task<bool> TryMarkAsync(key, ttl)`）→ middleware 不直接綁 Redis：單元測 mock、整合測用真 Redis。
+
+### Phase 2（選配、之後——成本中、邊際價值低）
+**限流：per-pod → 分散式**
+- .NET 內建 RateLimiter 是**記憶體**的；跨 pod 要 Redis 後端（自訂 limiter 用 `INCR`+`EXPIRE`，或用 `RedisRateLimiting` 套件）。
+- 邊際價值低：per-pod 限流的實際效果只是「上限 ×N pod、較寬鬆」，**不是正確性 bug**。故排 Phase 2、可不做。
+
+### 非範圍（YAGNI，這次不碰）
+- `SessionService` 的記憶體讀快取（per-pod 只是各自 miss、不影響正確性）。
+- 一般分散式快取 / 把 admin session 搬 Redis（DB session 夠用）。
+- runtime **不碰 Dapper**（Redis 只進 middleware / infra 層）。
+
+## 關鍵決策（動手前要拍板）
+
+**★ Redis 掛掉時：fail-open 還是 fail-closed？**
+- **fail-open（建議）**：Redis 連不到 → **放行、記 log**，暫時失去 de-dup。理由：de-dup 是「防護」不是「正確性關卡」，不該因快取層抖動就擋掉所有寫入。真正的重複由**上層守**（報名有 `ExistAsync` + auto-assign 的 advisory lock；`X-Idempotency-Key` 只是額外一層）。代價：Redis 故障期間重開雙擊窗口（短、可接受）。
+- fail-closed：Redis 掛 → 拒所有寫入。安全但把 Redis 變成單點故障 → 對這規模不划算。
+- → **選 fail-open**，`try/catch` 包 Redis 呼叫，錯誤時放行 + 記 log。
+
+其餘：TTL 60s（同現況）、key 格式 `idempotency:{uuid}`（同現況）、StackExchange.Redis 自動重連。
+
+## 基礎設施
+
+- **docker-compose**：加 `redis` 服務（`redis:7-alpine`）。
+- **k8s**：redis Deployment + Service（單 pod 夠；密碼走 Secret，比照 DB 的檔案掛載模式）。
+- **設定**：連線字串走 env/secret，沿用現有 `*File` 覆寫慣例。
+- **健康檢查**：readiness **不**因 Redis 掛而 fail（配合 fail-open）——Redis 非啟動必需。
+
+## 驗收
+
+- [ ] 缺 key / 非 UUID → 400；同 key 60 秒內 → 409（現有整合測仍過）。
+- [ ] **跨連線（模擬跨 pod）**：兩條連線共用同一 Redis，同 key → 第二個 409（Testcontainers Redis 整合測）。
+- [ ] Redis 掛（停容器）→ 寫入仍放行、有 log（fail-open 驗證）。
+- [ ] `IdempotencyMiddlewareTests`（單元）改成 mock `IIdempotencyStore`，仍綠。
+- [ ] compose + k8s 起得來、middleware 連得到 Redis。
+- [ ]（若做 Phase 2）限流上限跨 pod 一致。
+
+## 工時估
+
+- Phase 1 ≈ 一個週末（Redis infra + `IIdempotencyStore` 抽象 + Redis 實作 + 整合測 + compose/k8s）。
+- Phase 2 ≈ 另一塊（自訂/套件分散式 limiter + 測試）。
+
+## 面試框（誠實）
+
+> 「我把 idempotency de-dup 從 per-pod 的 `IMemoryCache` 搬到 Redis 的 `SET NX EX`——單機記憶體多副本各自為政、跨不了 pod。選 **fail-open**：Redis 掛就退化成沒 de-dup、放行記 log，不讓快取層抖動擋掉寫入；真正的重複由 DB 層 / advisory lock 守。限流我判斷 per-pod 只是上限變寬、非正確性問題，排後面。」
+
+→ 展示：知道為何要 Redis、知道 fail-open/closed 的取捨、知道哪些該做哪些 YAGNI。

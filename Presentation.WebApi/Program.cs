@@ -1,13 +1,16 @@
 ﻿using System.Data;
 using System.Threading.RateLimiting;
+using Application.Interface;
 using Application.Options;
 using Dapper;
 using Infrastructure.BackgroundJobs;
 using Infrastructure.Dapper;
+using Infrastructure.Services;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using StackExchange.Redis;
 using Presentation.WebApi.Extensions;
 using Presentation.WebApi.HealthChecks;
 using Presentation.WebApi.Middleware;
@@ -57,6 +60,17 @@ builder.Services.AddHealthChecks()
     .AddCheck("database", new DatabaseHealthCheck(connectionString), tags: new[] { "ready" });
 
 builder.Services.AddMemoryCache();
+
+// Redis：重複提交防護的跨 pod 去重儲存（取代 IdempotencyMiddleware 原本的 per-pod IMemoryCache）。
+// AbortOnConnectFail=false → Redis 掛也不擋 app 啟動，搭配 RedisIdempotencyStore 的 fail-open：
+// Redis 不可用時放行 + 記 log，不因去重快取抖動擋掉寫入。連線字串走 Redis:Configuration（可用 *File 覆寫）。
+var redisConfiguration = builder.Configuration["Redis:ConfigurationFile"] is { } redisFile && File.Exists(redisFile)
+    ? File.ReadAllText(redisFile).Trim()
+    : builder.Configuration["Redis:Configuration"] ?? "localhost:6379";
+var redisOptions = ConfigurationOptions.Parse(redisConfiguration);
+redisOptions.AbortOnConnectFail = false;
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
+builder.Services.AddSingleton<IIdempotencyStore, RedisIdempotencyStore>();
 builder.Services.AddHttpClient();
 
 // 登入後「按身分」限流：以驗證過的 discordId（session/JWT，client 偽造不了）當 partition key，
