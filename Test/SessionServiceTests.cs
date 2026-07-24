@@ -4,7 +4,6 @@ using Application.Queries;
 using Domain.Entities;
 using Domain.Repositories;
 using Infrastructure.Services;
-using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using Xunit;
 
@@ -15,17 +14,37 @@ public class SessionServiceTests
     private readonly Mock<ISessionRepository> _sessionRepoMock = new();
     private readonly Mock<ISessionQuery> _sessionQueryMock = new();
     private readonly Mock<IDiscordOAuthClient> _discordClientMock = new();
-    private readonly IMemoryCache _memoryCache;
+    private readonly FakeSessionCache _sessionCache = new();
     private readonly SessionService _sessionService;
 
     public SessionServiceTests()
     {
-        _memoryCache = new MemoryCache(new MemoryCacheOptions());
         _sessionService = new SessionService(
             _sessionRepoMock.Object,
             _sessionQueryMock.Object,
             _discordClientMock.Object,
-            _memoryCache);
+            _sessionCache);
+    }
+
+    // 以字典模擬 Redis 共享快取的行為（Get/Set/Remove），讓「命中快取不再查 DB」等測試成立。
+    private sealed class FakeSessionCache : ISessionCache
+    {
+        private readonly Dictionary<string, Session> _store = new();
+
+        public Task<Session?> GetAsync(string discordId)
+            => Task.FromResult(_store.TryGetValue(discordId, out var s) ? s : null);
+
+        public Task SetAsync(string discordId, Session session, TimeSpan ttl)
+        {
+            _store[discordId] = session;
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(string discordId)
+        {
+            _store.Remove(discordId);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]

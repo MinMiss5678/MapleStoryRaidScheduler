@@ -23,10 +23,12 @@
 - fail-open 同 Phase 1；回報 `IdleDuration` 讓框架回收 idle partition。整合測含「跨連線＝跨 pod 共用計數」。
 - 邊際價值低：per-pod 限流的實際效果只是「上限 ×N pod、較寬鬆」，**不是正確性 bug**——做它是 portfolio/readiness，不是救火。
 
-**③ session 撤銷跨 pod 失效（★ 真 gap，Phase 1 漏了、後來才想清楚）**
-- `SessionService` 用 IMemoryCache 讀穿快取。**讀**沒問題（miss → 查 DB → 自癒）。但 `DeleteAsync` / `DeleteByDiscordAsync` **只清「當下 pod」的快取 + DB** → 其他 pod 的快取還留著已刪的 session，直到 TTL（session 到期）→ **登出 / 強制下線在多 pod 下不會立即在所有 pod 生效**。
-- 這跟 idempotency 同一類多 pod gap，對象換成 session 撤銷。修法：session cache 也搬 Redis（`Remove` 一次全 pod 生效），或 Redis pub/sub 廣播失效。
-- **為何暫緩**：只影響 admin session（低量）、失效窗口有 TTL 上界、只在「立即跨 pod 撤銷」才咬（罕見）；優先序低於「每筆寫入都受影響」的 idempotency。
+**③ session 撤銷跨 pod 失效（★ 真 gap，Phase 1 漏了、後來才想清楚）（✅ 已完成）**
+- ~~`SessionService` 用 IMemoryCache 讀穿快取。**讀**沒問題（miss → 查 DB → 自癒）。但 `DeleteAsync` / `DeleteByDiscordAsync` **只清「當下 pod」的快取 + DB** → 其他 pod 的快取還留著已刪的 session，直到 TTL → 登出/強制下線在多 pod 下不會立即在所有 pod 生效。~~
+- 修法（已採）：抽 `ISessionCache`（Get/Set/Remove）+ `RedisSessionCache`（JSON、fail-open，同 idempotency 決策）→ session 快取搬**共享 Redis**，撤銷一次 `KEYDEL` 即在所有 pod 生效。`DeleteAsync` 改「先刪 DB 再清快取」（cache-aside 慣例）。
+- **關鍵**：`SessionService` 用在 **API 與 bot 兩個 host**；bot 的 `MemberRemoved/Updated` 也會撤 session → **bot 也接了 Redis**（compose/k8s bot 補 `Redis__Configuration`），否則 bot 撤了、API pod 還留著。
+- 整合測 `RedisSessionCacheIntegrationTests`：set/get round-trip +「撤銷跨連線＝跨 pod 立即生效」。
+- 殘留（YAGNI）：cache-aside 仍有「刪快取後被舊值回填」的極窄窗口（TTL 上界）；要全消可改 post-commit 失效（`DbContext.AfterCommit`）或 pub/sub。現 replicas=1，不急。
 
 ### 非範圍（YAGNI，這次不碰）
 - session **讀**快取的讀面（per-pod miss 自癒、不影響正確性）——僅「**撤銷**」面是 gap，見上方 Phase 3。
