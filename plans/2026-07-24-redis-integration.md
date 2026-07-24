@@ -9,7 +9,7 @@
 
 ## 範圍（分階段，右尺寸）
 
-### Phase 1（做——高價值低成本，一個週末）
+### Phase 1（✅ 已完成 MR!24）
 **idempotency de-dup：`IMemoryCache` → Redis**
 - `IdempotencyMiddleware` 改用 Redis **`SET key NX EX 60`**（單一原子命令）。
 - 額外好處：`SET NX` 原子 → 順帶修掉現在 `TryGetValue → Set` 的微小 race（連記憶體版都有）。
@@ -18,9 +18,10 @@
 
 ### Phase 2 / 3（選配、之後——都不是「現在」的正確性 bug）
 
-**② 限流：per-pod → 分散式**
-- .NET 內建 RateLimiter 是**記憶體**的；跨 pod 要 Redis 後端（自訂 limiter 用 `INCR`+`EXPIRE`，或 `RedisRateLimiting` 套件）。
-- 邊際價值低：per-pod 限流的實際效果只是「上限 ×N pod、較寬鬆」，**不是正確性 bug**。
+**② 限流：per-pod → 分散式（✅ 已完成）**
+- 自訂 `RedisFixedWindowRateLimiter`（Lua 原子 `INCR`+首次 `PEXPIRE`）插進 .NET `PartitionedRateLimiter`——**未加第三方套件**（hand-roll，portfolio 料）。
+- fail-open 同 Phase 1；回報 `IdleDuration` 讓框架回收 idle partition。整合測含「跨連線＝跨 pod 共用計數」。
+- 邊際價值低：per-pod 限流的實際效果只是「上限 ×N pod、較寬鬆」，**不是正確性 bug**——做它是 portfolio/readiness，不是救火。
 
 **③ session 撤銷跨 pod 失效（★ 真 gap，Phase 1 漏了、後來才想清楚）**
 - `SessionService` 用 IMemoryCache 讀穿快取。**讀**沒問題（miss → 查 DB → 自癒）。但 `DeleteAsync` / `DeleteByDiscordAsync` **只清「當下 pod」的快取 + DB** → 其他 pod 的快取還留著已刪的 session，直到 TTL（session 到期）→ **登出 / 強制下線在多 pod 下不會立即在所有 pod 生效**。

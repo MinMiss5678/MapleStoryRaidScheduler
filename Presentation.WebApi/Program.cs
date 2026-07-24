@@ -14,6 +14,7 @@ using StackExchange.Redis;
 using Presentation.WebApi.Extensions;
 using Presentation.WebApi.HealthChecks;
 using Presentation.WebApi.Middleware;
+using Presentation.WebApi.RateLimiting;
 using Serilog;
 
 // 最早初始化 Serilog，讓 startup 期間的錯誤也能被記錄
@@ -92,13 +93,13 @@ builder.Services.AddRateLimiter(rateLimiterOptions =>
 
         // 每個使用者固定視窗（預設 100 次 / 10 秒）——正常瀏覽（每頁數個 React Query）遠不會碰到，
         // 但擋得住腳本狂打。上限由 appsettings 的 RateLimit 區段控制（測試會調小以驗行為）。
+        // 計數存 Redis（RedisFixedWindowRateLimiter）→ 跨 pod 共用同一上限，非 per-pod 各算各的。
         var rl = httpContext.RequestServices.GetRequiredService<IOptions<RateLimitOptions>>().Value;
-        return RateLimitPartition.GetFixedWindowLimiter(discordId, _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = rl.PermitLimit,
-            Window = TimeSpan.FromSeconds(rl.WindowSeconds),
-            QueueLimit = 0
-        });
+        var rlRedis = httpContext.RequestServices.GetRequiredService<IConnectionMultiplexer>();
+        var rlLogger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger<RedisFixedWindowRateLimiter>();
+        return RateLimitPartition.Get(discordId, key => new RedisFixedWindowRateLimiter(
+            rlRedis, rlLogger, $"ratelimit:{key}", rl.PermitLimit, TimeSpan.FromSeconds(rl.WindowSeconds)));
     });
 
     // 觸發時記 log（配 Serilog/Seq 可觀測），並回傳 Retry-After 提示
