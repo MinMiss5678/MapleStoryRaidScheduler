@@ -22,7 +22,7 @@ graph TD
         Infrastructure["Infrastructure Layer\n(Dapper, Discord, Background Jobs)"] --> Domain
 
         Infrastructure --> DB[("PostgreSQL 18")]
-        Infrastructure --> Redis[("Redis\n(重複提交防護跨 pod 去重)")]
+        Infrastructure --> Redis[("Redis\n(跨 pod 共享：重複提交去重 / 限流計數 / session 快取)")]
         Infrastructure --> DiscordBot["Discord Bot (DSharpPlus)"]
         Infrastructure --> Seq["Seq (結構化日誌)"]
     end
@@ -117,6 +117,8 @@ await _unitOfWork.CommitAsync();
 
 Discord 身分組 → 系統角色的對應由 `DiscordRoleMapping` 表管理，可動態調整。
 
+**Session 快取（跨 pod 撤銷）**：管理員 session 讀取走快取，存 **Redis**（`ISessionCache` / `RedisSessionCache`）而非 per-pod `IMemoryCache`——所以 `DeleteAsync` / `DeleteByDiscordAsync` 撤銷（登出、拔身分組、踢人）**一次刪除即在所有 pod 立即生效**，不再是「只清當下 pod、其他 pod 等 TTL」。**讀**穿快取 miss 退回查 DB 自癒；Redis 不可用時 fail-open（退回查 DB，DB 為真實來源）。
+
 ### 5. 重複提交防護（非完整冪等）
 
 **決策原因**：前端連點或網路重送可能造成重複寫入（如重複報名、重複補位）。
@@ -174,6 +176,23 @@ Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL
 | Schema 寫錯 | 補一版 forward fix migration（`000003_fix_xxx.up.sql`） |
 
 `down.sql` 是開發工具，不是 production rollback 機制。Production 回滾依賴 infrastructure 層（DB snapshot），而非應用層 migration。
+
+### 7. 設定變更的可靠投遞（Transactional Outbox）
+
+**決策原因**：設定變更（報名截止）後要喚醒背景 job 重算。原本用 `DbContext.AfterCommit`（in-process post-commit hook），有兩個問題：(1) commit 後、跑動作前 crash 會**遺失**；(2) 設定在 **API** 改、要喚醒的 `RegistrationDeadlineJob` 在 **bot**，in-process 事件**跨不了行程**（API 的 `ConfigChangeNotifier` 無訂閱者 = no-op）→ API 改設定不會即時通知 bot。
+
+**實作方式**：改用 transactional outbox（`OutboxMessage` 表）。
+
+| 端 | 元件 | 做法 |
+|---|---|---|
+| 寫入 | `IOutbox` / `Outbox` | 用**當前 UoW 的交易** INSERT outbox 列 → 與業務資料**原子提交/回滾**（rollback 無鬼影事件） |
+| 派發 | `OutboxDispatcher`（跑 bot、自開專屬連線） | 輪詢已提交列 → 依 `Type` 派 `IOutboxHandler` → 標 `ProcessedAt` |
+
+- **多 pod 分工**：`SELECT ... FOR UPDATE SKIP LOCKED` → 多個 dispatcher 各撈不相交批、互不重投、免選 leader。
+- **at-least-once + 冪等**：投遞成功、標 processed 前崩 → 重送；靠 handler 冪等（`ConfigChanged` 只是喚醒 job 重讀）吸收。
+- partial index（`WHERE "ProcessedAt" IS NULL`）撈取快；重試上限後放棄、記 `LastError`。
+
+> outbox 把「要送什麼」持久化進交易 → 解掉 AfterCommit 的 crash-loss 與跨行程限制。定位為 readiness（現況 replicas=1、副作用可補），但順帶修掉跨行程 gap。
 
 ---
 
