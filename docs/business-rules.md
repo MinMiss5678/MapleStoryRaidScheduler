@@ -74,7 +74,7 @@
 | N2 | 截止通知：截止時間已過 **且** `!IsDeadlineNotified` 時發送；設定變更時被喚醒重算 | `RegistrationDeadlineJob` |
 | N3 | 截止時間可設定（`SystemConfig.DeadlineDayOfWeek/DeadlineTime`）；**預設 = 重製日前一天（週一）** | `SystemConfigService` |
 | N4 | **改變截止日/時 → 重置 `IsDeadlineNotified`**（讓新截止能重發通知） | `SystemConfigService.UpdateAsync` |
-| N5 | 設定變更事件在**交易 Commit 成功後**才發（背景 job 重讀到的是已提交狀態，非搶跑的舊值） | `DbContext.AfterCommit`；`architecture.md §Unit of Work` |
+| N5 | 設定變更事件走 **transactional outbox**：與 `UpdateAsync` 同一交易寫 outbox 列（commit 才生效、rollback 丟棄），bot 的 `OutboxDispatcher` 讀已提交列喚醒 job → **跨行程可靠 + crash-safe**（取代原 in-process `AfterCommit`：commit 後 crash 會掉、且跨不了行程） | `Outbox` / `OutboxDispatcher`；`architecture.md §7 Transactional Outbox` |
 | N6 | Discord 通知**只由背景 job**發（讀已提交狀態），無請求內 inline 發送 → 無「發了又 rollback」風險 | `DailyNotificationService` / `RegistrationDeadlineJob` |
 
 ## 八、認證與授權（Auth）
@@ -87,6 +87,7 @@
 | AU4 | JWT 過期 → 嘗試 `RefreshToken`；成功則回寫新 token（role 取自新 token）、放行；**續期失敗 → 401**（過期又續不動不得放行） | `AuthenticationMiddleware` |
 | AU5 | 端點要求角色但身分不符 → **403** | `AuthenticationMiddleware` |
 | AU6 | Discord 身分組 → 系統角色的對應由 `DiscordRoleMapping` 表管理 | `architecture.md §雙軌身分驗證` |
+| AU7 | 管理員 session 快取存 **Redis**（跨 pod 共享）→ 撤銷（登出／拔身分組／踢人）一次刪除**即在所有 pod 立即生效**；讀 miss 退回查 DB 自癒、Redis 掛則 fail-open | `RedisSessionCache`；`architecture.md §雙軌身分驗證` |
 
 ## 九、請求層防護（Idempotency / Rate limit / IP）
 
@@ -94,7 +95,7 @@
 |---|---|---|
 | G1 | POST/PUT/DELETE **必須帶合法 UUID** 的 `X-Idempotency-Key`（缺或非 UUID → 400） | `IdempotencyMiddleware` |
 | G2 | 同一 key **60 秒內**重送 → **409**（擋重複提交，非完整冪等：不重播原回應） | `IdempotencyMiddleware`；`architecture.md §重複提交防護` |
-| G3 | 登入後按 `discordId` 限流：**100 次 / 10 秒 / 人**（FixedWindow）；未登入不在此限 | `Program.cs` RateLimiter |
+| G3 | 登入後按 `discordId` 限流：**100 次 / 10 秒 / 人**（固定視窗，計數存 **Redis** 故**跨 pod 共用上限**；Redis 掛則 fail-open）；未登入不在此限 | `Program.cs` RateLimiter / `RedisFixedWindowRateLimiter` |
 | G4 | 真實 client IP 由前端 proxy 從 `cf-connecting-ip` 設定；後端只信**私有網段**送來的 `X-Forwarded-For`（防偽造） | `Program.cs` ForwardedHeaders；`route.ts` |
 
 ## 十、交易邊界（Transaction）
@@ -104,7 +105,7 @@
 | T1 | 一個 HTTP 請求 = 一個交易（Unit of Work）；所有 Repository 共用同一 scoped 連線/交易 | `UnitOfWorkMiddleware` / `DbContext` |
 | T2 | 寫入請求（POST/PUT/PATCH/DELETE）：status < 400 **Commit**，>= 400 或例外 **Rollback**（例外再往外拋） | `UnitOfWorkMiddleware` |
 | T3 | 讀取請求（GET 等）**不開交易** | `UnitOfWorkMiddleware` |
-| T4 | 登記的 commit 後副作用（`AfterCommit`）**只在 Commit 成功後執行、Rollback 丟棄** | `DbContext` |
+| T4 | 需要「Commit 後才生效」的副作用走 **outbox**：事件與業務資料同一交易寫入 → Commit 才可被派發、Rollback 一起丟棄（無鬼影事件）；投遞由 dispatcher 事後讀已提交列 | `Outbox` / `OutboxDispatcher` |
 
 ## 十一、角色（Character）
 
