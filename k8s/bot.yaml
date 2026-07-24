@@ -17,6 +17,9 @@ spec:
         - name: bot
           image: minqq/presentation:latest
           env:
+            # session 撤銷跨 pod 生效：bot 撤 session 刪的是共享 Redis 快取（見 Presentation/Program.cs）
+            - name: Redis__Configuration
+              value: redis:6379
             - name: ConnectionStrings__DefaultConnection
               valueFrom:
                 secretKeyRef:

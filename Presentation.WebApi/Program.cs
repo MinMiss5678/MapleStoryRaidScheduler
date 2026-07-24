@@ -72,6 +72,8 @@ var redisOptions = ConfigurationOptions.Parse(redisConfiguration);
 redisOptions.AbortOnConnectFail = false;
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
 builder.Services.AddSingleton<IIdempotencyStore, RedisIdempotencyStore>();
+// session 快取也走 Redis（跨 pod 共享）→ 登出／強制下線的撤銷一次刪除即在所有 pod 生效（取代 per-pod IMemoryCache）
+builder.Services.AddSingleton<ISessionCache, RedisSessionCache>();
 builder.Services.AddHttpClient();
 
 // 登入後「按身分」限流：以驗證過的 discordId（session/JWT，client 偽造不了）當 partition key，

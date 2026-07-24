@@ -128,13 +128,16 @@ services:
       context: ./Presentation
 #    image: minqq/presentation:latest
     container_name: bot
-#    depends_on:
+    depends_on:
 #      migrate:
 #        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     environment:
       - ConnectionStrings__DefaultConnectionFile=/run/secrets/db_connection
       - Discord:BotTokenFile=/run/secrets/discord_bot_token
       - App:AppUrl=https://maplestory.paralleluniversegame.uk
+      - Redis__Configuration=redis:6379
     secrets:
       - db_connection
       - discord_bot_token

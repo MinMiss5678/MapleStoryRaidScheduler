@@ -17,6 +17,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Presentation.Infrastructure.Discord.Handlers;
+using StackExchange.Redis;
 
 namespace Presentation;
 
@@ -98,6 +99,17 @@ public class Program
                      .AddEventHandlers<MemberRemovedHandler>());
 
                  services.AddMemoryCache();
+
+                 // Redis：session 快取跨 pod 共享。bot 的 MemberRemoved/Updated 撤 session 時，
+                 // 刪的是共享快取 → API pod 立即失效（否則 bot 只清自己 pod、API 還留舊 session 到 TTL）。
+                 // AbortOnConnectFail=false → Redis 掛不擋 bot 啟動；RedisSessionCache fail-open。
+                 var redisConfiguration = config["Redis:ConfigurationFile"] is { } redisFile && File.Exists(redisFile)
+                     ? File.ReadAllText(redisFile).Trim()
+                     : config["Redis:Configuration"] ?? "localhost:6379";
+                 var redisOptions = ConfigurationOptions.Parse(redisConfiguration);
+                 redisOptions.AbortOnConnectFail = false;
+                 services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
+                 services.AddSingleton<ISessionCache, RedisSessionCache>();
 
                  // 註冊自動執行的 Background Services
                  services.AddHostedService<DiscordBotService>();       // Discord 啟動管理
