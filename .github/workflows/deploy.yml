@@ -1,0 +1,106 @@
+name: Deploy
+
+# CD 到 prod：一律「人工點擊」（workflow_dispatch）。
+# 掛 production Environment → 可設 required reviewers（要人核准才跑）＋ 記錄 who/when 部署。
+# 等同把原 GitLab deploy job（build+push minqq/* → migrate → kustomize 滾動更新）搬過來。
+on:
+  workflow_dispatch:
+
+# 同時只跑一個部署，不取消進行中的（部署做一半被砍很危險）
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # 需先在 repo Settings → Environments 建 "production"（可加 required reviewers 當核准閘）。
+    # 只允許從 main 觸發（Environment 的 deployment branches 限 main，或靠此 if 擋）。
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # 推 minqq/*（k8s 從 Docker Hub 拉映像）
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 取短 SHA（不可變標籤 → 部署/回滾/追溯）
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      # build + push 4 個映像，雙標籤：不可變的 $short（部署/回滾）+ latest（首次部署方便）。
+      # backend/frontend 走 GitHub Actions 原生 layer 快取（type=gha）→ 比原 GitLab registry-cache 更簡單。
+      - name: build + push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Presentation.WebApi/Dockerfile
+          push: true
+          tags: |
+            minqq/presentation.webapi:${{ steps.sha.outputs.short }}
+            minqq/presentation.webapi:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: build + push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: web/Dockerfile
+          push: true
+          tags: |
+            minqq/frontend:${{ steps.sha.outputs.short }}
+            minqq/frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: build + push bot
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Presentation/Dockerfile
+          push: true
+          tags: |
+            minqq/presentation:${{ steps.sha.outputs.short }}
+            minqq/presentation:latest
+
+      - name: build + push migrate
+        uses: docker/build-push-action@v6
+        with:
+          context: ./db
+          file: db/Dockerfile.migrate
+          push: true
+          tags: |
+            minqq/migrate:${{ steps.sha.outputs.short }}
+            minqq/migrate:latest
+
+      - uses: azure/setup-kubectl@v4
+
+      # base64 過的 kubeconfig（`base64 -w0 ~/.kube/config`）→ 讓 runner 連得到叢集。
+      # runner 是 GitHub-hosted（公網）→ 需 K8s API 公網可達（現況 gitlab.com runner 已能連 = 可達）。
+      - name: 載入 kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+
+      # migration（Job spec immutable → 先刪舊 job；映像 pin 成本次 SHA → migrate 也可追溯）
+      - name: 跑 migration
+        run: |
+          kubectl delete job migrate -n maple-raid --ignore-not-found
+          sed "s#minqq/migrate:latest#minqq/migrate:${{ steps.sha.outputs.short }}#" k8s/migrate-job.yaml | kubectl apply -f -
+          kubectl wait --for=condition=complete job/migrate -n maple-raid --timeout=120s
+
+      # Kustomize 宣告式部署三個應用：images.newTag 換本次 SHA 再 apply -k（單一來源、無漂移）。
+      # readiness 綠才收舊 pod；SHA 不可變 → rollout undo 能真的退回上一版。
+      - name: 滾動部署
+        run: |
+          sed -i "s/newTag: latest/newTag: ${{ steps.sha.outputs.short }}/" k8s/kustomization.yaml
+          kubectl apply -k k8s
+          kubectl rollout status deployment/backend  -n maple-raid --timeout=180s
+          kubectl rollout status deployment/frontend -n maple-raid --timeout=180s
+          kubectl rollout status deployment/bot      -n maple-raid --timeout=180s
