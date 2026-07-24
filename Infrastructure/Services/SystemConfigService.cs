@@ -9,12 +9,12 @@ namespace Infrastructure.Services;
 public class SystemConfigService : ISystemConfigService
 {
     private readonly DbContext _dbContext;
-    private readonly ConfigChangeNotifier _notifier;
+    private readonly IOutbox _outbox;
 
-    public SystemConfigService(DbContext dbContext, ConfigChangeNotifier notifier)
+    public SystemConfigService(DbContext dbContext, IOutbox outbox)
     {
         _dbContext = dbContext;
-        _notifier = notifier;
+        _outbox = outbox;
     }
 
     public async Task<SystemConfig> GetAsync()
@@ -75,9 +75,10 @@ public class SystemConfigService : ISystemConfigService
             await repository.UpdateAsync(existing);
         }
 
-        // 設定變更事件改在「交易 Commit 成功後」才發：
-        // 否則會在 commit 前搶跑 → RegistrationDeadlineJob 被喚醒後以另一條連線重讀 DB，
-        // 讀到未提交的舊值、用舊值重算排程；且請求若 rollback，事件已白發。
-        _dbContext.AfterCommit(_notifier.Notify);
+        // 設定變更事件走 transactional outbox：把事件寫進「與本次 UPDATE 同一筆交易」的 outbox 列
+        //  → 與資料原子提交/回滾（rollback 就不會有鬼影事件）。
+        // 取代原本的 in-process AfterCommit：那個 (1) commit 後 crash 會遺失、(2) 跨不了行程
+        //  （設定在 API 改、喚醒的 job 在 bot）。outbox 由 bot 的 OutboxDispatcher 讀已提交列去投遞。
+        await _outbox.EnqueueAsync(OutboxEventType.ConfigChanged, config);
     }
 }

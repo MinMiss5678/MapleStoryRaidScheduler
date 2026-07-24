@@ -43,7 +43,7 @@ public class PostgresFixture : IAsyncLifetime
         await conn.ExecuteAsync("""
             TRUNCATE "TeamSlotCharacter","TeamSlot","CharacterRegister","PlayerAvailability",
                      "PlayerRegister","Character","Player","BossTemplateRequirement","BossTemplate",
-                     "Boss","Period","JobCategory","DiscordRoleMapping","Session","SystemConfig"
+                     "Boss","Period","JobCategory","DiscordRoleMapping","Session","SystemConfig","OutboxMessage"
             RESTART IDENTITY CASCADE;
             """);
     }

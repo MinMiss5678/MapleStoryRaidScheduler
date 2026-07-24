@@ -1,4 +1,4 @@
-﻿using Application.Events;
+using Application.Events;
 using Application.Interface;
 using Infrastructure.Dapper;
 using System.Data;
@@ -14,7 +14,7 @@ public class SystemConfigServiceTests
 {
     private readonly Mock<DbContext> _dbContextMock;
     private readonly Mock<IRepository<SystemConfigDbModel>> _repoMock;
-    private readonly ConfigChangeNotifier _notifier;
+    private readonly Mock<IOutbox> _outboxMock;
     private readonly SystemConfigService _service;
 
     public SystemConfigServiceTests()
@@ -23,8 +23,8 @@ public class SystemConfigServiceTests
         _dbContextMock = new Mock<DbContext>(conn);
         _repoMock = new Mock<IRepository<SystemConfigDbModel>>();
         _dbContextMock.Setup(u => u.Repository<SystemConfigDbModel>()).Returns(_repoMock.Object);
-        _notifier = new ConfigChangeNotifier();
-        _service = new SystemConfigService(_dbContextMock.Object, _notifier);
+        _outboxMock = new Mock<IOutbox>();
+        _service = new SystemConfigService(_dbContextMock.Object, _outboxMock.Object);
     }
 
     [Fact]
@@ -97,41 +97,17 @@ public class SystemConfigServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_設定變更事件_在Commit後才觸發()
+    public async Task UpdateAsync_發ConfigChanged事件到Outbox()
     {
         // Arrange
-        bool eventInvoked = false;
-        _notifier.OnChanged += () => eventInvoked = true;
-
-        _repoMock.Setup(r => r.GetAllAsync<SystemConfigDbModel>(null))
-            .ReturnsAsync(new List<SystemConfigDbModel>());
-
-        var config = new SystemConfig { DeadlineDayOfWeek = DayOfWeek.Wednesday };
-
-        // Act
-        await _service.UpdateAsync(config);
-
-        // Assert：commit 前不觸發（不對未提交狀態搶跑），Commit 後才觸發
-        Assert.False(eventInvoked);
-        await _dbContextMock.Object.CommitAsync();
-        Assert.True(eventInvoked);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_Rollback時_設定變更事件不觸發()
-    {
-        // Arrange
-        bool eventInvoked = false;
-        _notifier.OnChanged += () => eventInvoked = true;
-
         _repoMock.Setup(r => r.GetAllAsync<SystemConfigDbModel>(null))
             .ReturnsAsync(new List<SystemConfigDbModel>());
 
         // Act
         await _service.UpdateAsync(new SystemConfig { DeadlineDayOfWeek = DayOfWeek.Wednesday });
-        await _dbContextMock.Object.RollbackAsync();
 
-        // Assert：回滾 → 登記的事件被丟棄、不發
-        Assert.False(eventInvoked);
+        // Assert：設定變更寫成 outbox 事件（與 UPDATE 同一交易 → commit 才生效、rollback 丟棄，
+        // 那個原子性由整合測對真 DB 驗；此處單元只驗「有 enqueue、type 正確」）。
+        _outboxMock.Verify(o => o.EnqueueAsync(OutboxEventType.ConfigChanged, It.IsAny<object>()), Times.Once);
     }
 }
