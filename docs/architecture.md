@@ -22,6 +22,7 @@ graph TD
         Infrastructure["Infrastructure Layer\n(Dapper, Discord, Background Jobs)"] --> Domain
 
         Infrastructure --> DB[("PostgreSQL 18")]
+        Infrastructure --> Redis[("Redis\n(重複提交防護跨 pod 去重)")]
         Infrastructure --> DiscordBot["Discord Bot (DSharpPlus)"]
         Infrastructure --> Seq["Seq (結構化日誌)"]
     end
@@ -619,12 +620,14 @@ graph TD
         fe["frontend Deployment"]
         bot["bot Deployment"]
         db[("PostgreSQL<br/>Deployment + PVC")]
+        redis[("Redis<br/>Deployment（無 PVC）")]
         seq["Seq 日誌"]
         cf["cloudflared Tunnel"]
         sec{{"Secret（掛載 /run/secrets）"}}
     end
     cf --> fe --> be --> db
     bot --> db
+    be --> redis
     be --> seq
     bot --> seq
     mig -->|先於 backend 完成| db
