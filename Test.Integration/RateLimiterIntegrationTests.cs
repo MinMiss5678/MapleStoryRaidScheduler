@@ -1,9 +1,12 @@
 using System.Net;
+using System.Threading.RateLimiting;
 using Application.Interface;
 using Application.Options;
 using Domain.Entities;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -53,11 +56,27 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
             // 請求本來就到得了限流器（過限流的少數請求會在下游用到 DB 時才 500，已在限流器之後、無妨）。
             builder.ConfigureTestServices(services =>
             {
-                services.PostConfigure<RateLimitOptions>(o =>
+                // 這個 test 只驗「按身分限流 → 429、不同使用者獨立」的接線，刻意不依賴 Redis：
+                //   - Redis 版限流器本身 + 「跨連線＝跨 pod 共用計數」由 RedisRateLimiterIntegrationTests 專門驗。
+                //   - 這裡把 GlobalLimiter 覆寫成記憶體固定視窗 → 穩定、快；避免在 WebApplicationFactory 內接
+                //     Redis 容器（app 端連不到就 fail-open、反而測不到 429，且徒增 CI 成本）。
+                services.Configure<RateLimiterOptions>(o =>
                 {
-                    o.PermitLimit = TestPermitLimit; // 小上限 → 發遠超請求即穩定觸發 429
-                    o.WindowSeconds = 10;
+                    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+                    {
+                        var discordId = httpContext.User.FindFirst("discordId")?.Value;
+                        if (string.IsNullOrEmpty(discordId))
+                            return RateLimitPartition.GetNoLimiter("anonymous");
+                        return RateLimitPartition.GetFixedWindowLimiter(discordId, _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = TestPermitLimit, // 小上限 → 發遠超請求即穩定觸發 429
+                            Window = TimeSpan.FromSeconds(10),
+                            QueueLimit = 0
+                        });
+                    });
                 });
+
                 services.PostConfigure<JwtOptions>(o =>
                 {
                     // CreateToken 與 middleware ValidateToken 共用這組（鑄與驗一致、且是已知值）

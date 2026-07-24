@@ -194,7 +194,7 @@ IdempotencyMiddleware        ← 強制 X-Idempotency-Key（否則 400），重�
 AuthenticationMiddleware     ← 驗證 JWT（玩家）或 SessionId（管理員），設 discordId claim
   │
   ▼
-RateLimiter                  ← 登入後按 discordId 限流（100/10s/人）；放此處故被擋的請求不白開 DB 交易
+RateLimiter                  ← 登入後按 discordId 限流（100/10s/人，計數存 Redis 固定視窗故跨 pod 共用上限；Redis 掛則 fail-open 放行）；放此處故被擋的請求不白開 DB 交易
   │
   ▼
 UnitOfWorkMiddleware         ← 開啟 DB 事務，成功 Commit，例外 Rollback
