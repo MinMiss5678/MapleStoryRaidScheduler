@@ -25,6 +25,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AuthenticationMiddleware>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<DbContext>();
+        // outbox 寫入端：把設定變更事件寫進當前請求交易（與資料原子）。API 只寫、不派發。
+        services.AddScoped<IOutbox, Outbox>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ISessionService, SessionService>();
         services.AddScoped<IPlayerService, PlayerService>();

@@ -57,27 +57,17 @@ public class Program
                      services.AddDiscordClient(token, intents);
                  }
 
-                 // 資料庫與 Repository 註冊
+                 // 資料庫與 Repository 註冊。連線字串抽成區域變數 → OutboxDispatcher 也用同一份（自開專屬連線）。
                  var defaultConnectionFile = config["ConnectionStrings:DefaultConnectionFile"];
-                 if (!string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectionFile))
+                 var connectionString = !string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectionFile)
+                     ? File.ReadAllText(defaultConnectionFile).Trim()
+                     : config.GetConnectionString("DefaultConnection")!;
+                 services.AddSingleton<IDbConnection>(_ =>
                  {
-                     var defaultConnection = File.ReadAllText(defaultConnectionFile).Trim();
-                     services.AddSingleton<IDbConnection>(_ =>
-                     {
-                         var conn = new NpgsqlConnection(defaultConnection);
-                         conn.Open();
-                         return conn;
-                     });
-                 }
-                 else
-                 {
-                     services.AddSingleton<IDbConnection>(_ =>
-                     {
-                         var conn = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
-                         conn.Open();
-                         return conn;
-                     });
-                 }
+                     var conn = new NpgsqlConnection(connectionString);
+                     conn.Open();
+                     return conn;
+                 });
 
                  services.AddSingleton<IUnitOfWork, UnitOfWork>();
                  services.AddSingleton<DbContext>();
@@ -110,6 +100,16 @@ public class Program
                  redisOptions.AbortOnConnectFail = false;
                  services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
                  services.AddSingleton<ISessionCache, RedisSessionCache>();
+
+                 // Outbox：bot 是消費端。寫入端（IOutbox）給 SystemConfigService 用；
+                 // handler（ConfigChanged→喚醒 job）+ dispatcher 只在 bot（訂閱 notifier 的 job 在這）。
+                 // dispatcher 自開專屬連線（不共用 singleton IDbConnection，免與 Discord 事件/計時器互踩）。
+                 services.AddSingleton<IOutbox, Outbox>();
+                 services.AddSingleton<IOutboxHandler, ConfigChangedOutboxHandler>();
+                 services.AddHostedService(sp => new OutboxDispatcher(
+                     connectionString,
+                     sp.GetServices<IOutboxHandler>(),
+                     sp.GetRequiredService<ILogger<OutboxDispatcher>>()));
 
                  // 註冊自動執行的 Background Services
                  services.AddHostedService<DiscordBotService>();       // Discord 啟動管理
