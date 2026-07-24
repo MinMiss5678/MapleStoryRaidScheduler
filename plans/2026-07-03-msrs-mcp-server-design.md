@@ -23,7 +23,7 @@ Presentation.Mcp     → ★ 新增：MCP Server（給 AI Client）  ← 本設�
 - 少一個 HTTP hop、少一套序列化，直接注入 `ICharacterQuery`、`IScheduleService` 等既有介面。
 - 換句話說：**MCP tool = 對 Application 介面的一層薄包裝**，不重寫任何業務邏輯（DRY）。
 
-> 被面試問到時這就是加分點：「我沒有為 MCP 另寫一套邏輯，而是把它當成 Clean Architecture 的一個新 Presentation adapter，重用既有的 CQRS 介面。」
+> 設計要點：不為 MCP 另寫一套邏輯，而是把它當成 Clean Architecture 的一個新 Presentation adapter，重用既有的 CQRS 介面。
 
 ---
 
@@ -94,7 +94,7 @@ MCP 的 **Resource** 適合放「AI 需要當背景、但不常變」的資料�
 
 ---
 
-## 五、認證與安全邊界（★ 最關鍵，面試也最愛問）
+## 五、認證與安全邊界（★ 最關鍵）
 
 MSRS 有雙認證：**JWT（一般玩家）+ SessionId（管理員）**，加上 `IsManual` 保護與管理員限定操作。MCP **絕不能繞過這些**。
 
@@ -112,7 +112,7 @@ MSRS 有雙認證：**JWT（一般玩家）+ SessionId（管理員）**，加上
 3. **稽核 log**
    - 每個寫入 tool 呼叫寫一筆 log（誰、何時、什麼參數、影響筆數），方便事後追。
 
-> 面試說法：「MCP 讓 AI 能操作系統，等於開一個新的攻擊面。我的設計是預設唯讀、高危操作先 dry-run + 二次確認、全程稽核——把 AI agent 當成一個需要最小權限（least privilege）的使用者對待。」
+> 安全設計：MCP 讓 AI 能操作系統，等於開一個新的攻擊面。設計是預設唯讀、高危操作先 dry-run + 二次確認、全程稽核——把 AI agent 當成需要最小權限（least privilege）的使用者對待。
 
 ---
 

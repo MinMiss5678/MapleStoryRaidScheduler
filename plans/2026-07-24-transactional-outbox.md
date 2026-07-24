@@ -3,7 +3,7 @@
 > **狀態（2026-07-25）：已實作**。`OutboxMessage` 表 + `IOutbox`/`Outbox`（寫，共用 UoW 交易）+ `OutboxDispatcher`（`FOR UPDATE SKIP LOCKED`，跑 bot）+ `ConfigChangedOutboxHandler`；`SystemConfigService` 由 `AfterCommit` 改 outbox。單元 + 整合測（原子 / 投遞標記 / SKIP LOCKED / 無 handler 放棄）齊。
 >
 > 輕量 plan（動手前的 spec）：目標 / 範圍 / 決策 / 驗收 / 工時。做完可丟；穩定規則再收進 `docs/`。
-> 定位誠實：**這是面試材料 / readiness，不是救火**。現況 replicas=1、示範用的副作用是「可補的 Discord 通知」——但它同時修掉一個下面驗證出來的**跨行程真 gap**。
+> 定位誠實：**readiness，不是救火**。現況 replicas=1、示範用的副作用是「可補的 Discord 通知」——但它同時修掉一個下面驗證出來的**跨行程真 gap**。
 
 ## 目標
 
@@ -94,9 +94,3 @@ UPDATE outbox_message SET processed_at = now() WHERE id = $1;
 - 表 + migration + `IOutbox`/Dapper 寫入（共用交易）≈ 半天。
 - `OutboxDispatcher` + `SKIP LOCKED` 撈批 + `type→handler` 對映 + 註冊到 bot ≈ 半天~一天。
 - 整合測（原子 / crash 重送 / SKIP LOCKED 不相交 / 跨行程）≈ 半天。
-
-## 面試框（誠實）
-
-> 「我把設定變更通知從 in-process `AfterCommit` 升級成 **transactional outbox**。動機兩個，一個通用、一個是我專案的真 gap：(1) `AfterCommit` 存記憶體，commit 後崩就掉；(2) 更關鍵——設定在 **API** 改、要喚醒的 job 在 **bot**，in-process 事件跨不了行程，所以現況 API 改設定**根本不會即時通知 bot**，只能等 job 下次自然醒。outbox 把『要送什麼』寫進**同一筆交易**，dispatcher 讀**已提交**的列去送 → **crash-safe + 跨行程可靠**。多 pod 我用 Postgres 的 **`FOR UPDATE SKIP LOCKED`** 讓多個 dispatcher 分工不重送；投遞是 **at-least-once**，exactly-once 做不到就靠 **handler 冪等**（通知只是喚醒重讀、重送無害）兜。取捨：現況 replicas=1、副作用是可補的 Discord 訊息，所以這是 readiness/示範——但它順帶修掉那個跨行程的真 gap。」
-
-→ 展示：知道 outbox 解什麼（**原子 + 跨行程 + crash-safe**）、at-least-once/冪等的取捨、Postgres `SKIP LOCKED` 的多 worker 模式、以及**右尺寸的誠實判斷**（知道現在其實不需要、為何仍值得做）。

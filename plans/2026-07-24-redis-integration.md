@@ -5,7 +5,7 @@
 ## 目標
 
 補掉**多 pod 漏洞**：目前 idempotency de-dup 與限流都用**行程內記憶體（per-pod）**，多副本時各自為政 → 去重/限流跨不了 pod。Redis 提供**共享狀態**解掉這個。
-附帶：一個誠實的 Redis 實戰點（面試用）——「把 de-dup 從單機記憶體搬到 Redis 解多 pod」。
+附帶：把 de-dup 從單機記憶體搬到 Redis，解多副本各自為政。
 
 ## 範圍（分階段，右尺寸）
 
@@ -66,9 +66,3 @@
 
 - Phase 1 ≈ 一個週末（Redis infra + `IIdempotencyStore` 抽象 + Redis 實作 + 整合測 + compose/k8s）。
 - Phase 2 ≈ 另一塊（自訂/套件分散式 limiter + 測試）。
-
-## 面試框（誠實）
-
-> 「我把 idempotency de-dup 從 per-pod 的 `IMemoryCache` 搬到 Redis 的 `SET NX EX`——單機記憶體多副本各自為政、跨不了 pod。選 **fail-open**：Redis 掛就退化成沒 de-dup、放行記 log，不讓快取層抖動擋掉寫入；真正的重複由 DB 層 / advisory lock 守。限流我判斷 per-pod 只是上限變寬、非正確性問題，排後面。」
-
-→ 展示：知道為何要 Redis、知道 fail-open/closed 的取捨、知道哪些該做哪些 YAGNI。
