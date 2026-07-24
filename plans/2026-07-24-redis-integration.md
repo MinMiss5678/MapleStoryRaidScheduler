@@ -16,15 +16,23 @@
 - **契約不變**：缺 key/非 UUID → 400、同 key 60 秒內 → 409。
 - 抽 `IIdempotencyStore`（`Task<bool> TryMarkAsync(key, ttl)`）→ middleware 不直接綁 Redis：單元測 mock、整合測用真 Redis。
 
-### Phase 2（選配、之後——成本中、邊際價值低）
-**限流：per-pod → 分散式**
-- .NET 內建 RateLimiter 是**記憶體**的；跨 pod 要 Redis 後端（自訂 limiter 用 `INCR`+`EXPIRE`，或用 `RedisRateLimiting` 套件）。
-- 邊際價值低：per-pod 限流的實際效果只是「上限 ×N pod、較寬鬆」，**不是正確性 bug**。故排 Phase 2、可不做。
+### Phase 2 / 3（選配、之後——都不是「現在」的正確性 bug）
+
+**② 限流：per-pod → 分散式**
+- .NET 內建 RateLimiter 是**記憶體**的；跨 pod 要 Redis 後端（自訂 limiter 用 `INCR`+`EXPIRE`，或 `RedisRateLimiting` 套件）。
+- 邊際價值低：per-pod 限流的實際效果只是「上限 ×N pod、較寬鬆」，**不是正確性 bug**。
+
+**③ session 撤銷跨 pod 失效（★ 真 gap，Phase 1 漏了、後來才想清楚）**
+- `SessionService` 用 IMemoryCache 讀穿快取。**讀**沒問題（miss → 查 DB → 自癒）。但 `DeleteAsync` / `DeleteByDiscordAsync` **只清「當下 pod」的快取 + DB** → 其他 pod 的快取還留著已刪的 session，直到 TTL（session 到期）→ **登出 / 強制下線在多 pod 下不會立即在所有 pod 生效**。
+- 這跟 idempotency 同一類多 pod gap，對象換成 session 撤銷。修法：session cache 也搬 Redis（`Remove` 一次全 pod 生效），或 Redis pub/sub 廣播失效。
+- **為何暫緩**：只影響 admin session（低量）、失效窗口有 TTL 上界、只在「立即跨 pod 撤銷」才咬（罕見）；優先序低於「每筆寫入都受影響」的 idempotency。
 
 ### 非範圍（YAGNI，這次不碰）
-- `SessionService` 的記憶體讀快取（per-pod 只是各自 miss、不影響正確性）。
-- 一般分散式快取 / 把 admin session 搬 Redis（DB session 夠用）。
+- session **讀**快取的讀面（per-pod miss 自癒、不影響正確性）——僅「**撤銷**」面是 gap，見上方 Phase 3。
+- 一般分散式快取。
 - runtime **不碰 Dapper**（Redis 只進 middleware / infra 層）。
+
+> ⚠️ 修正紀錄：本 plan 初版把 session cache 整個列「非範圍／不影響正確性」——**不準**。讀面對，但**撤銷面是真多 pod gap**，已改列 Phase 3。
 
 ## 關鍵決策（動手前要拍板）
 
