@@ -181,20 +181,18 @@ Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL
 
 **決策原因**：設定變更（報名截止）後要喚醒背景 job 重算。原本用 `DbContext.AfterCommit`（in-process post-commit hook），有兩個問題：(1) commit 後、跑動作前 crash 會**遺失**；(2) 設定在 **API** 改、要喚醒的 `RegistrationDeadlineJob` 在 **bot**，in-process 事件**跨不了行程**（API 的 `ConfigChangeNotifier` 無訂閱者 = no-op）→ API 改設定不會即時通知 bot。
 
-**實作方式**：transactional outbox（`OutboxMessage` 表）+ **Redis Streams** 當 message queue（outbox 與消費解耦）。
+**實作方式**：改用 transactional outbox（`OutboxMessage` 表）。
 
 | 端 | 元件 | 做法 |
 |---|---|---|
 | 寫入 | `IOutbox` / `Outbox` | 用**當前 UoW 的交易** INSERT outbox 列 → 與業務資料**原子提交/回滾**（rollback 無鬼影事件） |
-| relay | `OutboxRelay`（跑 bot、自開專屬連線） | 輪詢已提交列 → **`XADD` 發布到 Redis Stream** → 標 `ProcessedAt`（發布成功才標） |
-| 消費 | `OutboxStreamConsumer`（跑 bot） | **consumer group** `XREADGROUP` → 依 `Type` 派 `IOutboxHandler` → **`XACK`** |
+| 派發 | `OutboxDispatcher`（跑 bot、自開專屬連線） | 輪詢已提交列 → 依 `Type` 派 `IOutboxHandler` → 標 `ProcessedAt` |
 
-- **relay 多 pod 分工**：outbox 讀取用 `FOR UPDATE SKIP LOCKED` → 多 relay 各撈不相交批、不重複發布。
-- **consumer 多 pod**：consumer group 競爭消費、各分不相交訊息；崩在 `XACK` 前的 pending 由 **`XAUTOCLAIM`** 逾時回收重投。
-- **端到端 at-least-once**：outbox「至少發布一次」+ consumer group ACK「至少處理一次」→ 靠 handler **冪等**（`ConfigChanged` 只是喚醒 job 重讀）吸收重複。
-- partial index（`WHERE "ProcessedAt" IS NULL`）撈取快。
+- **多 pod 分工**：`SELECT ... FOR UPDATE SKIP LOCKED` → 多個 dispatcher 各撈不相交批、互不重投、免選 leader。
+- **at-least-once + 冪等**：投遞成功、標 processed 前崩 → 重送；靠 handler 冪等（`ConfigChanged` 只是喚醒 job 重讀）吸收。
+- partial index（`WHERE "ProcessedAt" IS NULL`）撈取快；重試上限後放棄、記 `LastError`。
 
-> outbox 把「要送什麼」持久化進交易（防 dual-write）；MQ 管分發/push/fanout——**兩者組合非替代**（Transactional Outbox + Message Relay）。定位為 readiness（現況 replicas=1、副作用可補），但順帶修掉跨行程 gap。見 `plans/2026-07-25-message-queue.md`。
+> outbox 把「要送什麼」持久化進交易 → 解掉 AfterCommit 的 crash-loss 與跨行程限制。定位為 readiness（現況 replicas=1、副作用可補），但順帶修掉跨行程 gap。
 
 ---
 
