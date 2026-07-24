@@ -101,15 +101,20 @@ public class Program
                  services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
                  services.AddSingleton<ISessionCache, RedisSessionCache>();
 
-                 // Outbox：bot 是消費端。寫入端（IOutbox）給 SystemConfigService 用；
-                 // handler（ConfigChanged→喚醒 job）+ dispatcher 只在 bot（訂閱 notifier 的 job 在這）。
-                 // dispatcher 自開專屬連線（不共用 singleton IDbConnection，免與 Discord 事件/計時器互踩）。
+                 // Outbox → Redis Streams（MQ plan Phase 1）：outbox 與消費解耦。
+                 //   relay：outbox 列 → XADD 發布到 stream（自開專屬連線，不共用 singleton IDbConnection）。
+                 //   consumer：consumer group 消費 → 派 handler → ACK；崩在 ACK 前的 pending 由 XAUTOCLAIM 重投。
+                 // handler（ConfigChanged→喚醒 job）+ consumer 在 bot（訂閱 notifier 的 job 在這）。
                  services.AddSingleton<IOutbox, Outbox>();
                  services.AddSingleton<IOutboxHandler, ConfigChangedOutboxHandler>();
-                 services.AddHostedService(sp => new OutboxDispatcher(
+                 services.AddHostedService(sp => new OutboxRelay(
                      connectionString,
+                     sp.GetRequiredService<IConnectionMultiplexer>(),
+                     sp.GetRequiredService<ILogger<OutboxRelay>>()));
+                 services.AddHostedService(sp => new OutboxStreamConsumer(
+                     sp.GetRequiredService<IConnectionMultiplexer>(),
                      sp.GetServices<IOutboxHandler>(),
-                     sp.GetRequiredService<ILogger<OutboxDispatcher>>()));
+                     sp.GetRequiredService<ILogger<OutboxStreamConsumer>>()));
 
                  // 註冊自動執行的 Background Services
                  services.AddHostedService<DiscordBotService>();       // Discord 啟動管理
