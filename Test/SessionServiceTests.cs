@@ -13,20 +13,19 @@ public class SessionServiceTests
 {
     private readonly Mock<ISessionRepository> _sessionRepoMock = new();
     private readonly Mock<ISessionQuery> _sessionQueryMock = new();
-    private readonly Mock<IDiscordOAuthClient> _discordClientMock = new();
     private readonly FakeSessionCache _sessionCache = new();
     private readonly SessionService _sessionService;
 
     public SessionServiceTests()
     {
+        // 解耦後 SessionService 不再依賴 IDiscordOAuthClient（不再用 RefreshToken 續期）
         _sessionService = new SessionService(
             _sessionRepoMock.Object,
             _sessionQueryMock.Object,
-            _discordClientMock.Object,
             _sessionCache);
     }
 
-    // 以字典模擬 Redis 共享快取的行為（Get/Set/Remove），讓「命中快取不再查 DB」等測試成立。
+    // 以字典模擬 Redis 共享快取（Get/Set/Remove），讓「命中快取不再查 DB」等測試成立。
     private sealed class FakeSessionCache : ISessionCache
     {
         private readonly Dictionary<string, Session> _store = new();
@@ -46,6 +45,16 @@ public class SessionServiceTests
             return Task.CompletedTask;
         }
     }
+
+    private static Session ValidSession(ulong discordId) => new()
+    {
+        SessionId = "",
+        DiscordId = discordId,
+        AccessToken = "acc",
+        RefreshToken = "ref",
+        Expiry = DateTimeOffset.UtcNow.AddHours(1),
+        SessionExpiry = DateTimeOffset.UtcNow.AddDays(30) // session 有效（我的政策，與 Discord token 無關）
+    };
 
     [Fact]
     public async Task CreateAsync_CreatesSessionAndReturnsId()
@@ -70,16 +79,9 @@ public class SessionServiceTests
     }
 
     [Fact]
-    public async Task GetAsync_ValidSession_NotExpired_ReturnsSession()
+    public async Task GetAsync_ValidSession_ReturnsSession()
     {
-        var session = new Session
-        {
-            SessionId = "",
-            DiscordId = 456UL,
-            AccessToken = "valid-token",
-            RefreshToken = "ref",
-            Expiry = DateTimeOffset.UtcNow.AddHours(1) // 未過期
-        };
+        var session = ValidSession(456UL);
         _sessionQueryMock.Setup(q => q.GetAsync("sid-123")).ReturnsAsync(session);
 
         var result = await _sessionService.GetAsync("sid-123", "456");
@@ -91,69 +93,29 @@ public class SessionServiceTests
     [Fact]
     public async Task GetAsync_CachedSession_ReturnsCachedResult()
     {
-        var session = new Session
-        {
-            SessionId = "",
-            DiscordId = 789UL,
-            AccessToken = "cached-token",
-            RefreshToken = "ref",
-            Expiry = DateTimeOffset.UtcNow.AddHours(1)
-        };
+        var session = ValidSession(789UL);
         _sessionQueryMock.Setup(q => q.GetAsync("sid-cache")).ReturnsAsync(session);
 
-        // 第一次呼叫 - 從 DB
-        var result1 = await _sessionService.GetAsync("sid-cache", "789");
-        // 第二次呼叫 - 應從快取
-        var result2 = await _sessionService.GetAsync("sid-cache", "789");
+        var result1 = await _sessionService.GetAsync("sid-cache", "789"); // DB
+        var result2 = await _sessionService.GetAsync("sid-cache", "789"); // 快取
 
         Assert.NotNull(result1);
         Assert.NotNull(result2);
-        // 快取後第二次不再呼叫 DB
-        _sessionQueryMock.Verify(q => q.GetAsync("sid-cache"), Times.Once);
+        _sessionQueryMock.Verify(q => q.GetAsync("sid-cache"), Times.Once); // 命中快取不再查 DB
     }
 
     [Fact]
-    public async Task GetAsync_ExpiredSession_RefreshesToken_AndReturnsNewSession()
+    public async Task GetAsync_過SessionExpiry_回Null_且不刷新Discord()
     {
-        // 已過期 → 應以 RefreshToken 換新 token、更新 DB、回傳新 session
-        var expired = new Session
-        {
-            SessionId = "",
-            DiscordId = 555UL,
-            AccessToken = "old",
-            RefreshToken = "old-refresh",
-            Expiry = DateTimeOffset.UtcNow.AddMinutes(-5)
-        };
+        // 過了 SessionExpiry → 失效；不再打 Discord 續期（解耦後根本沒有 Discord 依賴）
+        var expired = ValidSession(555UL);
+        expired.SessionExpiry = DateTimeOffset.UtcNow.AddMinutes(-5);
         _sessionQueryMock.Setup(q => q.GetAsync("sid-exp")).ReturnsAsync(expired);
-        _discordClientMock.Setup(c => c.RefreshTokenAsync("old-refresh"))
-            .ReturnsAsync(new DiscordTokenResponse { AccessToken = "new", RefreshToken = "new-refresh", ExpiresIn = 3600 });
-        _sessionRepoMock.Setup(r => r.UpdateAsync(It.IsAny<Session>())).ReturnsAsync(1);
 
         var result = await _sessionService.GetAsync("sid-exp", "555");
 
-        Assert.NotNull(result);
-        Assert.Equal("new", result.AccessToken);
-        _sessionRepoMock.Verify(r => r.UpdateAsync(It.Is<Session>(s => s.AccessToken == "new")), Times.Once);
-    }
-
-    [Fact]
-    public async Task GetAsync_ExpiredSession_RefreshFails_ReturnsNull()
-    {
-        // 已過期但 refresh 失敗（回 null）→ 視為無效 session
-        var expired = new Session
-        {
-            SessionId = "",
-            DiscordId = 666UL,
-            AccessToken = "old",
-            RefreshToken = "bad",
-            Expiry = DateTimeOffset.UtcNow.AddMinutes(-5)
-        };
-        _sessionQueryMock.Setup(q => q.GetAsync("sid-exp2")).ReturnsAsync(expired);
-        _discordClientMock.Setup(c => c.RefreshTokenAsync("bad")).ReturnsAsync((DiscordTokenResponse?)null);
-
-        var result = await _sessionService.GetAsync("sid-exp2", "666");
-
         Assert.Null(result);
+        _sessionRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Session>()), Times.Never); // 不續期、不寫 DB
     }
 
     [Fact]

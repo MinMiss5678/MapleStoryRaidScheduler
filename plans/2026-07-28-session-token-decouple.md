@@ -1,5 +1,7 @@
 # Session 與 Discord Token TTL 解耦計畫
 
+> **狀態（2026-07-28）：Phase 1 已實作**。`Session`/`SessionDbModel` 加 `SessionExpiry`（migration 000005）；`SessionService.GetAsync` 改用 `SessionExpiry` 判有效、**移除 Discord 刷新與 `IDiscordOAuthClient` 依賴**；cache TTL = 短固定 15 分（不綁有效期）。單元測更新（過 SessionExpiry → null、不刷新）。
+>
 > 輕量 plan（動手前的 spec）：目標 / 範圍 / 決策 / 驗收 / 工時。做完可丟；穩定規則再收進 `docs/`。
 > **定位誠實**：現況能動，但這不只是 readiness——它移除一個**真實（低機率）的失敗耦合**（session 驗證依賴 Discord OAuth 端點）＋ 把 session 政策歸自己管。
 

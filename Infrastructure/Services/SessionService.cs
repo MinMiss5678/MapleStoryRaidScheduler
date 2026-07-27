@@ -7,16 +7,17 @@ namespace Infrastructure.Services;
 
 public class SessionService : ISessionService
 {
+    // 快取新鮮度：短固定 TTL（純加速 + 撤銷殘留上界），與 session 有效期無關。
+    private static readonly TimeSpan CacheFreshness = TimeSpan.FromMinutes(15);
+
     private readonly ISessionRepository _sessionRepository;
     private readonly ISessionQuery _sessionQuery;
-    private readonly IDiscordOAuthClient _discordClient;
     private readonly ISessionCache _sessionCache;
 
-    public SessionService(ISessionRepository sessionRepository, ISessionQuery sessionQuery, IDiscordOAuthClient discordClient, ISessionCache sessionCache)
+    public SessionService(ISessionRepository sessionRepository, ISessionQuery sessionQuery, ISessionCache sessionCache)
     {
         _sessionRepository = sessionRepository;
         _sessionQuery = sessionQuery;
-        _discordClient = discordClient;
         _sessionCache = sessionCache;
     }
 
@@ -34,42 +35,25 @@ public class SessionService : ISessionService
         // 快取存 Redis（跨 pod 共享）→ 撤銷一次刪除即在所有 pod 生效（見 ISessionCache）。
         var cached = await _sessionCache.GetAsync(discordId);
         if (cached != null)
-            return cached;
+            return IsValid(cached) ? cached : null;   // 命中也檢查有效性（不靠 cache TTL 當有效期）
 
         var session = await _sessionQuery.GetAsync(sessionId);
         if (session == null)
             return null;
 
-        // 快取 TTL 對應 AccessToken 過期
-        var ttl = session.Expiry - DateTimeOffset.UtcNow;
-        if (ttl <= TimeSpan.Zero)
-            ttl = TimeSpan.FromMinutes(1); // 避免負值
+        // session 有效性 = SessionExpiry（我的授權政策）。過期即失效——
+        // 不再用 Discord RefreshToken 續期（那把 auth 綁死第三方端點、且刷的是登入後沒用的 token）。
+        if (!IsValid(session))
+            return null;
 
-        // 已過期 → 用 RefreshToken 換新 token、更新 DB、回傳新 session
-        if (DateTimeOffset.UtcNow >= session.Expiry)
-        {
-            var newToken = await _discordClient.RefreshTokenAsync(session.RefreshToken);
-            if (newToken == null)
-                return null;
-
-            var newSession = new Session()
-            {
-                SessionId = session.SessionId,
-                DiscordId = session.DiscordId,
-                AccessToken = newToken.AccessToken,
-                RefreshToken = newToken.RefreshToken,
-                Expiry = DateTimeOffset.UtcNow.AddSeconds(newToken.ExpiresIn),
-            };
-
-            await _sessionRepository.UpdateAsync(newSession);
-            await _sessionCache.SetAsync(discordId, newSession, TimeSpan.FromSeconds(newToken.ExpiresIn));
-
-            return newSession;
-        }
-
+        // 快取 TTL = 短固定新鮮度，且不活過有效期（撤銷殘留上界 = 此短 TTL，非 session 有效期、更非 Discord 7 天）。
+        var remaining = session.SessionExpiry - DateTimeOffset.UtcNow;
+        var ttl = remaining < CacheFreshness ? remaining : CacheFreshness;
         await _sessionCache.SetAsync(discordId, session, ttl);
         return session;
     }
+
+    private static bool IsValid(Session session) => DateTimeOffset.UtcNow < session.SessionExpiry;
 
     public async Task<bool> DeleteAsync(string sessionId, string discordId)
     {

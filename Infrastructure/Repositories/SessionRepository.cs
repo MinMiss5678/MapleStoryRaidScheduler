@@ -8,6 +8,9 @@ namespace Infrastructure.Repositories;
 
 public class SessionRepository : ISessionRepository
 {
+    // session 有效期 = 我的授權政策（絕對過期），與 Discord token TTL 無關
+    private static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(30);
+
     private readonly DbContext _dbContext;
 
     public SessionRepository(DbContext dbContext)
@@ -23,7 +26,8 @@ public class SessionRepository : ISessionRepository
             DiscordId = (long)discordId,
             AccessToken = token.AccessToken,
             RefreshToken = token.RefreshToken,
-            Expiry = DateTime.UtcNow.AddSeconds(token.ExpiresIn)
+            Expiry = DateTime.UtcNow.AddSeconds(token.ExpiresIn),
+            SessionExpiry = DateTimeOffset.UtcNow.Add(SessionLifetime)
         });
     }
 

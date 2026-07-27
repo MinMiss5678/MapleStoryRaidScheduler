@@ -527,6 +527,7 @@ erDiagram
         string AccessToken
         string RefreshToken
         timestamptz Expiry
+        timestamptz SessionExpiry
     }
 
     SystemConfig {
