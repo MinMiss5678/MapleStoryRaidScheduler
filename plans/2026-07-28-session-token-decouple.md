@@ -18,9 +18,11 @@
 
 ### Phase 1：session 有自己的 expiry（核心）
 - `session` 表加 `SessionExpiry timestamptz`（= 我的政策，例：登入 + 30 天絕對過期）。
-- `SessionService.GetAsync` 改用 **`SessionExpiry` 判斷有效**；`now >= SessionExpiry` → session 失效（回 null），**不再打 Discord 刷新**。
-- Redis 快取 TTL 改綁 **`SessionExpiry - now`**（不再是 access token 壽命）。
+- `SessionService.GetAsync` 改用 **`SessionExpiry` 判斷有效**；**每次讀取（含 cache hit）**檢查 `now < SessionExpiry`，過期回 null，**不再打 Discord 刷新**。
+- Redis 快取 TTL = **短固定值（例 10~60 分）**——這是**快取新鮮度 + 撤銷殘留上界**，**不綁** `SessionExpiry`（session 有效性由上面的欄位檢查管）。保險：`ttl = min(freshnessTTL, SessionExpiry - now)`，快取不活過有效期。
 - 移除 `GetAsync` 裡的 `RefreshTokenAsync` 呼叫（那條 hot-path Discord 依賴）。
+
+> ⚠️ **cache TTL ≠ session 有效性**（兩個獨立概念，別綁）：session 活多久是 `SessionExpiry`（我的政策，例 30 天，讀取時檢查）；cache 副本活多久是短 TTL（純加速）。若把 cache TTL 設成 30 天 → 撤銷若遇 Redis 刪除失敗，殘留窗口變 30 天；短 TTL 把它壓到分鐘級。cache miss 便宜（查 DB、不打 Discord），短 TTL 代價低。
 
 ### Phase 2（選配）：token 當按需憑證
 - AccessToken/RefreshToken 欄位**保留**（未來可能有「代呼叫 Discord API」的功能）；但**只在真的要打 Discord 時才 on-demand 刷新**，不在 session 驗證時刷。
@@ -48,7 +50,7 @@
 - session 驗證**不再依賴 Discord OAuth 端點**（端點掛/慢不再拖垮續期）。
 - session 長度 = **我的政策**，不受 Discord `expires_in` 擺布。
 - 移除**無用的刷新呼叫**（刷沒人用的 token）。
-- 撤銷殘留（Redis 刪除失敗）的 TTL 上界 = **我的 `SessionExpiry`（可自訂）**，不再是 Discord 的 7 天。
+- 撤銷殘留（Redis 刪除失敗）的上界 = **短 cache TTL（分鐘級）**，不是 session 有效性、更不是 Discord 的 7 天。
 
 ## 資料庫
 - migration：加 `session."SessionExpiry" timestamptz NOT NULL`（現有列回填 = `Expiry` 或 `now + policy`）。
@@ -56,9 +58,9 @@
 - （選配）背景清理：刪 `"SessionExpiry" < now` 的陳舊列（現況 DB session 無自動清理）。
 
 ## 驗收
-- [ ] session 過期由 `SessionExpiry`（我的政策）決定，與 Discord token 無關。
+- [ ] session 過期由 `SessionExpiry`（我的政策）決定，**讀取時檢查（含 cache hit）**，與 Discord token 無關。
 - [ ] `GetAsync` **不再呼叫 `RefreshTokenAsync`**（Discord OAuth 端點停擺，session 驗證仍正常）。
-- [ ] Redis 快取 TTL = `SessionExpiry - now`。
+- [ ] Redis 快取 TTL = **短固定值（不綁 `SessionExpiry`）**；撤銷殘留上界 = 該短 TTL（分鐘級）。
 - [ ] 登入流程仍正常（access token 只在登入抓身分用）。
 - [ ] 撤銷仍即時（刪 DB + Redis）。
 - [ ] 測試更新：`SessionServiceTests` 的刷新分支改成「過 `SessionExpiry` → 回 null」。
