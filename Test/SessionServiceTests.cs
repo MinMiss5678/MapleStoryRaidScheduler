@@ -113,6 +113,35 @@ public class SessionServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_近到期_延展SessionExpiry並寫DB()
+    {
+        // 剩餘 5 天 < 門檻 15 天 → 活動時延展成 now + 30 天（節流 sliding 觸發）
+        var nearExpiry = ValidSession(456UL);
+        nearExpiry.SessionExpiry = DateTimeOffset.UtcNow.AddDays(5);
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-slide")).ReturnsAsync(nearExpiry);
+        _sessionRepoMock.Setup(r => r.ExtendAsync("sid-slide", It.IsAny<DateTimeOffset>())).ReturnsAsync(1);
+
+        var result = await _sessionService.GetAsync("sid-slide", "456");
+
+        Assert.NotNull(result);
+        Assert.True(result.SessionExpiry > DateTimeOffset.UtcNow.AddDays(20)); // 已延展
+        _sessionRepoMock.Verify(r => r.ExtendAsync("sid-slide", It.IsAny<DateTimeOffset>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAsync_離到期還遠_不延展()
+    {
+        // ValidSession 的 SessionExpiry = +30 天 > 門檻 → 純讀、不寫（節流：不打架讀穿快取）
+        var session = ValidSession(789UL);
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-noslide")).ReturnsAsync(session);
+
+        var result = await _sessionService.GetAsync("sid-noslide", "789");
+
+        Assert.NotNull(result);
+        _sessionRepoMock.Verify(r => r.ExtendAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>()), Times.Never);
+    }
+
+    [Fact]
     public async Task DeleteAsync_RemovesCacheAndDeletesFromRepo()
     {
         _sessionRepoMock.Setup(r => r.DeleteAsync("sid-del")).ReturnsAsync(true);

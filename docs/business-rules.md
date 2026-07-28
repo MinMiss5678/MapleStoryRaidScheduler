@@ -88,7 +88,7 @@
 | AU5 | 端點要求角色但身分不符 → **403** | `AuthenticationMiddleware` |
 | AU6 | Discord 身分組 → 系統角色的對應由 `DiscordRoleMapping` 表管理 | `architecture.md §雙軌身分驗證` |
 | AU7 | 管理員 session 快取存 **Redis**（跨 pod 共享）→ 撤銷（登出／拔身分組／踢人）一次刪除**即在所有 pod 立即生效**；讀 miss 退回查 DB 自癒、Redis 掛則 fail-open | `RedisSessionCache`；`architecture.md §雙軌身分驗證` |
-| AU8 | 管理員 session 有效期 = **`SessionExpiry`（自己的授權政策，30 天絕對過期）**，過期 → `GetAsync` 回 null → 403；**不再靠 Discord token 續期**（與第三方 token TTL 解耦，session 驗證不依賴 Discord 端點） | `SessionService`；`plans/2026-07-28-session-token-decouple.md` |
+| AU8 | 管理員 session 有效期 = **`SessionExpiry`（自己的授權政策，30 天）**，過期 → `GetAsync` 回 null → 403；**不靠 Discord token 續期**（與第三方 token TTL 解耦、驗證不依賴 Discord 端點）。活動時**節流 sliding**：剩餘 < 15 天（過半）才延展，避免每讀必寫 | `SessionService` / `SessionPolicy`；`plans/2026-07-28-session-token-decouple.md` |
 
 ## 九、請求層防護（Idempotency / Rate limit / IP）
 
