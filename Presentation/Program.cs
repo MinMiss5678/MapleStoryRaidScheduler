@@ -110,6 +110,9 @@ public class Program
                      connectionString,
                      sp.GetServices<IOutboxHandler>(),
                      sp.GetRequiredService<ILogger<OutboxDispatcher>>()));
+                 services.AddHostedService(sp => new OutboxRetentionJob(
+                     connectionString,
+                     sp.GetRequiredService<ILogger<OutboxRetentionJob>>()));
 
                  // 註冊自動執行的 Background Services
                  services.AddHostedService<DiscordBotService>();       // Discord 啟動管理
