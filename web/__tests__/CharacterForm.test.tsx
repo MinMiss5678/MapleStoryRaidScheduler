@@ -85,7 +85,7 @@ describe('CharacterForm', () => {
   });
 
   it('calls API and onSuccess when creating a character', async () => {
-    (global.fetch as any).mockResolvedValueOnce(
+    vi.mocked(global.fetch).mockResolvedValueOnce(
       jsonResponse({ id: 'NEW', name: 'Newbie', job: 'Hero', attackPower: 50 })
     );
 
@@ -121,7 +121,7 @@ describe('CharacterForm', () => {
       attackPower: 100
     };
 
-    (global.fetch as any).mockResolvedValueOnce(
+    vi.mocked(global.fetch).mockResolvedValueOnce(
       jsonResponse({ ...editingCharacter, name: 'Alice Updated' })
     );
 

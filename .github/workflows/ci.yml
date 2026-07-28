@@ -122,8 +122,12 @@ jobs:
           retention-days: 1
 
   # 前端元件/單元測試（Vitest + React Testing Library）：渲染 + 互動 + mock API，測行為。
-  # 另外跑 next build：驗證 TypeScript 型別自洽 + 建置得起來（ignoreBuildErrors 沒開，型別/ESLint
-  # 錯誤會讓 build 失敗）。Vitest 只轉譯不查型別，兩者職責不重疊，缺一個都有盲區。
+  # 另外跑 lint + build：
+  # - lint（裸 eslint，無 files 限制）：涵蓋 next build 內建 ESLint 掃不到的地方
+  #   （next build 預設只查 app/components/lib/src，e2e/**/*.spec.ts、vitest.config.ts 等不含在內）。
+  # - build：驗證 TypeScript 型別自洽（tsconfig 含 e2e/，範圍比 lint 的 app 限定還廣）+ 建置得起來
+  #   （ignoreBuildErrors 沒開，型別/ESLint 錯誤會讓 build 失敗）。
+  # 三者互不重疊：Vitest 只轉譯不查型別、lint 不驗行為、build 不驗行為也不管 e2e 的 lint 規則。
   frontend-test:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -136,6 +140,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+        working-directory: web
+      - run: npm run lint
         working-directory: web
       - run: npm run test:run
         working-directory: web
