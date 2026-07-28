@@ -55,6 +55,8 @@ public class TeamSlotMergeService : ITeamSlotMergeService
 
         var boss = (await _bossRepository.GetAllAsync()).FirstOrDefault(x => x.Id == bossId);
         int requireMembers = boss?.RequireMembers ?? 6;
+        foreach (var ts in incompleteTeams)
+            ts.Capacity = requireMembers;
 
         var jobCategories = (await _jobCategoryRepository.GetAllAsync())
             .GroupBy(x => x.CategoryName)
@@ -242,36 +244,14 @@ public class TeamSlotMergeService : ITeamSlotMergeService
 
     private async Task PerformMerge(TeamSlot teamA, TeamSlot teamB, List<TeamSlotCharacter>? mergedCharacters, DateTimeOffset newDateTime)
     {
-        teamA.SlotDateTime = newDateTime;
         if (mergedCharacters != null)
         {
-            teamA.Characters = mergedCharacters;
-            foreach (var c in teamA.Characters) c.TeamSlotId = teamA.Id;
+            teamA.SetRoster(mergedCharacters, newDateTime);
         }
         else
         {
-            // 無範本合併，直接將 B 的成員搬入 A 的空位或新增
-            var membersB = teamB.Characters.Where(c => c.CharacterId != null).ToList();
-            foreach (var mb in membersB)
-            {
-                var emptySlot = teamA.Characters.FirstOrDefault(c => c.CharacterId == null);
-                if (emptySlot != null)
-                {
-                    emptySlot.DiscordId = mb.DiscordId;
-                    emptySlot.DiscordName = mb.DiscordName;
-                    emptySlot.CharacterId = mb.CharacterId;
-                    emptySlot.CharacterName = mb.CharacterName;
-                    emptySlot.Job = mb.Job;
-                    emptySlot.AttackPower = mb.AttackPower;
-                    emptySlot.Rounds = mb.Rounds;
-                    emptySlot.IsManual = mb.IsManual;
-                }
-                else
-                {
-                    mb.TeamSlotId = teamA.Id;
-                    teamA.Characters.Add(mb);
-                }
-            }
+            var membersB = teamB.Characters.Where(c => c.CharacterId != null);
+            teamA.AbsorbMembers(membersB, newDateTime);
         }
 
         await _teamSlotRepository.UpdateAsync(teamA);
