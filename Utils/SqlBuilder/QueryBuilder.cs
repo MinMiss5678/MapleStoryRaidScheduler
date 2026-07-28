@@ -35,6 +35,13 @@ public class QueryBuilder
         return this;
     }
 
+    /// <summary>插入無法用一般欄位表達式表達的原生 SELECT 片段（例如 Postgres 系統欄位 xmin）。</summary>
+    public QueryBuilder SelectRaw(string sql)
+    {
+        _selects.Add(sql);
+        return this;
+    }
+
     public QueryBuilder From<TFrom>()
     {
         _from = GetTableName(typeof(TFrom));

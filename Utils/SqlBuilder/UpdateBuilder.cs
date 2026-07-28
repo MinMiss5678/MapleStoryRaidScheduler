@@ -1,4 +1,5 @@
 ﻿using System.Linq.Expressions;
+using Dapper;
 
 namespace Utils.SqlBuilder;
 
@@ -17,6 +18,15 @@ public class UpdateBuilder<T> : SqlCommandBuilder<T>
         var visitor = new SqlExpressionVisitor(null, _parameters);
         var condition = visitor.Translate(expr);
         _wheres.Add(condition);
+        return this;
+    }
+
+    /// <summary>加一段無法用一般欄位表達式表達的原生 WHERE 條件（例如樂觀鎖的 xmin 版本比對）。</summary>
+    public UpdateBuilder<T> WhereRaw(string sql, object? parameters = null)
+    {
+        _wheres.Add(sql);
+        if (parameters != null)
+            _parameters.AddDynamicParams(parameters);
         return this;
     }
 
