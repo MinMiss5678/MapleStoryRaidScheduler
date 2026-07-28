@@ -5,7 +5,7 @@ import AdminRaidTeamCard from "./components/AdminRaidTeamCard";
 import {useLoading} from "@/app/providers/LoadingContext";
 import {TeamSlot, TeamSlotCharacter, Boss, BossTemplate} from "@/types/raid";
 import {useRaidValidation} from "@/hooks/useRaidValidation";
-import {Calendar, Plus, BrainCircuit, Save} from "lucide-react";
+import {Calendar, Plus, BrainCircuit, Save, AlertTriangle} from "lucide-react";
 import toast from "react-hot-toast";
 import { bossService } from "@/services/bossService";
 import { scheduleService } from "@/services/scheduleService";
@@ -18,6 +18,7 @@ export default function RaidSchedulerPage() {
     const [selectedTemplate, setSelectedTemplate] = useState<number>(0);
     const [teamSlots, setTeamSlots] = useState<TeamSlot[]>([]);
     const [deleteTeamSlotIds, setDeleteTeamSlotIds] = useState<number[]>([]);
+    const [conflictedTeamSlotIds, setConflictedTeamSlotIds] = useState<number[]>([]);
     const [originalTeamSlots, setOriginalTeamSlots] = useState<string>(""); // 用於檢索是否有變更
     const { setLoading } = useLoading();
     const { validateAddCharacter } = useRaidValidation();
@@ -46,6 +47,7 @@ export default function RaidSchedulerPage() {
                     setOriginalTeamSlots(JSON.stringify(data));
                     return allSlots;
                 });
+                setConflictedTeamSlotIds([]); // 換王重新載入，之前的衝突提示不再適用
             } catch {
                 toast.error("無法取得隊伍列表");
             }
@@ -126,18 +128,30 @@ export default function RaidSchedulerPage() {
         setLoading(true);
 
         try {
-            await scheduleService.saveSchedule(selectedBoss.id, teamSlots, deleteTeamSlotIds);
-            const raw = await scheduleService.getTeamSlots(selectedBoss.id);
-            toast.success("排團已儲存！");
+            // 回應已經同時帶最新 teamSlots，不用再額外呼叫 getTeamSlots 重抓一次
+            const result = await scheduleService.saveSchedule(selectedBoss.id, teamSlots, deleteTeamSlotIds);
             setDeleteTeamSlotIds([]);
-            const refreshed = raw.map(t => ({ ...t, deleteTeamSlotCharacterIds: t.deleteTeamSlotCharacterIds ?? [] }));
+            const refreshed = result.teamSlots.map(t => ({ ...t, deleteTeamSlotCharacterIds: t.deleteTeamSlotCharacterIds ?? [] }));
             setTeamSlots(refreshed);
             setOriginalTeamSlots(JSON.stringify(refreshed));
+            setConflictedTeamSlotIds(result.conflictedTeamSlotIds);
+
+            if (result.conflictedTeamSlotIds.length > 0) {
+                toast.error(`排團已儲存，但 ${result.conflictedTeamSlotIds.length} 隊因被異動或消失而略過，請查看標紅的隊伍`);
+            } else {
+                toast.success("排團已儲存！");
+            }
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "儲存失敗");
         } finally {
             setLoading(false);
         }
+    };
+
+    const scrollToFirstConflict = () => {
+        const firstId = conflictedTeamSlotIds[0];
+        if (firstId === undefined) return;
+        document.getElementById(`team-slot-${firstId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     };
 
     const onTeamSlotUpdate = (updatedTeamSlot: TeamSlot) => {
@@ -315,17 +329,28 @@ export default function RaidSchedulerPage() {
                                 共 {teamSlots.length} 個隊伍
                             </span>
                         </div>
+                        {conflictedTeamSlotIds.length > 0 && (
+                            <button
+                                onClick={scrollToFirstConflict}
+                                className="w-full mb-6 flex items-center gap-2 px-4 py-3 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors text-sm font-medium"
+                            >
+                                <AlertTriangle size={18} />
+                                {conflictedTeamSlotIds.length} 隊有衝突，點此查看
+                            </button>
+                        )}
                         <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6 mb-24">
                             {teamSlots.map((teamSlot) => (
-                                <AdminRaidTeamCard
-                                    key={teamSlot.id}
-                                    bossId={selectedBoss.id}
-                                    teamSlot={teamSlot}
-                                    onTeamSlotUpdate={onTeamSlotUpdate}
-                                    onTeamSlotDelete={onTeamSlotDelete}
-                                    onAddCharacter={onAddCharacter}
-                                    requireMembers={selectedBoss.requireMembers}
-                                />
+                                <div key={teamSlot.id} id={`team-slot-${teamSlot.id}`}>
+                                    <AdminRaidTeamCard
+                                        bossId={selectedBoss.id}
+                                        teamSlot={teamSlot}
+                                        onTeamSlotUpdate={onTeamSlotUpdate}
+                                        onTeamSlotDelete={onTeamSlotDelete}
+                                        onAddCharacter={onAddCharacter}
+                                        requireMembers={selectedBoss.requireMembers}
+                                        isConflicted={conflictedTeamSlotIds.includes(teamSlot.id)}
+                                    />
+                                </div>
                             ))}
                         </div>
                     </>
