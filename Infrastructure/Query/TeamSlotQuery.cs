@@ -36,6 +36,7 @@ public class TeamSlotQuery : ITeamSlotQuery
                 x.DiscordName,
                 x.Rounds
             }, "b")
+            .SelectRaw("b.xmin::text AS \"Version\"")
             .Select<BossDbModel>(x => new
             {
                 BossName = x.Name
@@ -75,6 +76,7 @@ public class TeamSlotQuery : ITeamSlotQuery
                 x.DiscordName,
                 x.Rounds
             }, "b")
+            .SelectRaw("b.xmin::text AS \"Version\"")
             .Select<BossDbModel>(x => new
             {
                 BossName = x.Name
@@ -114,6 +116,7 @@ public class TeamSlotQuery : ITeamSlotQuery
                 x.DiscordName,
                 x.Rounds
             }, "b")
+            .SelectRaw("b.xmin::text AS \"Version\"")
             .Select<BossDbModel>(x => new
             {
                 BossName = x.Name

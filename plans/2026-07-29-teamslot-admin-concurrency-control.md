@@ -33,8 +33,8 @@ sql.Set(x => x.DiscordId, ...).Set(x => x.DiscordName, ...)... .Where(x => x.Id 
 - 鎖跟著 UoW 交易走，request 結束自動釋放，不需額外處理。
 - 這個鎖同時擋住「容量競爭」跟「清團連帶撞 FK」兩種問題——因為鎖序列化後，後進來的請求重新 `GetByIdAsync` 讀到的一定是最新真相（若隊伍已被砍，會落到 Phase B 的「隊伍消失」分支，而不是撞 FK）。
 
-### Phase B：樂觀鎖 + 統一衝突回報 — 對應問題 2 與問題 3
-- `TeamSlotCharacter` 的版本比對用 Postgres 系統欄位 **`xmin`**（不用額外 migration，讀取時一併回傳，`UPDATE` 的 `WHERE` 帶上 `xmin = @clientVersion`，影響 0 筆 = 版本衝突）。
+### Phase B：樂觀鎖 + 統一衝突回報 — 對應問題 2 與問題 3（已完成）
+- `TeamSlotCharacter` 的版本比對用 Postgres 系統欄位 **`xmin`**（不用額外 migration，讀取時一併回傳，`UPDATE` 的 `WHERE` 帶上 `xmin = @clientVersion::xid`，影響 0 筆 = 版本衝突）。
 - **`originalTeam == null`（隊伍消失）與 `xmin` 版本衝突（列被動過），統一收進同一份 `ConflictedTeamSlotIds` 清單**，不中斷其他隊的處理、不丟例外炸掉整個 request：
 ```csharp
 var conflicts = new List<int>();
@@ -47,18 +47,28 @@ foreach (var teamSlot in teamSlotUpdateRequest.TeamSlots)
 }
 return new TeamSlotUpdateResult { ConflictedTeamSlotIds = conflicts };
 ```
-- **回應只回傳失敗的 `teamSlotId` 清單，不內嵌最新資料**——理由：專案已有 CQRS-lite 讀寫分離慣例（寫走 Service、讀走獨立 Query 介面），write service 若還要組一份查詢用的 DTO，等於在 write 端重複一份 read 端的邏輯，兩處以後要各自維護。取捨是前端多一次網路來回（低頻操作、代價可接受）。
 
-### Phase C：前端接住衝突清單
-- 收到 `ConflictedTeamSlotIds` 後，呼叫既有的 `getTeamSlots(bossId)` 重抓現況（複用現有 API，不用新端點）。
-- **只換掉衝突清單裡那幾張卡片**，其餘維持管理員畫面上的樣子不動——不用整個王重來、不用追蹤隊員被分到哪個新隊伍（identity 已經消失就是消失，不強行復原）。
+> ⚠️ **修訂（實作後才發現的兩個技術現實，寫回這裡）**：
+> 1. **`xmin` 沒辦法直接套進現有 `QueryBuilder`**：既有的 `Select<T>(x => new {...})` 靠 C# 屬性名稱反射組欄位、一律加雙引號（`a."DiscordId"`）；`xmin` 是 Postgres 系統欄位、原生小寫，加雙引號的識別字大小寫敏感會對不起來，也沒有 `SelectRaw` 這種逃生艙。解法：`QueryBuilder` 加 `SelectRaw(sql)`、`UpdateBuilder<T>` 加 `WhereRaw(sql, parameters)`（比照 `DeleteBuilder<T>` 既有的 `WhereRaw` 模式），供這類原生系統欄位/表達式使用。
+> 2. **原先「回應只回傳 Id 清單、不內嵌最新資料」的決策，讀了 `TeamSlotController` 才發現前提是錯的**：`PUT /api/teamSlot` **本來就在每次存檔後重新 `GetByBossIdAsync` 回傳整包最新資料**（不是我方案設計的新行為，是既有慣例）。既然如此，`ConflictedTeamSlotIds` 直接跟這份既有的 `teamSlots` 包在同一個回應即可，**前端不需要額外重抓**——比原計畫設計得更簡單，Phase C 也因此不用寫「收到衝突才重抓」的邏輯。
+
+**驗證重點**：mock 單元測只驗得到「service 邏輯有沒有把衝突塞進清單」，驗不到 `xmin::text`/`@version::xid` 這段原生 SQL 轉型與比對本身是否正確——這條事實只有整合測試打真 Postgres 能釘住（`TeamSlotCharacterOptimisticLockIntegrationTests`：正確版本更新成功、過時版本被擋下且資料沒被覆寫）。
+
+### Phase C：前端接住衝突清單（待做，範圍已因上述修訂而縮小）
+- `PUT /api/teamSlot` 的回應已經同時帶 `conflictedTeamSlotIds` 跟最新 `teamSlots`（後端已完成，見上）——前端**不需要額外呼叫**，直接用同一個回應裡的資料判斷哪幾張卡要提示。
+- **只標示衝突清單裡那幾張卡片**，其餘維持管理員畫面上的樣子不動——不用整個王重來、不用追蹤隊員被分到哪個新隊伍（identity 已經消失就是消失，不強行復原）。
 - 提示文案：「此隊已被異動或消失，已略過此處編輯，已顯示最新資料，請重新確認」。
+
+**UI 呈現方式（★ 決策：顏色標記 + 原地不動，不重新排序）**：
+- **卡片原地標色**（邊框顏色 + icon + 卡片內文字），**不把衝突的隊伍移到列表最上面**。理由：存檔本來就會整包重抓最新資料重繪一次畫面，若再疊加排序位移，管理員會經歷兩次視覺跳動；而且排序位移會打亂管理員原本靠位置記憶隊伍（「這隊在第 3 個」）的心智模型，一次存檔牽涉多隊時尤其明顯。
+- **改用「頂部摘要橫幅 + 捲動跳轉」達成快速定位的效果**：頁面最上方顯示「N 隊有衝突，點此查看」，點擊後**捲動視窗到第一張衝突卡片**（不改變卡片在列表中的實際位置）。同樣解決「衝突卡片可能在很多隊裡不好找」的問題，但不犧牲排序穩定性。
 
 ## 非範圍（YAGNI/邊界對，這次不做）
 
 - **不做欄位級樂觀鎖 UI 提示**（如「A 改的地方標黃色」）：admin UI 本來就沒有欄位可編輯，沒有意義。
 - **不追蹤「隊員被分到哪個新隊伍」**：身分延續性追蹤（merge/自動排團砍掉重灌後）是另一個量級的工程，超出這次範圍，讓管理員肉眼重新判斷即可。
 - **不改前端「新增/移除」以外的既有成員編輯 UI**：目前唯讀顯示是刻意設計，這次不擴充可編輯欄位。
+- **不特別標示「沒衝突，但因為別人操作而跟你剛才看到的不一樣」的其他隊伍**（★ 討論過，刻意劃線）：`PUT /api/teamSlot` 存檔後重抓的是**整個王目前全部隊伍**，可能包含這次請求根本沒碰過的隊伍被別的管理員/流程動過。`ConflictedTeamSlotIds` 只標記「這次請求自己嘗試修改、但失敗」的隊伍——**其餘隊伍即使內容跟管理員存檔前看到的不同，也不算衝突，不特別提示**。理由：`conflicts` 機制要防的是「管理員自己的操作意圖被無聲吃掉」；管理員根本沒打算動的隊伍，資料變了只是誠實反映當下真相，沒有「意圖被吃掉」這回事，不需要額外機制。要做「這隊雖然沒編輯但也變了」的全面偵測，得對整份 `teamSlots` 逐隊 diff 存檔前後快照，這是另一個更大範圍的「外部變動感知」功能，超出這次範圍。
 
 ## 關鍵決策
 
@@ -83,15 +93,21 @@ Postgres 系統欄位天生就是給這個用途，省一次 schema 變更。
 - [ ] 悲觀鎖：併發「移除最後一人（觸發清團）」與「新增成員」→ 不再出現原生 FK violation，落到「隊伍消失」分支走統一衝突回報。（需 Phase B 的 `originalTeam == null` 統一回報機制才能完整驗證，Phase A 只確保鎖本身正確）
 
 **Phase A 完成。**
-- [ ] 樂觀鎖：merge 填空位後，admin 拿舊快照存檔 → 該隊被列入 `ConflictedTeamSlotIds`，merge 的結果不被覆寫。
-- [ ] `originalTeam == null` → 列入 `ConflictedTeamSlotIds`，不丟例外中斷其他隊、不再有「靜默成功」的假訊息。
-- [ ] 前端：收到衝突清單 → 重抓 `getTeamSlots(bossId)` → 只更新受影響卡片，其餘畫面不變。
-- [ ] 既有的 285 個單元測試 + 26 個整合測試維持綠燈；新增涵蓋上述四個情境的測試（樂觀鎖建議整合測試打真 Postgres 驗證 `xmin` 行為，mock 測不出來）。
+
+- [x] 樂觀鎖：`TeamSlotCharacterRepository.UpdateAsync` 改用 `xmin` 版本比對，`affected == 0` 回傳 `false`。整合測試 `TeamSlotCharacterOptimisticLockIntegrationTests`（真 Postgres）驗證：正確版本更新成功、過時版本被擋下且資料沒被覆寫。
+- [x] `originalTeam == null` → 列入 `ConflictedTeamSlotIds`，不丟例外中斷其他隊、不再有「靜默成功」的假訊息（`UpdateAsync_ShouldSkip_WhenTeamSlotNotFound` 改為斷言衝突清單）。
+- [x] `QueryBuilder.SelectRaw` / `UpdateBuilder<T>.WhereRaw(sql, params)`：擴充共用 SqlBuilder 支援原生欄位/條件（xmin 這類系統欄位無法用一般 Expression 投影）。
+- [x] `TeamSlotCharacterDto`/`TeamSlotMemberDto`/`TeamSlotCharacter`（Domain）都加上 `Version`，讀取路徑（`TeamSlotQuery` 三個方法）補 `xmin::text AS "Version"`。
+- [x] `ITeamSlotService.UpdateAsync`/`ITeamSlotCharacterRepository.UpdateAsync` 回傳型別分別改為 `Task<TeamSlotUpdateResult>`/`Task<bool>`；`TeamSlotController` 回應同時帶 `conflictedTeamSlotIds` 與既有的 `teamSlots`（本來就有的重抓邏輯，不是新增行為）。
+- [x] 287 個單元測試（含新增的版本衝突/隊伍消失情境測試）+ 29 個整合測試全綠、`dotnet format --verify-no-changes` 乾淨。
+- [ ] 前端：讀取衝突清單 → 標示受影響卡片、提示重新確認（Phase C，範圍已縮小，見上方修訂）。
+
+**Phase B（後端）完成。**
 
 ## 工時估
 - Phase A（悲觀鎖）≈ 半天，仿 auto-assign 既有作法，風險低。
-- Phase B（樂觀鎖 + 統一衝突回報）≈ 一天，含 `TeamSlotCharacterRepository` 的版本比對 UPDATE、回傳型別變更、既有呼叫端（player 補位）要一併確認相容。
-- Phase C（前端）≈ 半天，新增衝突處理 + 重抓邏輯。
+- Phase B（樂觀鎖 + 統一衝突回報，後端）實際花費 ≈ 一天，比預估多：多花在解 `xmin` 跟既有 `QueryBuilder` 的欄位命名慣例衝突（需擴充 `SelectRaw`/`WhereRaw`），以及確認既有 mock 測試因回傳型別改變（`Task` → `Task<bool>`）產生的隱性「意外過關」要一併修成明確斷言。
+- Phase C（前端）≈ 半小時~1 小時（比原估更小，因為不用寫「收到衝突才重抓」的邏輯，回應已經帶著最新資料）。
 
 ## 附：為什麼這三個問題值得一起處理，而不是各自零散修
 

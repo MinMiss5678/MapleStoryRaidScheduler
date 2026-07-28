@@ -71,14 +71,19 @@ public class TeamSlotService : ITeamSlotService
                         Job = x.Job,
                         AttackPower = x.AttackPower,
                         Rounds = x.Rounds,
-                        TeamSlotId = x.TeamSlotId
+                        TeamSlotId = x.TeamSlotId,
+                        Version = x.Version
                     }).ToList()
             })
             .ToList();
     }
 
-    public async Task UpdateAsync(TeamSlotUpdateRequest teamSlotUpdateRequest, bool isAdmin, ulong currentDiscordId)
+    public async Task<TeamSlotUpdateResult> UpdateAsync(TeamSlotUpdateRequest teamSlotUpdateRequest, bool isAdmin, ulong currentDiscordId)
     {
+        // 統一衝突回報：隊伍消失（merge/自動排團砍掉重灌）或樂觀鎖版本衝突都塞進這份清單，
+        // 不中斷其他隊伍的處理——未列在清單裡的隊伍皆已成功存檔。
+        var conflicts = new List<int>();
+
         if (teamSlotUpdateRequest.DeleteTeamSlotIds.Any())
         {
             if (!isAdmin)
@@ -125,7 +130,11 @@ public class TeamSlotService : ITeamSlotService
             await _registrationLock.AcquireTeamSlotEditLockAsync(teamSlot.Id);
 
             var originalTeam = await _teamSlotRepository.GetByIdAsync(teamSlot.Id);
-            if (originalTeam == null) continue;
+            if (originalTeam == null)
+            {
+                conflicts.Add(teamSlot.Id);
+                continue;
+            }
 
             // 不變式需要 Capacity 才守得住（見 TeamSlot.HasRoom/AddMember）
             originalTeam.Capacity = bossesById.TryGetValue(originalTeam.BossId, out var boss) ? boss.RequireMembers : 6;
@@ -182,10 +191,14 @@ public class TeamSlotService : ITeamSlotService
                             throw new UnauthorizedAccessException("填補空位時，必須填入自己的角色。");
                     }
 
-                    await _teamSlotCharacterRepository.UpdateAsync(MapToEntity(member));
+                    var updated = await _teamSlotCharacterRepository.UpdateAsync(MapToEntity(member));
+                    if (!updated)
+                        conflicts.Add(teamSlot.Id);
                 }
             }
         }
+
+        return new TeamSlotUpdateResult { ConflictedTeamSlotIds = conflicts.Distinct().ToList() };
     }
 
     private static TeamSlotCharacter MapToEntity(TeamSlotMemberDto dto) => new()
@@ -200,6 +213,7 @@ public class TeamSlotService : ITeamSlotService
         AttackPower = dto.AttackPower,
         Level = dto.Level,
         Rounds = dto.Rounds,
-        IsManual = dto.IsManual
+        IsManual = dto.IsManual,
+        Version = dto.Version
     };
 }

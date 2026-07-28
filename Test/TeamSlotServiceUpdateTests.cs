@@ -152,8 +152,10 @@ public class TeamSlotServiceUpdateTests
             }
         };
 
-        // Act & Assert (no exception)
-        await _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 0);
+        // Act：不中斷、不丟例外，改標記進衝突清單
+        var result = await _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 0);
+
+        Assert.Contains(99, result.ConflictedTeamSlotIds);
     }
 
     [Fact]
@@ -276,8 +278,9 @@ public class TeamSlotServiceUpdateTests
             Characters = new List<TeamSlotCharacter> { existingChar }
         };
         _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
+        _teamSlotCharacterRepositoryMock.Setup(r => r.UpdateAsync(It.IsAny<TeamSlotCharacter>())).ReturnsAsync(true);
 
-        var updatedChar = new TeamSlotMemberDto { Id = charSlotId, DiscordId = discordId, CharacterId = "c1-updated" };
+        var updatedChar = new TeamSlotMemberDto { Id = charSlotId, DiscordId = discordId, CharacterId = "c1-updated", Version = "v1" };
         var request = new TeamSlotUpdateRequest
         {
             DeleteTeamSlotIds = new List<int>(),
@@ -294,10 +297,45 @@ public class TeamSlotServiceUpdateTests
         };
 
         // Act
-        await _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 0);
+        var result = await _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 0);
 
         // Assert
-        _teamSlotCharacterRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<TeamSlotCharacter>()), Times.Once);
+        _teamSlotCharacterRepositoryMock.Verify(r => r.UpdateAsync(It.Is<TeamSlotCharacter>(c => c.Version == "v1")), Times.Once);
+        Assert.Empty(result.ConflictedTeamSlotIds);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldReportConflict_WhenOptimisticLockVersionMismatch()
+    {
+        // 樂觀鎖：其他流程（如 merge 填空位）在期間動過這列，xmin 對不上 → repository 回 false
+        // → 標記進衝突清單，不丟例外中斷、不覆寫掉別人的變更
+        int teamSlotId = 1;
+        int? charSlotId = 5;
+        ulong discordId = 12345;
+
+        var existingChar = new TeamSlotCharacter { Id = charSlotId, DiscordId = discordId, DiscordName = "", Job = "", CharacterId = "c1" };
+        var existingTeamSlot = new TeamSlot { Id = teamSlotId, Characters = new List<TeamSlotCharacter> { existingChar } };
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
+        _teamSlotCharacterRepositoryMock.Setup(r => r.UpdateAsync(It.IsAny<TeamSlotCharacter>())).ReturnsAsync(false);
+
+        var staleChar = new TeamSlotMemberDto { Id = charSlotId, DiscordId = discordId, CharacterId = "c1", Version = "stale-version" };
+        var request = new TeamSlotUpdateRequest
+        {
+            DeleteTeamSlotIds = new List<int>(),
+            TeamSlots = new List<TeamSlotUpdateCommand>
+            {
+                new TeamSlotUpdateCommand
+                {
+                    Id = teamSlotId,
+                    DeleteTeamSlotCharacterIds = new List<int>(),
+                    Characters = new List<TeamSlotMemberDto> { staleChar }
+                }
+            }
+        };
+
+        var result = await _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 0);
+
+        Assert.Contains(teamSlotId, result.ConflictedTeamSlotIds);
     }
 
     [Fact]

@@ -99,7 +99,7 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         await _dbContext.ExecuteAsync(deleteEmptySlots);
     }
 
-    public async Task UpdateAsync(TeamSlotCharacter teamSlotCharacter)
+    public async Task<bool> UpdateAsync(TeamSlotCharacter teamSlotCharacter)
     {
         var sql = new UpdateBuilder<TeamSlotCharacterDbModel>();
         sql.Set(x => x.DiscordId, (long)teamSlotCharacter.DiscordId)
@@ -110,8 +110,11 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
             .Set(x => x.AttackPower, teamSlotCharacter.AttackPower)
             .Set(x => x.Rounds, teamSlotCharacter.Rounds)
             .Set(x => x.IsManual, teamSlotCharacter.IsManual)
-            .Where(x => x.Id == teamSlotCharacter.Id);
+            .Where(x => x.Id == teamSlotCharacter.Id)
+            // 樂觀鎖：xmin 對不上代表這列這期間被別的流程動過（0 筆受影響）
+            .WhereRaw("xmin = @version::xid", new { version = teamSlotCharacter.Version });
 
-        await _dbContext.ExecuteAsync(sql);
+        var affected = await _dbContext.ExecuteAsync(sql);
+        return affected > 0;
     }
 }

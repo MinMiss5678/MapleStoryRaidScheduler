@@ -39,9 +39,9 @@ public class TeamSlotController : ControllerBase
             return Unauthorized(new { error = "NotAuthenticated" });
 
         var isAdmin = User.IsInRole("admin");
-        await _teamSlotService.UpdateAsync(teamSlotUpdateRequest, isAdmin, discordId);
+        var result = await _teamSlotService.UpdateAsync(teamSlotUpdateRequest, isAdmin, discordId);
         var teamSlots = await _teamSlotService.GetByBossIdAsync(teamSlotUpdateRequest.BossId);
 
-        return Ok(teamSlots);
+        return Ok(new { conflictedTeamSlotIds = result.ConflictedTeamSlotIds, teamSlots });
     }
 }

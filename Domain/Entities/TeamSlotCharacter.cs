@@ -13,4 +13,7 @@ public class TeamSlotCharacter
     public int Level { get; set; }
     public int Rounds { get; set; }
     public bool IsManual { get; set; } // 是否為玩家手動補位或管理員手動微調，排團邏輯不應覆蓋
+
+    /// <summary>樂觀鎖版本（Postgres xmin，轉字串）。更新時比對，對不上代表這期間被別的流程動過。</summary>
+    public string? Version { get; set; }
 }

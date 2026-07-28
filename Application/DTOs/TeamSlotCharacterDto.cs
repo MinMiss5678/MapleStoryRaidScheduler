@@ -14,4 +14,5 @@ public class TeamSlotCharacterDto
     public required string Job { get; set; }
     public int AttackPower { get; set; }
     public int Rounds { get; set; }
+    public string? Version { get; set; }
 }
