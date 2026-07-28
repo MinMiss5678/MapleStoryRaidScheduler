@@ -50,24 +50,30 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
         var characters = await _characterQuery.GetByDiscordIdAsync(register.DiscordId);
         var player = await _playerRepository.GetAsync(register.DiscordId);
 
+        // 載入各王容量一次，填到每個 TeamSlot 上——聚合的 HasRoom/AddMember 不變式靠 Capacity 才守得住。
+        var bosses = (await _bossRepository.GetAllAsync()).ToList();
+        int CapacityOf(int bossId) => bosses.FirstOrDefault(b => b.Id == bossId)?.RequireMembers ?? 6;
+        foreach (var ts in teamSlots)
+            ts.Capacity = CapacityOf(ts.BossId);
+
         foreach (var cr in register.CharacterRegisters)
         {
             var character = characters.FirstOrDefault(x => x.Id == cr.CharacterId);
             if (character == null || IsAlreadyAssigned(teamSlots, character.Id))
                 continue;
 
-            var matchingTeam = await FindMatchingTeam(teamSlots, cr.BossId, register, period);
+            var matchingTeam = FindMatchingTeam(teamSlots, cr.BossId, register, period);
 
             if (matchingTeam != null)
             {
                 var newMember = new TeamSlotCharacter { TeamSlotId = matchingTeam.Id, DiscordName = "", Job = "" };
                 FillSlot(newMember, register, character, cr, player);
+                matchingTeam.AddMember(newMember);   // 聚合守不變式（不超員/不重複）再持久化
                 await _teamSlotCharacterRepository.CreateAsync(newMember);
-                matchingTeam.Characters.Add(newMember);
             }
             else if (register.Availabilities.Any())
             {
-                var newTeam = await CreateNewTeamAsync(register, cr, character, player, period);
+                var newTeam = await CreateNewTeamAsync(register, cr, character, player, period, CapacityOf(cr.BossId));
                 teamSlots.Add(newTeam);
             }
         }
@@ -77,23 +83,18 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
 
     private static bool IsAlreadyAssigned(List<TeamSlot> teamSlots, string characterId)
     {
-        return teamSlots.Any(ts =>
-            ts.Characters.Any(c => c.CharacterId == characterId));
+        return teamSlots.Any(ts => ts.Contains(characterId));
     }
 
-    private async Task<TeamSlot?> FindMatchingTeam(
+    private static TeamSlot? FindMatchingTeam(
         List<TeamSlot> teamSlots,
         int bossId,
         Register register,
         Period period)
     {
-        var bosses = await _bossRepository.GetAllAsync();
-        var boss = bosses.ToList().FirstOrDefault(x => x.Id == bossId);
-        int requireMembers = boss?.RequireMembers ?? 6;
-
         return teamSlots
             .Where(ts => ts.BossId == bossId)
-            .Where(ts => ts.Characters.Count(c => c.CharacterId != null) < requireMembers)
+            .Where(ts => ts.HasRoom)
             .FirstOrDefault(ts =>
             {
                 var twTime = ts.SlotDateTime.ToOffset(TimeSpan.FromHours(8));
@@ -128,7 +129,8 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
         CharacterRegister cr,
         Character character,
         Player? player,
-        Period period)
+        Period period,
+        int capacity)
     {
         var targetAvail = SlotDateCalculator.GetBestAvailability(register, period);
         var targetDateTime = SlotDateCalculator.GetNextSlotDate(targetAvail, period);
@@ -138,6 +140,7 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
             BossId = cr.BossId,
             SlotDateTime = new DateTimeOffset(targetDateTime, TimeSpan.FromHours(8)).ToOffset(TimeSpan.Zero),
             Source = TeamSlotSource.Auto,   // 玩家報名觸發的系統自動隊
+            Capacity = capacity,
         };
 
         var teamSlotId = await _teamSlotRepository.CreateAsync(teamSlot);
