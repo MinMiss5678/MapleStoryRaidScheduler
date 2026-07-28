@@ -119,6 +119,43 @@ Discord 身分組 → 系統角色的對應由 `DiscordRoleMapping` 表管理，
 
 **Session 快取（跨 pod 撤銷）**：管理員 session 讀取走快取，存 **Redis**（`ISessionCache` / `RedisSessionCache`）而非 per-pod `IMemoryCache`——所以 `DeleteAsync` / `DeleteByDiscordAsync` 撤銷（登出、拔身分組、踢人）**一次刪除即在所有 pod 立即生效**，不再是「只清當下 pod、其他 pod 等 TTL」。**讀**穿快取 miss 退回查 DB 自癒；Redis 不可用時 fail-open（退回查 DB，DB 為真實來源）。
 
+> 上面「OAuth2 認證流程」那張圖只到**登入當下**（拿到 SessionId/JWT 為止；`SessionService.CreateAsync` 只寫 DB，不碰快取）。下圖補的是**登入之後、每次帶 SessionId 打 API** 的驗證流程，含跨行程撤銷——這段是 cache-aside + 跨行程失效，純文字條列比較難一眼看出時序，用圖比較清楚：
+
+```mermaid
+sequenceDiagram
+    participant Admin as 管理員瀏覽器
+    participant MW as AuthenticationMiddleware（API 行程）
+    participant Cache as Redis（session:{discordId}）
+    participant DB as Postgres（session 表，真實來源）
+    participant Bot as Bot（另一個獨立行程）
+    participant Discord as Discord Gateway
+
+    Note over Admin,DB: 正常請求：cache-aside，miss 才退回查 DB
+    Admin->>MW: 帶 SessionId 打 API
+    MW->>Cache: GetAsync(discordId)
+    alt cache 命中且未過期
+        Cache-->>MW: Session
+    else cache miss（或 Redis 不可用，fail-open 當 miss）
+        MW->>DB: 查 session 表
+        DB-->>MW: Session（查無 → 403 + 清 cookie）
+        MW->>Cache: SetAsync(discordId, session, 短 TTL)
+    end
+    Note over MW: 剩餘效期 < 門檻才 sliding 延展（寫 DB + 回填 cache）；純讀命中不寫，不會每讀必寫
+    MW-->>Admin: 通過驗證，放行
+
+    Note over Bot,Cache: 跨行程撤銷：bot 收到角色異動，API 行程的 cache 立即失效
+    Discord->>Bot: MemberUpdated / MemberRemoved（拔身分組、踢人）
+    Bot->>DB: DeleteByDiscordAsync：刪 session 表
+    Bot->>Cache: RemoveAsync(discordId)：刪共享 key（跟 API 是同一個 Redis，不是 bot 自己的副本）
+
+    Admin->>MW: 下一次請求（還帶著舊 SessionId）
+    MW->>Cache: GetAsync(discordId)
+    Cache-->>MW: miss（已被 bot 刪除）
+    MW->>DB: 查 session 表
+    DB-->>MW: null（已被 bot 刪除）
+    MW-->>Admin: 403（session 查無）+ 清 cookie
+```
+
 ### 5. 重複提交防護（非完整冪等）
 
 **決策原因**：前端連點或網路重送可能造成重複寫入（如重複報名、重複補位）。
