@@ -66,9 +66,7 @@ public class TestAuthController : ControllerBase
 
         if (request.Role == "admin")
         {
-            // session 用假 DiscordToken（E2E 不會觸發 refresh）
-            var sessionId = await _authService.CreateSessionAsync(request.DiscordId,
-                new DiscordToken { AccessToken = "e2e", RefreshToken = "e2e", ExpiresIn = 3600 });
+            var sessionId = await _authService.CreateSessionAsync(request.DiscordId);
             Response.Cookies.Append($"sessionId{request.DiscordId}", sessionId, cookieOptions);
             Response.Cookies.Append("discordId", request.DiscordId.ToString(), cookieOptions);
         }

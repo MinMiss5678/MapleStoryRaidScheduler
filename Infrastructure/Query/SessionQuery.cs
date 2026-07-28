@@ -21,8 +21,7 @@ public class SessionQuery : ISessionQuery
         sql.Select<SessionDbModel>(x => new
         {
             x.DiscordId,
-            x.RefreshToken,
-            x.Expiry
+            x.SessionExpiry
         })
             .From<SessionDbModel>()
             .Where<SessionDbModel>(x => x.SessionId == sessionId);

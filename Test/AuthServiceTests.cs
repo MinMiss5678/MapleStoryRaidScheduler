@@ -28,7 +28,7 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task ExchangeCodeAsync_ReturnsUserAndToken()
+    public async Task ExchangeCodeAsync_ReturnsUser()
     {
         _discordClientMock.Setup(c => c.ExchangeCodeAsync("code123"))
             .ReturnsAsync(new DiscordTokenResponse
@@ -40,20 +40,18 @@ public class AuthServiceTests
         _discordClientMock.Setup(c => c.GetUserAsync("access"))
             .ReturnsAsync(new DiscordUserDto { Id = 111, Username = "TestUser" });
 
-        var (user, token) = await _authService.ExchangeCodeAsync("code123");
+        var user = await _authService.ExchangeCodeAsync("code123");
 
         Assert.Equal(111UL, user.Id);
         Assert.Equal("TestUser", user.Name);
-        Assert.Equal("access", token.AccessToken);
     }
 
     [Fact]
     public async Task CreateSessionAsync_DelegatesToSessionService()
     {
-        var discordToken = new DiscordToken { AccessToken = "token", RefreshToken = "refresh", ExpiresIn = 3600 };
-        _sessionServiceMock.Setup(s => s.CreateAsync(123UL, discordToken)).ReturnsAsync("session-id-abc");
+        _sessionServiceMock.Setup(s => s.CreateAsync(123UL)).ReturnsAsync("session-id-abc");
 
-        var result = await _authService.CreateSessionAsync(123UL, discordToken);
+        var result = await _authService.CreateSessionAsync(123UL);
 
         Assert.Equal("session-id-abc", result);
     }

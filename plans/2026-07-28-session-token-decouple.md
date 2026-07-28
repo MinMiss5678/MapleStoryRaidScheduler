@@ -1,5 +1,10 @@
 # Session 與 Discord Token TTL 解耦計畫
 
+> **狀態（2026-07-28）：Phase 1 + Phase 2 已實作**。
+> - Phase 1：加 `SessionExpiry`（migration 000005）；`GetAsync` 改用 `SessionExpiry` 判有效、**移除 Discord 刷新與 `IDiscordOAuthClient` 依賴**；cache TTL = 短固定 15 分（不綁有效期）。
+> - Phase 2：**移除死 token**——`AccessToken`/`RefreshToken`/`Expiry` 欄位（migration 000006）、`CreateAsync`/`CreateSessionAsync`/`ExchangeCodeAsync` 的 `DiscordToken` 參數與回傳、死 `UpdateAsync`、死型別 `DiscordToken` 全數清除。登入/角色不受影響（登入用記憶體 token 抓身分、角色走 bot token）。
+> - Phase 3：**節流 sliding**——活動延展 `SessionExpiry`，但**只在剩餘 < 門檻（15 天，過半）才寫**（`ISessionRepository.ExtendAsync`），避免「每讀必寫」打架讀穿快取。政策集中於 `SessionPolicy`（Lifetime 30d / SlideThreshold 15d / CacheFreshness 15m）。
+>
 > 輕量 plan（動手前的 spec）：目標 / 範圍 / 決策 / 驗收 / 工時。做完可丟；穩定規則再收進 `docs/`。
 > **定位誠實**：現況能動，但這不只是 readiness——它移除一個**真實（低機率）的失敗耦合**（session 驗證依賴 Discord OAuth 端點）＋ 把 session 政策歸自己管。
 
@@ -24,12 +29,17 @@
 
 > ⚠️ **cache TTL ≠ session 有效性**（兩個獨立概念，別綁）：session 活多久是 `SessionExpiry`（我的政策，例 30 天，讀取時檢查）；cache 副本活多久是短 TTL（純加速）。若把 cache TTL 設成 30 天 → 撤銷若遇 Redis 刪除失敗，殘留窗口變 30 天；短 TTL 把它壓到分鐘級。cache miss 便宜（查 DB、不打 Discord），短 TTL 代價低。
 
-### Phase 2（選配）：token 當按需憑證
-- AccessToken/RefreshToken 欄位**保留**（未來可能有「代呼叫 Discord API」的功能）；但**只在真的要打 Discord 時才 on-demand 刷新**，不在 session 驗證時刷。
-- 現況沒有這種功能 → 可先完全不刷。
+### Phase 2：移除死 token（已改為「拿掉」，非原本的「保留備用」）
+- 驗證確認：`AccessToken`/`RefreshToken`（及 `Expiry`）登入後**完全沒有消費者**（登入的身分抓取用記憶體裡的 OAuth token、角色走 bot token、授權走 session/JWT）。
+- 存**用不到的明文 OAuth 憑證** = 安全負擔（DB + Redis 快取皆明文）→ **移除**，而非保留。真要「代呼叫 Discord API」再加、且加密。
+- 範圍：`Session`/`SessionDbModel` 刪三欄（migration 000006 `DROP COLUMN`）；`CreateAsync`/`CreateSessionAsync`/`ExchangeCodeAsync` 拿掉 `DiscordToken` 參數/回傳；刪死 `UpdateAsync` 與死型別 `DiscordToken`。
+- 附帶好處：SaaS 計畫修正 #3「token 加密須涵蓋 Redis」的顧慮**直接消失**（沒 token 可加密）。
 
-### Phase 3（選配）：sliding expiry
-- 每次活動延展 `SessionExpiry`（滑動視窗）→ UX 更好，但**每次讀要寫**（更新 expiry）→ 跟讀穿快取衝突，要評估寫入成本。v1 先絕對過期。
+### Phase 3：sliding expiry（節流版，已實作）
+- 問題：每次活動延展 `SessionExpiry` → **每次讀要寫** → 打架讀穿快取（讀賭「不寫」）。
+- 解：**節流**——只在**剩餘 < `SlideThreshold`（15 天，過半）**時才延展（`SessionService.TrySlideAsync` → `ISessionRepository.ExtendAsync`），並重設快取。絕大多數請求剩餘還多 → 純快取命中讀、不寫。
+- 呼應：ASP.NET Core cookie sliding 也是「過半才重發」，同一節流原則。
+- cookie 與 server 有效期現在一致（都是活動延展）。
 
 ### 非範圍（YAGNI）
 - 不做 refresh token rotation / 進階 OAuth 安全（現況 token 沒用）。

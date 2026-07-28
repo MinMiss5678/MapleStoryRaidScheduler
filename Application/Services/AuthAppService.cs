@@ -23,7 +23,7 @@ public class AuthAppService : IAuthAppService
 
     public async Task<LoginResult> LoginAsync(string code)
     {
-        var (user, token) = await _authService.ExchangeCodeAsync(code);
+        var user = await _authService.ExchangeCodeAsync(code);
         var existingPlayer = await _playerService.GetAsync(user.Id);
         var roles = await _discordOAuthClient.GetUserRolesAsync(user.Id);
 
@@ -61,7 +61,7 @@ public class AuthAppService : IAuthAppService
 
         if (role == "admin")
         {
-            var sessionId = await _authService.CreateSessionAsync(user.Id, token);
+            var sessionId = await _authService.CreateSessionAsync(user.Id);
             return new LoginResult
             {
                 IsSuccess = true,
