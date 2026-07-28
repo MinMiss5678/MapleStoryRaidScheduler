@@ -18,9 +18,30 @@ env:
   NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
 
 jobs:
+  # 純文件變更（docs/plans/根目錄 *.md）不用跑重量級 CI。下面每個 job 用
+  # if: needs.changes.outputs.code == 'true' 條件跳過（不是在 on: 用 paths-ignore）：
+  # paths-ignore 會讓 workflow 整個不觸發，required status checks 永遠等不到回報、PR 卡死；
+  # 用 if 條件讓 job 本身跑但標記 skipped——GitHub 把 skipped 視為通過，required checks 照樣滿足。
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # push 事件比對 before SHA 需要至少 2 層歷史
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '!(docs/**|plans/**|**/*.md)'
+
   # Roslyn 靜態格式檢查（dotnet format）：未依 .editorconfig 格式化就擋 PR。
   # 本機修法：dotnet format（不帶 --verify-no-changes 即自動改）。
   format:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +58,8 @@ jobs:
 
   # 整個 solution 編得過（含 Presentation，測試專案未必涵蓋）
   build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +76,8 @@ jobs:
 
   # 純邏輯，不需要 Docker；收覆蓋率給 coverage job 合併
   unit-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +100,8 @@ jobs:
   # 打真 Postgres + Redis（Testcontainers）。ubuntu runner 內建 Docker daemon →
   # Testcontainers 直接用 host docker，免掉原 GitLab 的 dind / TLS / TESTCONTAINERS_HOST_OVERRIDE 那整套。
   integration-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +123,8 @@ jobs:
 
   # 前端元件/單元測試（Vitest + React Testing Library）：渲染 + 互動 + mock API，測行為。
   frontend-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -111,8 +140,9 @@ jobs:
 
   # 合併 unit + integration 兩份覆蓋率 → 一份總報告（聯集，不重複計）
   coverage:
+    needs: [changes, unit-test, integration-test]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    needs: [unit-test, integration-test]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -145,6 +175,8 @@ jobs:
   # E2E（Playwright 打全 stack：db + redis + backend + frontend）。ubuntu runner 有 docker + compose v2，
   # 直接 compose build/up（預設 image tag e2e/*）→ 免掉原 GitLab 的 dind + buildx registry-cache context 那套。
   e2e:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
