@@ -13,17 +13,20 @@ public class TeamSlotService : ITeamSlotService
     private readonly ITeamSlotCharacterRepository _teamSlotCharacterRepository;
     private readonly IPeriodQuery _periodQuery;
     private readonly IBossRepository _bossRepository;
+    private readonly IRegistrationLock _registrationLock;
 
     public TeamSlotService(ITeamSlotRepository teamSlotRepository, ITeamSlotQuery teamSlotQuery,
         ITeamSlotCharacterRepository teamSlotCharacterRepository,
         IPeriodQuery periodQuery,
-        IBossRepository bossRepository)
+        IBossRepository bossRepository,
+        IRegistrationLock registrationLock)
     {
         _teamSlotRepository = teamSlotRepository;
         _teamSlotQuery = teamSlotQuery;
         _teamSlotCharacterRepository = teamSlotCharacterRepository;
         _periodQuery = periodQuery;
         _bossRepository = bossRepository;
+        _registrationLock = registrationLock;
     }
 
     public async Task<IEnumerable<TeamSlotDto>> GetByBossIdAsync(int bossId)
@@ -117,6 +120,9 @@ public class TeamSlotService : ITeamSlotService
 
                 continue;
             }
+
+            // 序列化同一隊伍的併發編輯（容量檢查 + 清團連帶都靠這把鎖擋住 TOCTOU race）。
+            await _registrationLock.AcquireTeamSlotEditLockAsync(teamSlot.Id);
 
             var originalTeam = await _teamSlotRepository.GetByIdAsync(teamSlot.Id);
             if (originalTeam == null) continue;
