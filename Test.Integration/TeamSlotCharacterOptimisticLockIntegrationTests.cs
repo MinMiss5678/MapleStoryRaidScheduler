@@ -76,4 +76,43 @@ public class TeamSlotCharacterOptimisticLockIntegrationTests
             """SELECT "Job" FROM "TeamSlotCharacter" WHERE "Id" = @id""", new { id = characterRowId });
         Assert.Equal("Warrior", job);
     }
+
+    /// <summary>
+    /// row 被別人整筆刪掉（不是版本不對，是 Id 根本不存在了）——
+    /// UPDATE ... WHERE Id=@id AND xmin=@version 該不該跟「row 還在但版本不對」走到同一個結果（0 筆受影響）？
+    /// 兩者對 WHERE 子句而言都是「找不到符合的列」，但這是 SQL 的行為，值得實測釘住而不是推論。
+    /// </summary>
+    [Fact]
+    public async Task UpdateAsync_ReturnsFalse_WhenRowDoesNotExist()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs);
+        await Seed.PeriodAsync(cs,
+            new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 8, 0, 0, 0, TimeSpan.Zero));
+        var teamSlotId = await Seed.TeamSlotAsync(cs, bossId, "auto");
+        var characterRowId = await Seed.OccupiedSlotAsync(cs, teamSlotId, discordId: 111, charId: "occ1");
+        var staleVersion = await GetCurrentVersionAsync(cs, characterRowId);
+
+        await using (var conn = new NpgsqlConnection(cs))
+        {
+            await conn.OpenAsync();
+            await conn.ExecuteAsync("""DELETE FROM "TeamSlotCharacter" WHERE "Id" = @id""", new { id = characterRowId });
+        }
+
+        var repo = new TeamSlotCharacterRepository(_fx.CreateDbContext());
+        var result = await repo.UpdateAsync(new TeamSlotCharacter
+        {
+            Id = characterRowId,
+            TeamSlotId = teamSlotId,
+            DiscordId = 111,
+            DiscordName = "P",
+            CharacterId = "occ1",
+            Job = "Bishop",
+            Version = staleVersion
+        });
+
+        Assert.False(result);
+    }
 }

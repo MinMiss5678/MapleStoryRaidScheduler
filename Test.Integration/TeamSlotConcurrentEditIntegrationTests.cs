@@ -184,4 +184,5 @@ public class TeamSlotConcurrentEditIntegrationTests
             new { id = teamSlotId });
         Assert.Equal(2, finalCount); // 容量 2，無論如何都不能超過
     }
+
 }
