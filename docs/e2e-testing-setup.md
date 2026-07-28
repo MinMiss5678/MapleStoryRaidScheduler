@@ -23,10 +23,10 @@ CI  ：e2e-playwright 容器共用 e2e-frontend 網路（network_mode）→ 走 
 | 檔 | 作用 |
 |---|---|
 | `web/playwright.config.ts` | testDir `e2e/`；`PLAYWRIGHT_BASE_URL` / `PLAYWRIGHT_NO_WEBSERVER` 可切本機/CI |
-| `web/e2e/*.spec.ts` | 7 支測試（見下） |
+| `web/e2e/*.spec.ts` | 8 支測試（見下） |
 | `web/e2e/helpers/auth.ts` | `loginAs()` — 呼叫 test-login 拿 cookie |
 | `Presentation.WebApi/Controller/TestAuthController.cs` | `POST /api/test/login`（鎖非 Production） |
-| `db/seed-e2e.sql` | E2E seed（單一未來 period + 3 隻獨立王） |
+| `db/seed-e2e.sql` | E2E seed（單一未來 period + 4 隻獨立王） |
 | `compose.e2e.yaml` | 全 stack + `e2e-playwright`(profile ci) |
 | `web/Dockerfile`（`dev` target）/ `web/Dockerfile.e2e` | 前端 dev / playwright 執行器映像 |
 | `.gitlab-ci.yml`（`e2e` job）| dind 起 compose 跑 E2E（coverage 全過後自動觸發） |
@@ -42,7 +42,7 @@ CI  ：e2e-playwright 容器共用 e2e-frontend 網路（network_mode）→ 走 
 - period 設 **`CURRENT_DATE + 10 ~ +17`（未來一週）**，一石二鳥：
   - 報名截止日（period 前一週）落在未來 → 報名開著。
   - StartDate `+10` **永遠晚於** `WeeklyPeriodJob` 會插的「下個重製日」（週二，≤ `+7`；見 `SlotDateCalculator.ResetDay`）→ 就算 backend 起來後 job 補插一顆 period（用 `/health/ready` 等待時 seed 可能早於 job 首次 tick），seed 這顆仍是**最新 StartDate = active** → 測試不受影響。
-- **三隻獨立王隔離**平行測試互相干擾：`E2E王`（讀取/報名）、`E2E王2`（補位）、`E2E王3`（重排）。
+- **四隻獨立王隔離**平行測試互相干擾：`E2E王`（讀取/報名）、`E2E王2`（補位）、`E2E王3`（重排）、`E2E王4`（管理員存檔衝突——admin-conflict 會把隊的最後一人移除觸發連帶砍團，不可跟其他測試共用同一隊，否則平行跑會互踩）。
 
 ## 怎麼跑
 
@@ -52,7 +52,7 @@ docker compose -f compose.e2e.yaml up -d                 # db + backend + fronte
 # 等 backend /health/ready = 200（起完 + DB 連得到）後灌 seed：
 docker compose -f compose.e2e.yaml exec -T e2e-db \
   env PGPASSWORD=e2e psql -U postgres -d presentationdb < db/seed-e2e.sql
-cd web && npm run e2e                                     # 跑 7 支（reuse compose 前端）
+cd web && npm run e2e                                     # 跑 8 支（reuse compose 前端）
 ```
 
 ### 容器化（CI 用的機制，本機可驗）
@@ -68,7 +68,7 @@ docker compose -f compose.e2e.yaml --profile ci run --build --rm e2e-playwright
 docker compose -f compose.e2e.yaml --profile ci down -v   # 含資料一起清
 ```
 
-## 測試清單（7 支）
+## 測試清單（8 支）
 
 | spec | 驗 |
 |---|---|
@@ -78,6 +78,7 @@ docker compose -f compose.e2e.yaml --profile ci down -v   # 含資料一起清
 | `register` | 新玩家報名 → 自動排隊 → 入隊（寫入整串） |
 | `fill` | 玩家補位進未滿的隊（E2E王2） |
 | `admin-rebuild` | 管理員自動排團（E2E王3） |
+| `admin-conflict` | 管理員存檔時隊伍已被異動/消失 → 顯示衝突提示，不假裝成功（E2E王4） |
 
 ## 🔴 踩過的坑（這份最值錢的部分）
 
@@ -127,5 +128,5 @@ glab api --method POST "projects/<id>/jobs/<job-id>/cancel"   # 取消
 
 ## 未決
 
-- 平行測試靠「三隻獨立王 + 唯一 discordId」隔離；測試變多時考慮每 spec 重置（Respawn 式）。
+- 平行測試靠「四隻獨立王 + 唯一 discordId」隔離；測試變多時考慮每 spec 重置（Respawn 式）。
 - 再加速可預建映像 push 成正式 image（e2e 直接 pull）；目前 4.5 分已達標故未做（YAGNI）。

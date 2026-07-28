@@ -60,11 +60,15 @@
 | M5 | 重排自動補入空位者標 `IsManual=false`（之後重排仍可調整） | `ScheduleService` |
 | M6 | 批次重排產生 `Source="admin"` 的隊，以**負 Id 代表未存檔的預覽**，存檔時走 CREATE。**無 IsTemporary / confirm 旗標** | `ScheduleService` / `TeamSlotService.UpdateAsync` |
 
-## 六、隊伍編輯授權
+## 六、隊伍編輯授權與併發控制
 
 | # | 規則 | 來源 |
 |---|---|---|
 | E1 | 非管理員只能改**自己的成員**（`member.DiscordId == currentDiscordId`）；跨成員 / 隊伍層級操作需管理員 | `TeamSlotService.UpdateAsync` |
+| E2 | 編輯既有隊伍前先對 `(classId=1002, teamSlotId)` 取交易級 advisory lock，序列化同一隊伍的併發編輯；不同隊伍不互斥 | `RegistrationLock.AcquireTeamSlotEditLockAsync`；`architecture.md §TeamSlot 編輯併發控制` |
+| E3 | 容量不超編、同一角色不重複加入，由 `TeamSlot.AddMember`（充血聚合）統一守，**含 admin 也擋**；違反丟 `DomainException` → 400 | `TeamSlot.AddMember` |
+| E4 | 隊伍已消失（被 merge / 連帶清團砍掉）或既有成員版本衝突（`xmin` 對不上，含 row 已被刪）→ **統一**收進 `ConflictedTeamSlotIds`，不丟例外、不中斷其他隊伍的處理 | `TeamSlotService.UpdateAsync`；`architecture.md §TeamSlot 編輯併發控制` |
+| E5 | 管理員排程頁存檔後，衝突的隊伍**原地標紅、不重新排序**；未列在衝突清單的隊伍皆已成功存檔 | `web/app/admin/schedule/page.tsx` |
 
 ## 七、通知（Notification）
 
@@ -76,6 +80,7 @@
 | N4 | **改變截止日/時 → 重置 `IsDeadlineNotified`**（讓新截止能重發通知） | `SystemConfigService.UpdateAsync` |
 | N5 | 設定變更事件走 **transactional outbox**：與 `UpdateAsync` 同一交易寫 outbox 列（commit 才生效、rollback 丟棄），bot 的 `OutboxDispatcher` 讀已提交列喚醒 job → **跨行程可靠 + crash-safe**（取代原 in-process `AfterCommit`：commit 後 crash 會掉、且跨不了行程） | `Outbox` / `OutboxDispatcher`；`architecture.md §7 Transactional Outbox` |
 | N6 | Discord 通知**只由背景 job**發（讀已提交狀態），無請求內 inline 發送 → 無「發了又 rollback」風險 | `DailyNotificationService` / `RegistrationDeadlineJob` |
+| N7 | Outbox 已處理列（`ProcessedAt` 非 null）超過 **30 天**由 `OutboxRetentionJob` 每 24 小時清一次；未處理列不管多舊都不刪 | `OutboxRetentionJob`；`architecture.md §7 Transactional Outbox` |
 
 ## 八、認證與授權（Auth）
 

@@ -191,6 +191,7 @@ Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL
 - **多 pod 分工**：`SELECT ... FOR UPDATE SKIP LOCKED` → 多個 dispatcher 各撈不相交批、互不重投、免選 leader。
 - **at-least-once + 冪等**：投遞成功、標 processed 前崩 → 重送；靠 handler 冪等（`ConfigChanged` 只是喚醒 job 重讀）吸收。
 - partial index（`WHERE "ProcessedAt" IS NULL`）撈取快；重試上限後放棄、記 `LastError`。
+- **保留列清理**：`OutboxDispatcher` 只標 `ProcessedAt`、從不刪列，`OutboxMessage` 會無限成長。`OutboxRetentionJob`（同樣跑 bot、自開專屬連線）每 24 小時清一次「已處理超過 30 天」的列；未處理列不管多舊都不動（還沒投遞完，刪了就真的遺失事件）。
 
 > outbox 把「要送什麼」持久化進交易 → 解掉 AfterCommit 的 crash-loss 與跨行程限制。定位為 readiness（現況 replicas=1、副作用可補），但順帶修掉跨行程 gap。
 
@@ -317,6 +318,31 @@ flowchart TD
 
 ---
 
+## TeamSlot 編輯併發控制
+
+編輯既有隊伍（`TeamSlotService.UpdateAsync`，管理員排程存檔 / 玩家補位共用這條路徑）跟上面的自動分配是**不同的併發問題、不同的鎖**：自動分配鎖的是「同一 period 讀現有隊 → 開新隊」的 race；這裡鎖的是「同一隊伍同時被兩個請求編輯」的 race（容量競爭、以及一邊清空觸發連帶砍團、另一邊還在對同一隊寫入）。兩把鎖用不同 `classId`（1001 / 1002），互不影響、可同時持有。
+
+### Phase A：悲觀鎖（序列化同隊編輯）
+
+`UpdateAsync` 處理既有隊伍前，先對 `(classId=1002, teamSlotId)` 取交易級 `pg_advisory_xact_lock`（`IRegistrationLock.AcquireTeamSlotEditLockAsync`）：
+
+- 同一隊伍的併發編輯**序列化**，第二個請求會等第一個 commit/rollback 才繼續，此時重新讀到的是「當下真相」，不是自己請求開始時的舊快照
+- 不同隊伍的鎖互不阻塞，可並行
+- 擋住兩類 TOCTOU race：①容量檢查看到的空位數，跟真正寫入時的空位數不一致（超編）②一邊把隊伍最後一人移除觸發連帶砍團，另一邊對同一個（已消失）`teamSlotId` 寫入撞外鍵違反
+
+### Phase B：樂觀鎖 + 統一衝突回報
+
+拿到鎖之後，`UpdateAsync` 用鎖內重新讀到的 `TeamSlot`（而非請求帶來的舊資料）去做兩件事：
+
+1. **隊伍是否還存在**：`GetByIdAsync` 查無 → 隊伍已被別的流程砍掉（merge / 連帶清團），略過此隊、不拋例外中斷其他隊伍的處理
+2. **既有成員是否被別人動過**：`TeamSlotCharacterRepository.UpdateAsync` 的 `WHERE` 子句比對 `xmin = @version`（`TeamSlotCharacter.Version`）；對不上（含 row 已被刪、根本查無此 Id）→ 回傳 `false`
+
+兩種情況（隊伍消失 / 版本衝突）**統一收進 `TeamSlotUpdateResult.ConflictedTeamSlotIds`**，不是分別丟不同例外——呼叫端（前端）只需要處理一份「這些隊被略過」的清單。管理員排程頁收到後，衝突的隊伍**原地標紅、不重新排序**，不假裝存檔成功。
+
+> 選型同自動分配鎖：本規模用 advisory lock + xmin 即可，不需要 SERIALIZABLE 重試迴圈或分散式鎖服務。
+
+---
+
 ## 領域設計
 
 ### 核心實體
@@ -366,6 +392,13 @@ classDiagram
         +DateTimeOffset SlotDateTime
         +string Source
         +int? TemplateId
+        +int Capacity
+        +int FilledCount
+        +bool HasRoom
+        +Contains(characterId) bool
+        +AddMember(member)
+        +SetRoster(roster, dateTime)
+        +AbsorbMembers(members, dateTime)
     }
     class TeamSlotCharacter {
         +int? Id
@@ -379,6 +412,7 @@ classDiagram
         +int Level
         +int Rounds
         +bool IsManual
+        +string Version
     }
     class PlayerAvailability {
         +int Id
@@ -417,6 +451,8 @@ classDiagram
     BossTemplate "1" -- "*" BossTemplateRequirement : 包含需求
     TeamSlot "*" -- "0..1" BossTemplate : 基於樣板
 ```
+
+> **TeamSlot 是充血聚合**：`Capacity`/`HasRoom`/`Contains`/`AddMember`/`SetRoster`/`AbsorbMembers` 統一守「不超員、不重複、不拆散手動成員」這組不變式，違反丟 `DomainException`（`ExceptionHandlerMiddleware` 映射 400）。只維護記憶體物件圖，持久化仍由 service 端命令式 Dapper 完成（無 change-tracking）。`TeamSlotCharacter.Version` 是 Postgres `xmin` 轉字串，供樂觀鎖比對（見下方「TeamSlot 編輯併發控制」）。
 
 ---
 
