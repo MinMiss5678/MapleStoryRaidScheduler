@@ -15,6 +15,7 @@ public class TeamSlotServiceQueryTests
     private readonly Mock<ITeamSlotQuery> _teamSlotQueryMock;
     private readonly Mock<ITeamSlotCharacterRepository> _teamSlotCharacterRepositoryMock;
     private readonly Mock<IPeriodQuery> _periodQueryMock;
+    private readonly Mock<IBossRepository> _bossRepositoryMock;
     private readonly TeamSlotService _teamSlotService;
 
     public TeamSlotServiceQueryTests()
@@ -23,12 +24,14 @@ public class TeamSlotServiceQueryTests
         _teamSlotQueryMock = new Mock<ITeamSlotQuery>();
         _teamSlotCharacterRepositoryMock = new Mock<ITeamSlotCharacterRepository>();
         _periodQueryMock = new Mock<IPeriodQuery>();
+        _bossRepositoryMock = new Mock<IBossRepository>();
 
         _teamSlotService = new TeamSlotService(
             _teamSlotRepositoryMock.Object,
             _teamSlotQueryMock.Object,
             _teamSlotCharacterRepositoryMock.Object,
-            _periodQueryMock.Object);
+            _periodQueryMock.Object,
+            _bossRepositoryMock.Object);
     }
 
     private Period CreatePeriod() => new Period
