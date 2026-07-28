@@ -23,9 +23,7 @@ public class RedisSessionCacheIntegrationTests : IClassFixture<RedisFixture>
     {
         SessionId = Guid.NewGuid().ToString("N"),
         DiscordId = discordId,
-        AccessToken = "acc",
-        RefreshToken = "ref",
-        Expiry = DateTimeOffset.UtcNow.AddHours(1)
+        SessionExpiry = DateTimeOffset.UtcNow.AddHours(1)
     };
 
     [Fact]

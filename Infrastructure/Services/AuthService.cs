@@ -23,28 +23,20 @@ public class AuthService : IAuthService
         _playerRepository = playerRepository;
     }
 
-    public async Task<(DiscordUser user, DiscordToken token)> ExchangeCodeAsync(string code)
+    public async Task<DiscordUser> ExchangeCodeAsync(string code)
     {
+        // OAuth 換到的 token 只在此處用一次（抓使用者身分）；不再存進 session（登入後沒用到、明文憑證是負擔）
         var tokenResponse = await _discordClient.ExchangeCodeAsync(code);
-        var token = new DiscordToken()
-        {
-            AccessToken = tokenResponse.AccessToken,
-            RefreshToken = tokenResponse.RefreshToken,
-            ExpiresIn = tokenResponse.ExpiresIn,
-        };
-
-        var userDto = await _discordClient.GetUserAsync(token.AccessToken);
-        var user = new DiscordUser()
+        var userDto = await _discordClient.GetUserAsync(tokenResponse.AccessToken);
+        return new DiscordUser()
         {
             Id = userDto.Id,
             Name = userDto.Username,
         };
-
-        return (user, token);
     }
 
-    public async Task<string> CreateSessionAsync(ulong discordId, DiscordToken discordToken)
-        => await _sessionService.CreateAsync(discordId, discordToken);
+    public async Task<string> CreateSessionAsync(ulong discordId)
+        => await _sessionService.CreateAsync(discordId);
 
     public string CreateJwt(DiscordUser discordUser, string role)
         => _jwtService.CreateToken(discordUser, role);

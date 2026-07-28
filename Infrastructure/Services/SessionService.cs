@@ -21,11 +21,11 @@ public class SessionService : ISessionService
         _sessionCache = sessionCache;
     }
 
-    public async Task<string> CreateAsync(ulong discordId, DiscordToken discordToken)
+    public async Task<string> CreateAsync(ulong discordId)
     {
         var sessionId = Guid.NewGuid().ToString("N");
 
-        await _sessionRepository.CreateAsync(sessionId, discordId, discordToken);
+        await _sessionRepository.CreateAsync(sessionId, discordId);
 
         return sessionId;
     }

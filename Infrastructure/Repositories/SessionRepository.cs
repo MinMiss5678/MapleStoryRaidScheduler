@@ -1,6 +1,5 @@
-﻿using Domain.Repositories;
+using Domain.Repositories;
 using Infrastructure.Entities;
-using Domain.Entities;
 using Infrastructure.Dapper;
 using Utils.SqlBuilder;
 
@@ -18,30 +17,15 @@ public class SessionRepository : ISessionRepository
         _dbContext = dbContext;
     }
 
-    public async Task<int> CreateAsync(string sessionId, ulong discordId, DiscordToken token)
+    public async Task<int> CreateAsync(string sessionId, ulong discordId)
     {
+        // 不再存 Discord token（登入後沒用到、且明文憑證是安全負擔）——只存身分 + 我的 session 有效期
         return await _dbContext.Repository<SessionDbModel>().InsertAsync(new SessionDbModel()
         {
             SessionId = sessionId,
             DiscordId = (long)discordId,
-            AccessToken = token.AccessToken,
-            RefreshToken = token.RefreshToken,
-            Expiry = DateTime.UtcNow.AddSeconds(token.ExpiresIn),
             SessionExpiry = DateTimeOffset.UtcNow.Add(SessionLifetime)
         });
-    }
-
-    public async Task<int> UpdateAsync(Session session)
-    {
-        var sql = new UpdateBuilder<SessionDbModel>();
-        sql.Set(x => x.SessionId, session.SessionId)
-            .Set(x => x.DiscordId, (long)session.DiscordId)
-            .Set(x => x.AccessToken, session.AccessToken)
-            .Set(x => x.RefreshToken, session.RefreshToken)
-            .Set(x => x.Expiry, session.Expiry)
-            .Where(x => x.SessionId == session.SessionId);
-
-        return await _dbContext.ExecuteAsync(sql);
     }
 
     public async Task<bool> DeleteAsync(string id)

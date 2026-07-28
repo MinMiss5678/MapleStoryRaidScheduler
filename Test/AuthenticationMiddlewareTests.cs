@@ -76,7 +76,7 @@ public class AuthenticationMiddlewareTests
     public async Task 有效_session_帶身分放行()
     {
         _session.Setup(s => s.GetAsync("abc", "123"))
-            .ReturnsAsync(new Session { SessionId = "abc", DiscordId = 123, AccessToken = "a", RefreshToken = "r" });
+            .ReturnsAsync(new Session { SessionId = "abc", DiscordId = 123 });
         _player.Setup(p => p.GetAsync(123UL))
             .ReturnsAsync(new Player { DiscordId = 123, DiscordName = "n", Role = "user" });
 
@@ -113,7 +113,7 @@ public class AuthenticationMiddlewareTests
     public async Task 角色不符_回_403_不放行()
     {
         _session.Setup(s => s.GetAsync("abc", "123"))
-            .ReturnsAsync(new Session { SessionId = "abc", DiscordId = 123, AccessToken = "a", RefreshToken = "r" });
+            .ReturnsAsync(new Session { SessionId = "abc", DiscordId = 123 });
         _player.Setup(p => p.GetAsync(123UL))
             .ReturnsAsync(new Player { DiscordId = 123, DiscordName = "n", Role = "user" });
 

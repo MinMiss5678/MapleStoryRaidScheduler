@@ -1,4 +1,3 @@
-using Application.DTOs;
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
@@ -50,19 +49,15 @@ public class SessionServiceTests
     {
         SessionId = "",
         DiscordId = discordId,
-        AccessToken = "acc",
-        RefreshToken = "ref",
-        Expiry = DateTimeOffset.UtcNow.AddHours(1),
-        SessionExpiry = DateTimeOffset.UtcNow.AddDays(30) // session 有效（我的政策，與 Discord token 無關）
+        SessionExpiry = DateTimeOffset.UtcNow.AddDays(30) // session 有效（我的政策）
     };
 
     [Fact]
     public async Task CreateAsync_CreatesSessionAndReturnsId()
     {
-        var token = new DiscordToken { AccessToken = "acc", RefreshToken = "ref", ExpiresIn = 3600 };
-        _sessionRepoMock.Setup(r => r.CreateAsync(It.IsAny<string>(), 123UL, token)).ReturnsAsync(1);
+        _sessionRepoMock.Setup(r => r.CreateAsync(It.IsAny<string>(), 123UL)).ReturnsAsync(1);
 
-        var sessionId = await _sessionService.CreateAsync(123UL, token);
+        var sessionId = await _sessionService.CreateAsync(123UL);
 
         Assert.NotEmpty(sessionId);
         Assert.Equal(32, sessionId.Length); // Guid.NewGuid().ToString("N") = 32 chars
@@ -114,8 +109,7 @@ public class SessionServiceTests
 
         var result = await _sessionService.GetAsync("sid-exp", "555");
 
-        Assert.Null(result);
-        _sessionRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Session>()), Times.Never); // 不續期、不寫 DB
+        Assert.Null(result); // 過期即失效；解耦後根本沒有刷新路徑（無 Discord 依賴）
     }
 
     [Fact]

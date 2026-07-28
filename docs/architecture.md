@@ -524,9 +524,6 @@ erDiagram
     Session {
         string SessionId PK
         bigint DiscordId
-        string AccessToken
-        string RefreshToken
-        timestamptz Expiry
         timestamptz SessionExpiry
     }
 

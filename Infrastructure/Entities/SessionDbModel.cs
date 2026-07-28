@@ -9,8 +9,5 @@ public class SessionDbModel
     [ExplicitKey]
     public string SessionId { get; set; } = "";
     public long DiscordId { get; set; }
-    public string AccessToken { get; set; } = "";
-    public string RefreshToken { get; set; } = "";
-    public DateTimeOffset Expiry { get; set; }
     public DateTimeOffset SessionExpiry { get; set; }
 }
