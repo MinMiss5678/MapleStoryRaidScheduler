@@ -188,6 +188,43 @@ Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL
 | 寫入 | `IOutbox` / `Outbox` | 用**當前 UoW 的交易** INSERT outbox 列 → 與業務資料**原子提交/回滾**（rollback 無鬼影事件） |
 | 派發 | `OutboxDispatcher`（跑 bot、自開專屬連線） | 輪詢已提交列 → 依 `Type` 派 `IOutboxHandler` → 標 `ProcessedAt` |
 
+寫入端（API）跟派發端（bot）是**兩個獨立行程**，中間沒有直接呼叫，只靠共享 DB 的已提交列銜接——下圖同時畫出正常路徑，跟「handler 執行完、commit 前中斷」的 crash 重送路徑（`OutboxIntegrationTests.CrashBeforeCommit_...` 實測過的情境，不是只推論）：
+
+```mermaid
+sequenceDiagram
+    participant API as API（SystemConfigService）
+    participant DB as Postgres（OutboxMessage）
+    participant Bot as Bot（OutboxDispatcher，另一個行程）
+    participant H as IOutboxHandler
+
+    Note over API,DB: 寫入端：跟業務資料同一個 UoW 交易
+    API->>DB: UPDATE SystemConfig
+    API->>DB: INSERT OutboxMessage(Type=ConfigChanged, ProcessedAt=NULL)
+    API->>DB: COMMIT（兩者原子生效；rollback 則兩者都不留痕跡）
+
+    Note over Bot,DB: 派發端：獨立行程、專屬連線，事後輪詢（非即時推送）
+    Bot->>DB: SELECT ... WHERE ProcessedAt IS NULL FOR UPDATE SKIP LOCKED
+    DB-->>Bot: 撈到該列（開自己的交易）
+
+    alt 正常路徑
+        Bot->>H: HandleAsync(payload)
+        H-->>Bot: 成功
+        Bot->>DB: UPDATE SET ProcessedAt = now()
+        Bot->>DB: COMMIT
+    else crash 重送（已用整合測試驗證的路徑）
+        Bot->>H: HandleAsync(payload)
+        H-->>Bot: 成功（副作用已發生）
+        Note over Bot: 崩潰／連線中斷，commit 前中斷
+        Bot--xDB: 沒有 COMMIT，該列仍是 ProcessedAt=NULL
+        Note over Bot,DB: 重啟後，下一輪輪詢
+        Bot->>DB: SELECT ... FOR UPDATE SKIP LOCKED（同一列，因為還沒 processed）
+        Bot->>H: HandleAsync(payload)（重送，靠 handler 冪等吸收）
+        H-->>Bot: 成功
+        Bot->>DB: UPDATE SET ProcessedAt = now()
+        Bot->>DB: COMMIT（這次才真的標記完成）
+    end
+```
+
 - **多 pod 分工**：`SELECT ... FOR UPDATE SKIP LOCKED` → 多個 dispatcher 各撈不相交批、互不重投、免選 leader。
 - **at-least-once + 冪等**：投遞成功、標 processed 前崩 → 重送；靠 handler 冪等（`ConfigChanged` 只是喚醒 job 重讀）吸收。
 - partial index（`WHERE "ProcessedAt" IS NULL`）撈取快；重試上限後放棄、記 `LastError`。
@@ -321,6 +358,44 @@ flowchart TD
 ## TeamSlot 編輯併發控制
 
 編輯既有隊伍（`TeamSlotService.UpdateAsync`，管理員排程存檔 / 玩家補位共用這條路徑）跟上面的自動分配是**不同的併發問題、不同的鎖**：自動分配鎖的是「同一 period 讀現有隊 → 開新隊」的 race；這裡鎖的是「同一隊伍同時被兩個請求編輯」的 race（容量競爭、以及一邊清空觸發連帶砍團、另一邊還在對同一隊寫入）。兩把鎖用不同 `classId`（1001 / 1002），互不影響、可同時持有。
+
+兩階段合起來的完整時序（悲觀鎖序列化 + 拿到鎖後樂觀鎖檢查的三種分支）：
+
+```mermaid
+sequenceDiagram
+    participant A as 請求 A（先到）
+    participant B as 請求 B（後到，同一 teamSlotId）
+    participant Lock as advisory lock<br/>(classId=1002, teamSlotId)
+    participant DB as TeamSlot / TeamSlotCharacter
+
+    A->>Lock: pg_advisory_xact_lock(1002, 5)
+    Lock-->>A: 取得鎖
+    B->>Lock: pg_advisory_xact_lock(1002, 5)
+    Note over B,Lock: B 卡住等待（同一隊伍序列化，不同隊伍不互擋）
+
+    A->>DB: GetByIdAsync(5)（讀「當下真相」）
+    DB-->>A: 隊伍存在，成員 X（version=v1）
+    A->>DB: 移除成員 X（隊上其他人都是空位 → 連帶砍團）
+    A->>DB: COMMIT（鎖隨交易自動釋放）
+
+    Lock-->>B: 取得鎖（A 已釋放）
+    B->>DB: GetByIdAsync(5)（重新讀，不是 B 請求開始時的舊快照）
+
+    alt 隊伍已消失（被 A 連帶砍團）
+        DB-->>B: null
+        B->>B: 略過此隊，加入 ConflictedTeamSlotIds
+    else 隊伍還在，但成員 X 版本不對（xmin ≠ v1，被別的流程動過）
+        DB-->>B: TeamSlot（成員 X 已是新版本）
+        B->>DB: UPDATE ... WHERE Id=X AND xmin=v1
+        DB-->>B: 0 rows affected
+        B->>B: 加入 ConflictedTeamSlotIds
+    else 隊伍還在、版本也對（沒衝突）
+        DB-->>B: TeamSlot（成員 X version=v1 仍符合）
+        B->>DB: 正常寫入成功
+    end
+
+    B->>DB: COMMIT（不論這隊有沒有衝突，其他隊伍照常處理、不中斷）
+```
 
 ### Phase A：悲觀鎖（序列化同隊編輯）
 
@@ -570,6 +645,16 @@ erDiagram
         bool IsDeadlineNotified
     }
 
+    OutboxMessage {
+        bigint Id PK
+        text Type
+        jsonb Payload
+        timestamptz OccurredAt
+        timestamptz ProcessedAt "NULL=待處理"
+        int AttemptCount
+        text LastError
+    }
+
     Player ||--o{ PlayerRegister : ""
     Period ||--o{ PlayerRegister : ""
     PlayerRegister ||--o{ PlayerAvailability : ""
@@ -695,20 +780,25 @@ graph TD
 
 ### CI/CD 流程（總覽）
 
-把散在 `gitlab-selfhost-ci-setup` / `cd-deploy-setup` / `e2e-testing-setup` 三份筆記的流程縫成一張：
+CI 已遷 **GitHub Actions**（`.github/workflows/ci.yml` + `deploy.yml`），跟 `cd-deploy-setup` / `e2e-testing-setup` 兩份筆記對照：
 
 ```mermaid
 flowchart LR
-    dev["feature 分支"] -->|開 MR| mr{"MR pipeline"}
-    mr -->|純文件| docsok["docs-ok（秒過）"]
-    mr -->|動到程式碼| ci["format → build → 單元+整合 → 覆蓋率 → E2E"]
-    docsok --> merge["merge 進 main"]
-    ci -->|全綠| merge
-    merge --> mainpl["main pipeline：只留 deploy（manual）"]
-    mainpl -->|人工點擊| deploy["推 SHA 版本化映像 minqq/*"]
+    dev["feature 分支"] -->|開 PR| gate["changes job 判斷改動範圍"]
+    gate -->|純文件 docs/plans/*.md| skip["其餘 7 個必要 job 標 skipped\n（if 條件，非 paths-ignore）"]
+    gate -->|動到程式碼| ci["format → build → unit/integration-test\n→ frontend-test(lint+test+build) → coverage → e2e"]
+    skip --> checks{"required status checks\n（含 enforce_admins，admin 也不能繞過）"}
+    ci -->|全綠| checks
+    checks -->|通過| merge["squash merge 進 main"]
+    merge --> mainci["main push 觸發同一份 ci.yml\n（post-merge 再驗一次，非 deploy 的一部分）"]
+    merge -.->|另一條、需人工觸發| dispatch["workflow_dispatch：deploy.yml"]
+    dispatch --> envgate["production Environment\n（可設 required reviewers）"]
+    envgate --> deploy["推 SHA 版本化映像 minqq/*"]
     deploy --> mig["migrate Job"]
     mig --> k["Kustomize：kubectl apply -k"]
     k --> roll["k8s 滾動更新（readiness 綠才收舊 pod）"]
 ```
 
-> CI 閘在 **MR** 上把關（綠燈才 merge）；**main 不重跑驗證、只等人工點 deploy**。映像以 git SHA 版本化 → 可追溯、可真回滾（`kubectl rollout undo` 或指定 SHA）。
+> **PR 閘**：`changes` job 用 `dorny/paths-filter` 判斷這次改動是否只碰文件；純文件時其餘 job 用 `if:` 條件跳過（標 skipped），不是在 `on:` 用 `paths-ignore`——後者會讓 workflow 整個不觸發，required status checks 永遠等不到回報、PR 會卡死。GitHub 把 skipped 視為通過，required checks 照樣滿足。
+> **`main` 分支保護**：required status checks（上述 7 個 job）+ 禁止 force push/刪除 + **`enforce_admins` 開啟**（admin 帳號也一樣得走 PR，不能直接推）。
+> **CI 跟 deploy 是兩條獨立流程**：push 進 `main` 只會重跑一次 `ci.yml`（post-merge 守門，不是 deploy 的前置步驟）；`deploy.yml` 是完全獨立、`workflow_dispatch` 手動觸發、掛 `production` Environment 當核准閘。映像以 git SHA 版本化 → 可追溯、可真回滾（`kubectl rollout undo` 或指定 SHA）。
