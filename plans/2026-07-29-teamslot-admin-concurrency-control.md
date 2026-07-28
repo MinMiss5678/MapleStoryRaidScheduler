@@ -100,9 +100,12 @@ Postgres 系統欄位天生就是給這個用途，省一次 schema 變更。
 - [x] `TeamSlotCharacterDto`/`TeamSlotMemberDto`/`TeamSlotCharacter`（Domain）都加上 `Version`，讀取路徑（`TeamSlotQuery` 三個方法）補 `xmin::text AS "Version"`。
 - [x] `ITeamSlotService.UpdateAsync`/`ITeamSlotCharacterRepository.UpdateAsync` 回傳型別分別改為 `Task<TeamSlotUpdateResult>`/`Task<bool>`；`TeamSlotController` 回應同時帶 `conflictedTeamSlotIds` 與既有的 `teamSlots`（本來就有的重抓邏輯，不是新增行為）。
 - [x] 287 個單元測試（含新增的版本衝突/隊伍消失情境測試）+ 29 個整合測試全綠、`dotnet format --verify-no-changes` 乾淨。
-- [ ] 前端：讀取衝突清單 → 標示受影響卡片、提示重新確認（Phase C，範圍已縮小，見上方修訂）。
+- [x] 前端：`scheduleService.saveSchedule` 改回傳 `TeamSlotSaveResult`（`conflictedTeamSlotIds` + `teamSlots`），存檔後不再額外呼叫 `getTeamSlots` 重抓。`AdminRaidTeamCard` 加 `isConflicted` 原地標色（紅框 + icon + 卡片內文字），不重新排序；頁面加頂部摘要橫幅、點擊捲動到第一張衝突卡片。
+- [x] 驗證：`npx tsc --noEmit`（改動檔案本身無新增錯誤，既有 3 個型別錯誤跟這次改動無關，改動前後一致）、`next build` 生產建置成功、既有 32 個 vitest 測試全綠、`npm run dev` 實際啟動確認頁面編譯無誤並正常回應。
+- [x] **真實瀏覽器端到端驗證**（`web/e2e/admin-conflict.spec.ts`，Playwright，對隔離的 `compose.e2e.yaml` 測試環境，非本機常駐 dev DB）：admin 頁面載入 E2E王2 的隊伍（本地快照顯示 1 名成員）→ 背景直接呼叫 API 移除最後一人（真實觸發連帶砍團）→ admin 拿著舊快照存檔 → 斷言畫面正確顯示衝突 toast 與頂部摘要橫幅，而非假裝成功。
+  - 過程中連帶修掉兩個跟這次改動無關、但擋住驗證的既有問題：`compose.yaml` 的 `backend`/`bot` build context 設錯（見下方修訂）、`e2e-backend` image 未重建導致跑舊 code 撞已被 migration 移除的 `AccessToken` 欄位。
 
-**Phase B（後端）完成。**
+**Phase B（後端）+ Phase C（前端）皆完成。**
 
 ## 工時估
 - Phase A（悲觀鎖）≈ 半天，仿 auto-assign 既有作法，風險低。
