@@ -74,7 +74,11 @@ public class TeamSlotRepositoryIntegrationTests
         await Seed.CharacterAsync(cs, "occ2", 222, "C2", "Bishop", 800);
         var newMember = new TeamSlotCharacter
         {
-            DiscordId = 222, DiscordName = "P2", CharacterId = "occ2", Job = "Bishop", IsManual = true
+            DiscordId = 222,
+            DiscordName = "P2",
+            CharacterId = "occ2",
+            Job = "Bishop",
+            IsManual = true
         };
         team.Capacity = 6;
         team.AbsorbMembers(new[] { newMember }, new DateTimeOffset(2026, 4, 3, 20, 0, 0, TimeSpan.Zero));
