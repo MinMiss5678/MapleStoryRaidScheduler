@@ -43,14 +43,21 @@ public void AddMember(TeamSlotCharacter member);        // append + 守容量/�
   - `Characters.Add(newMember)` → `matchingTeam.AddMember(newMember)`（auto-assign 本就 append，行為不變）。
 - **純 Domain 單元測**（免 mock/DB）：滿員 → 丟；有空間 → append；重複 → 擋；`ReschedulableMembers` 排除 IsManual。
 
-### Phase 2（風險，另評估）— merge 的 write-side
-- merge 用「填既有空位」（UPDATE 既有列，非 INSERT）→ 若要用聚合,需要**專門的填空位方法** + service 端對應 UPDATE 持久化,才不會與命令式 INSERT 混淆。
-- merge 演算法本身（挑哪兩隊、配時段、範本配額）**留 service**（跨聚合編排、領域計算）。
-- 因複雜 → **不併入 Phase 1**,獨立一輪做。
+### Phase 2（風險，已完成）— merge 的 write-side
+- merge 用「填既有空位」（UPDATE 既有列，非 INSERT）→ 用聚合的**專門填空位方法**（`AbsorbMembers`），service 仍呼叫既有 `UpdateAsync`（整組覆蓋語意不變，見下方補充）。
+- merge 演算法本身（挑哪兩隊、配時段、範本配額）**留 service**（跨聚合編排、領域計算），未動。
+- 因複雜，執行前**先補整合測試釘住 round-trip**（見下方補充），再動重構——沒有累積超過 2~3 個新坑，未觸發「停手修計畫」。
 
-> ⚠️ **補充（Phase 1 執行後新發現，尚未動手前先記下）**：
-> - **兩種持久化模型不一致**：auto-assign 走「逐筆 `INSERT`」（`TeamSlotCharacterRepository.CreateAsync`）；merge 走「整組砍掉重灌」（`TeamSlotRepository.UpdateAsync` = UPDATE 隊伍列 + **DELETE 全部成員列** + 重新 INSERT，見 `TeamSlotRepository.cs:172-202` 註解「先刪除再重新插入（簡單做法）」）。這是 Phase 2 要專門填空位方法的根本原因，不是 Update 語意不清。
-> - **現有安全網缺口在哪**：`TeamSlotMergeServiceMergeTests.cs` 已有 7 個單元測試覆蓋合併演算法決策（何時合併/跳過/範本配對/手動成員），但**全部 mock 掉 repository**，沒驗過真持久化。Phase 2 的風險在持久化層，**前置動作應是先補整合測試**（`Test.Integration`，真 Postgres）釘住現況 round-trip（尤其 auto-assign INSERT 的成員列被 merge `UpdateAsync` 砍掉重灌後換新 Id，這條交互只有真 DB 抓得到），再動重構。
+> ⚠️ **補充（執行前已知，設計依此走）**：
+> - **兩種持久化模型不一致**：auto-assign 走「逐筆 `INSERT`」（`TeamSlotCharacterRepository.CreateAsync`）；merge 走「整組砍掉重灌」（`TeamSlotRepository.UpdateAsync` = UPDATE 隊伍列 + **DELETE 全部成員列** + 重新 INSERT，見 `TeamSlotRepository.cs:172-202` 註解「先刪除再重新插入（簡單做法）」）。**這代表 merge 的持久化本來就對任何 roster 變動一視同仁（整組覆蓋）**，不需要「填空位觸發 UPDATE、append 觸發 INSERT」的特殊分流——只要聚合方法算對記憶體裡的最終名單，既有 `UpdateAsync` 直接沿用即可，風險比原先設想的低。
+> - **現有安全網缺口**：`TeamSlotMergeServiceMergeTests.cs` 的 7 個單元測試全部 mock 掉 repository、只驗「有沒有呼叫對的方法」，沒驗過真持久化 round-trip。→ 已補整合測試 `UpdateAsync_DeletesAndReinsertsAllCharacters_AssigningNewIds`（`Test.Integration/TeamSlotRepositoryIntegrationTests.cs`），釘住「整組覆蓋後角色列拿到全新 Id、IsManual 正確存活」這個事實。
+
+## Phase 2 實作內容
+- **`TeamSlot` 新增兩個聚合方法**：
+  - `SetRoster(roster, mergedDateTime)`：範本合併結果整組覆蓋（防禦性驗容量/重複，違反丟 `DomainException`），並幫每個成員蓋 `TeamSlotId`。
+  - `AbsorbMembers(incomingMembers, mergedDateTime)`：無範本時吸收另一隊——優先填自己既有空位，滿了才 append；違反容量/重複丟 `DomainException`。
+- **`TeamSlotMergeService.PerformMerge`** 改呼叫上述兩個方法取代手刻的 list 操作；`_teamSlotRepository.UpdateAsync(teamA)` / `DeleteByTeamSlotIdAsync(teamB.Id)` / `DeleteAsync(teamB.Id)` 這三個持久化呼叫**完全不變**。
+- **`TryMergeTeamsAsync`** 載入 `incompleteTeams` 後 hydrate `ts.Capacity = requireMembers`（跟 auto-assign 同樣的前置條件，見上方 Phase 1 決策）。
 
 ### 非範圍（YAGNI/邊界對，永遠留 service）
 - **配額媒合演算法**（依 `BossTemplateRequirement` 挑職業/優先級/可用時段）：跨 character+requirement 的**領域計算**,不是 TeamSlot 內部不變式。
@@ -82,9 +89,17 @@ public void AddMember(TeamSlotCharacter member);        // append + 守容量/�
 
 **Phase 1 完成。**
 
+## Phase 2 驗收
+- [x] `SetRoster`/`AbsorbMembers` **純 Domain 單元測**：超容量/重複 DiscordId 丟例外；正常覆蓋名單、蓋 `TeamSlotId`/`SlotDateTime`；優先填空位、滿了才 append；違反容量/重複丟例外（`Test/TeamSlotAggregateTests.cs`，新增 7 測）。
+- [x] 既有 7 個 `TeamSlotMergeServiceMergeTests` **不用修改**即維持綠燈（改用聚合方法後，對 repository 的呼叫序列與參數不變）。
+- [x] 新增整合測試釘住 `UpdateAsync` 整組覆蓋 round-trip（真 Postgres）：角色列拿到新 Id、`IsManual` 存活。
+- [x] 完整回歸：單元測 284 綠、整合測 26 綠。
+
+**Phase 2 完成。**
+
 ## 工時估
 - Phase 1（聚合 + 例外 + middleware + 純 Domain 測 + auto-assign 接線）≈ 半天~一天。
-- Phase 2（merge write-side + 持久化 reconcile）≈ 另一輪,先不估。
+- Phase 2（merge write-side + 持久化 reconcile）≈ 半天（比原估更快——因整組覆蓋持久化本就統一，不需另建 UPDATE 分流）。
 
 ## 附：為何這是「最高價值」的充血人選
 - **單一聚合自己狀態的不變式**（容量/重複/IsManual）——完全符合「該進 Domain」判準。
