@@ -45,4 +45,56 @@ public class TeamSlot
 
         Characters.Add(member);
     }
+
+    /// <summary>
+    /// 合併：套用範本配對後的完整名單（整組覆蓋，含範本產生的空位列）。
+    /// 呼叫端（merge 演算法）應已篩過容量/重複才會走到這裡；此處防禦性重驗，違反丟 <see cref="DomainException"/>。
+    /// </summary>
+    public void SetRoster(IReadOnlyList<TeamSlotCharacter> roster, DateTimeOffset mergedDateTime)
+    {
+        var filledCount = roster.Count(c => c.CharacterId != null);
+        if (filledCount > Capacity)
+            throw new DomainException($"合併後人數（{filledCount}）超過隊伍容量（{Capacity}）");
+        if (roster.Where(c => c.CharacterId != null).GroupBy(c => c.DiscordId).Any(g => g.Count() > 1))
+            throw new DomainException("合併後名單有玩家重複");
+
+        Characters = roster.ToList();
+        foreach (var c in Characters) c.TeamSlotId = Id;
+        SlotDateTime = mergedDateTime;
+    }
+
+    /// <summary>
+    /// 合併：無範本時吸收另一隊的成員——優先填自己的既有空位，滿了才 append。
+    /// 對應 merge 現有語意（PerformMerge 的 else 分支）；違反容量/重複丟 <see cref="DomainException"/>。
+    /// </summary>
+    public void AbsorbMembers(IEnumerable<TeamSlotCharacter> incomingMembers, DateTimeOffset mergedDateTime)
+    {
+        foreach (var member in incomingMembers)
+        {
+            if (member.CharacterId != null && Contains(member.CharacterId))
+                throw new DomainException($"角色 {member.CharacterId} 已在此隊");
+
+            var emptySlot = Characters.FirstOrDefault(c => c.CharacterId == null);
+            if (emptySlot != null)
+            {
+                emptySlot.DiscordId = member.DiscordId;
+                emptySlot.DiscordName = member.DiscordName;
+                emptySlot.CharacterId = member.CharacterId;
+                emptySlot.CharacterName = member.CharacterName;
+                emptySlot.Job = member.Job;
+                emptySlot.AttackPower = member.AttackPower;
+                emptySlot.Rounds = member.Rounds;
+                emptySlot.IsManual = member.IsManual;
+            }
+            else
+            {
+                if (!HasRoom)
+                    throw new DomainException($"隊伍已滿（{Capacity}）");
+                member.TeamSlotId = Id;
+                Characters.Add(member);
+            }
+        }
+
+        SlotDateTime = mergedDateTime;
+    }
 }
