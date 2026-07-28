@@ -16,4 +16,7 @@ public class TeamSlotMemberDto
     public int Level { get; set; }
     public int Rounds { get; set; }
     public bool IsManual { get; set; } // 手動補位/管理員微調，排團邏輯不覆蓋
+
+    /// <summary>樂觀鎖版本（讀取時帶出，存檔時原樣送回；新成員無此值）。</summary>
+    public string? Version { get; set; }
 }
