@@ -79,15 +79,16 @@ LIMIT 20;
 UPDATE outbox_message SET processed_at = now() WHERE id = $1;
 ```
 
-## 驗收
+## 驗收（2026-07-29 對照現有 code/測試核實）
 
-- [ ] **原子**：config update 的請求 rollback → outbox 列**也不在**（同一交易）。
-- [ ] dispatcher 投遞 + 標 `processed_at`；Testcontainers Postgres 整合測。
-- [ ] **crash 重送（at-least-once）**：投遞後、標 processed 前中止 → 列還在 → 重啟重送。
-- [ ] **多 worker 不相交**：兩個 dispatcher 併跑 `FOR UPDATE SKIP LOCKED` → 同一列不被兩個處理。
-- [ ] **冪等**：重複投遞 `ConfigChanged` → job 只是多重讀一次，無副作用。
-- [ ] **跨行程（修 Gap 2）**：API 改 config → bot 的 `RegistrationDeadlineJob` 被喚醒重算。
-- [ ] 保留：processed 列被清理工作刪除。
+- [x] **原子**：`Test.Integration/OutboxIntegrationTests.cs` 有對應測試（rollback → outbox 列也不在）。
+- [x] dispatcher 投遞 + 標 `processed_at`——`Infrastructure/BackgroundJobs/OutboxDispatcher.cs` + 整合測。
+- [x] **多 worker 不相交**（`FOR UPDATE SKIP LOCKED`）——`OutboxIntegrationTests.cs` 有對應測試。
+- [x] **跨行程（修 Gap 2）**：`ConfigChangedOutboxHandler.cs` 存在，`SystemConfigService.cs` 已改用 `_outbox.Enqueue`。
+- [x] **crash 重送（at-least-once）**：`OutboxIntegrationTests.CrashBeforeCommit_模擬崩潰未提交_重啟後重送_Handler被呼叫兩次`（PR #22）——claim 該列、呼叫 handler、rollback 模擬崩潰，DB 仍是未處理；重跑真正的 `OutboxDispatcher`，handler 被呼叫第二次、這次真的標 processed。
+- [x] **保留：processed 列被清理工作刪除**：`Infrastructure/BackgroundJobs/OutboxRetentionJob.cs`（PR #22 新增）+ `OutboxIntegrationTests.RetentionJob_只刪超過保留期的已處理列_留下未處理與保留期內的列`——只刪「已處理 + 超過保留期」的列，未處理列（不管多舊）跟保留期內的已處理列都留著。
+
+**先前查證時這兩項確實還沒做（不是誤判）；PR #22 剛補上這兩塊缺口，且有整合測試佐證。7 項驗收現在全部完成。**
 
 ## 工時估
 

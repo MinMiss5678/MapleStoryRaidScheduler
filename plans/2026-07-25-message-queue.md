@@ -62,13 +62,18 @@
 - consumer 註冊為 `BackgroundService`，用 consumer group 做 competing consumer。
 - DLQ = 另一個 stream + 監控（Seq 告警）。
 
-## 驗收
+## 驗收（2026-07-29 對照現有 code/測試核實）
 
-- [ ] outbox 列 → relay 發布到 stream → consumer 收到並處理 → ack（Testcontainers Redis 整合測）。
-- [ ] consumer 崩在 ack 前 → 訊息留在 PEL → 重投（at-least-once）。
-- [ ] 多 consumer（競爭）→ 各分不相交訊息（consumer group）。
-- [ ] 處理失敗達上限 → 進 DLQ。
-- [ ] relay 發布後、標 processed 前崩 → outbox 未標 processed → 重發（consumer 冪等吸收，不重複生效）。
+> **這份驗收清單描述的是 Phase 1 實作當時（已 revert 前）驗證過的行為，不是目前 main 的現況。**
+> 全庫搜尋 `OutboxRelay|OutboxStreamConsumer|Redis Streams|StreamAdd|StreamRead`，**main 上查無這些類別**——git log 確認 `10017fa` 做過、`4ecebc7` 明確 revert（YAGNI），恢復成 `OutboxDispatcher` 直接呼叫 handler。以下 5 項當初實作時**有整合測試跑過並通過**，但功能本身已撤銷，現在都**不成立於目前 main**：
+
+- [ ] ~~outbox 列 → relay 發布到 stream → consumer 收到並處理 → ack~~（做過、測過、已 revert）
+- [ ] ~~consumer 崩在 ack 前 → 訊息留在 PEL → 重投~~（做過、測過、已 revert）
+- [ ] ~~多 consumer（競爭）→ 各分不相交訊息~~（做過、測過、已 revert）
+- [ ] ~~處理失敗達上限 → 進 DLQ~~（做過、測過、已 revert）
+- [ ] ~~relay 發布後、標 processed 前崩 → 重發~~（做過、測過、已 revert）
+
+**這份計畫的正確狀態是「保留供未來需要時參考」，不是「待完成」——不要誤判成還沒做，也不要誤判成現在還在跑。**
 
 ## 工時估
 - Phase 1（relay 改造 + consumer + consumer group + 整合測）≈ 1~1.5 天。

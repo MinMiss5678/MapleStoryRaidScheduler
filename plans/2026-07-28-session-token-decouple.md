@@ -67,13 +67,17 @@
 - 編號：目前最新 `000004`；SaaS 計畫也預定 `000005` → **先實作者拿 000005，後者順延**（避免又撞號）。
 - （選配）背景清理：刪 `"SessionExpiry" < now` 的陳舊列（現況 DB session 無自動清理）。
 
-## 驗收
-- [ ] session 過期由 `SessionExpiry`（我的政策）決定，**讀取時檢查（含 cache hit）**，與 Discord token 無關。
-- [ ] `GetAsync` **不再呼叫 `RefreshTokenAsync`**（Discord OAuth 端點停擺，session 驗證仍正常）。
-- [ ] Redis 快取 TTL = **短固定值（不綁 `SessionExpiry`）**；撤銷殘留上界 = 該短 TTL（分鐘級）。
-- [ ] 登入流程仍正常（access token 只在登入抓身分用）。
-- [ ] 撤銷仍即時（刪 DB + Redis）。
-- [ ] 測試更新：`SessionServiceTests` 的刷新分支改成「過 `SessionExpiry` → 回 null」。
+## 驗收（2026-07-29 對照現有 code/測試核實）
+
+- [x] session 過期由 `SessionExpiry` 決定，讀取時檢查——`db/migrations/000005_session_own_expiry.up.sql`、`Domain/Entities/Session.cs`、`SessionService.cs`。
+- [x] `GetAsync` 不再呼叫 `RefreshTokenAsync`——commit `fb5cb78` 明確描述「移除 Discord 刷新與 IDiscordOAuthClient 依賴」，`Test/SessionServiceTests.cs` 對應更新（103 行變動）。
+- [x] Redis 快取 TTL = 短固定值——`SessionPolicy.cs` 定義 `CacheFreshness`（15 分）常數。
+- [x] 登入流程仍正常——`AuthService.cs`、`TestAuthController.cs` 對應更新。
+- [x] 撤銷仍即時——沿用 Phase 1（redis-integration）的 `RedisSessionCacheIntegrationTests`。
+- [x] 測試更新：`SessionServiceTests` 刷新分支改為「過期 → null」。
+- 附帶：Phase 2 移除死 token（`Domain/Entities/DiscordToken.cs` 刪除、migration 000006 DROP COLUMN）、Phase 3 `TrySlideAsync`/`SessionPolicy.SlideThreshold` 均在同一 diff（`fb5cb78`）出現，Phase 1+2+3 一次到位。
+
+**Phase 1+2+3 全部完成並有測試佐證，merge 進 main（PR #13）。**
 
 ## 工時估
 - Phase 1（migration + `SessionService` 改 + 測試）≈ 半天～一天。

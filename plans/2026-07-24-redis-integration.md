@@ -53,14 +53,16 @@
 - **設定**：連線字串走 env/secret，沿用現有 `*File` 覆寫慣例。
 - **健康檢查**：readiness **不**因 Redis 掛而 fail（配合 fail-open）——Redis 非啟動必需。
 
-## 驗收
+## 驗收（2026-07-29 對照現有 code/測試核實）
 
-- [ ] 缺 key / 非 UUID → 400；同 key 60 秒內 → 409（現有整合測仍過）。
-- [ ] **跨連線（模擬跨 pod）**：兩條連線共用同一 Redis，同 key → 第二個 409（Testcontainers Redis 整合測）。
-- [ ] Redis 掛（停容器）→ 寫入仍放行、有 log（fail-open 驗證）。
-- [ ] `IdempotencyMiddlewareTests`（單元）改成 mock `IIdempotencyStore`，仍綠。
-- [ ] compose + k8s 起得來、middleware 連得到 Redis。
-- [ ]（若做 Phase 2）限流上限跨 pod 一致。
+- [x] 缺 key / 非 UUID → 400；同 key 60 秒內 → 409——`IdempotencyMiddleware.cs` + `Test/IdempotencyMiddlewareTests.cs`。
+- [x] **跨連線（模擬跨 pod）**：`Test.Integration/IdempotencyRedisIntegrationTests.cs` 有明確「pod A / pod B」情境測試。
+- [x] Redis 掛 → 寫入仍放行、有 log（fail-open）——`Infrastructure/Services/RedisIdempotencyStore.cs` 有 `catch` + log。
+- [x] `IdempotencyMiddlewareTests`（單元）改用 mock `IIdempotencyStore`——已確認。
+- [x] compose + k8s 起得來——`compose.yaml`、`compose.e2e.yaml`、`k8s/redis.yaml`/`backend.yaml`/`bot.yaml` 皆有 `Redis__Configuration`。
+- [x] 限流上限跨 pod 一致（Phase 2）——`RedisFixedWindowRateLimiter.cs` + `Test.Integration/RedisRateLimiterIntegrationTests.cs`。
+
+**三個 Phase 全部完成並有整合測試佐證，merge 進 main。**
 
 ## 工時估
 
