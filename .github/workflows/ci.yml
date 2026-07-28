@@ -122,6 +122,8 @@ jobs:
           retention-days: 1
 
   # 前端元件/單元測試（Vitest + React Testing Library）：渲染 + 互動 + mock API，測行為。
+  # 另外跑 next build：驗證 TypeScript 型別自洽 + 建置得起來（ignoreBuildErrors 沒開，型別/ESLint
+  # 錯誤會讓 build 失敗）。Vitest 只轉譯不查型別，兩者職責不重疊，缺一個都有盲區。
   frontend-test:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -136,6 +138,8 @@ jobs:
       - run: npm ci
         working-directory: web
       - run: npm run test:run
+        working-directory: web
+      - run: npm run build
         working-directory: web
 
   # 合併 unit + integration 兩份覆蓋率 → 一份總報告（聯集，不重複計）
