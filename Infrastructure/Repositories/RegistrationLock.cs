@@ -5,8 +5,9 @@ namespace Infrastructure.Repositories;
 
 public class RegistrationLock : IRegistrationLock
 {
-    // advisory lock 的命名空間 classId（避免與其他 advisory lock 撞號）；objId 用 periodId。
+    // advisory lock 的命名空間 classId（避免與其他 advisory lock 撞號）；objId 用 periodId / teamSlotId。
     private const int AutoAssignLockClass = 1001;
+    private const int TeamSlotEditLockClass = 1002;
 
     private readonly DbContext _dbContext;
 
@@ -23,5 +24,13 @@ public class RegistrationLock : IRegistrationLock
         await _dbContext.ExecuteAsync(
             "SELECT pg_advisory_xact_lock(@classId, @periodId)",
             new { classId = AutoAssignLockClass, periodId });
+    }
+
+    public async Task AcquireTeamSlotEditLockAsync(int teamSlotId)
+    {
+        // 同一 (classId, teamSlotId) 的併發編輯序列化；不同隊伍互不阻塞。
+        await _dbContext.ExecuteAsync(
+            "SELECT pg_advisory_xact_lock(@classId, @teamSlotId)",
+            new { classId = TeamSlotEditLockClass, teamSlotId });
     }
 }

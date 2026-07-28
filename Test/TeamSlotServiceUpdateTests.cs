@@ -18,6 +18,7 @@ public class TeamSlotServiceUpdateTests
     private readonly Mock<ITeamSlotCharacterRepository> _teamSlotCharacterRepositoryMock;
     private readonly Mock<IPeriodQuery> _periodQueryMock;
     private readonly Mock<IBossRepository> _bossRepositoryMock;
+    private readonly Mock<IRegistrationLock> _registrationLockMock;
     private readonly TeamSlotService _teamSlotService;
 
     public TeamSlotServiceUpdateTests()
@@ -27,13 +28,15 @@ public class TeamSlotServiceUpdateTests
         _teamSlotCharacterRepositoryMock = new Mock<ITeamSlotCharacterRepository>();
         _periodQueryMock = new Mock<IPeriodQuery>();
         _bossRepositoryMock = new Mock<IBossRepository>();
+        _registrationLockMock = new Mock<IRegistrationLock>();
 
         _teamSlotService = new TeamSlotService(
             _teamSlotRepositoryMock.Object,
             _teamSlotQueryMock.Object,
             _teamSlotCharacterRepositoryMock.Object,
             _periodQueryMock.Object,
-            _bossRepositoryMock.Object);
+            _bossRepositoryMock.Object,
+            _registrationLockMock.Object);
     }
 
     [Fact]
@@ -229,6 +232,33 @@ public class TeamSlotServiceUpdateTests
         // Act & Assert
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: currentDiscordId));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldAcquireTeamSlotEditLock_ForExistingTeamSlot()
+    {
+        // 併發控制：編輯既有隊伍前必須序列化取鎖，擋同瞬間兩請求的 TOCTOU race
+        int teamSlotId = 7;
+        var existingTeamSlot = new TeamSlot { Id = teamSlotId, Characters = new List<TeamSlotCharacter>() };
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
+
+        var request = new TeamSlotUpdateRequest
+        {
+            DeleteTeamSlotIds = new List<int>(),
+            TeamSlots = new List<TeamSlotUpdateCommand>
+            {
+                new TeamSlotUpdateCommand
+                {
+                    Id = teamSlotId,
+                    DeleteTeamSlotCharacterIds = new List<int>(),
+                    Characters = new List<TeamSlotMemberDto>()
+                }
+            }
+        };
+
+        await _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 0);
+
+        _registrationLockMock.Verify(l => l.AcquireTeamSlotEditLockAsync(teamSlotId), Times.Once);
     }
 
     [Fact]
