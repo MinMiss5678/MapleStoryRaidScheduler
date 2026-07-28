@@ -46,7 +46,11 @@ public void AddMember(TeamSlotCharacter member);        // append + 守容量/�
 ### Phase 2（風險，另評估）— merge 的 write-side
 - merge 用「填既有空位」（UPDATE 既有列，非 INSERT）→ 若要用聚合,需要**專門的填空位方法** + service 端對應 UPDATE 持久化,才不會與命令式 INSERT 混淆。
 - merge 演算法本身（挑哪兩隊、配時段、範本配額）**留 service**（跨聚合編排、領域計算）。
-- 因複雜 + 本機驗不了 → **不併入 Phase 1**,獨立一輪做。
+- 因複雜 → **不併入 Phase 1**,獨立一輪做。
+
+> ⚠️ **補充（Phase 1 執行後新發現，尚未動手前先記下）**：
+> - **兩種持久化模型不一致**：auto-assign 走「逐筆 `INSERT`」（`TeamSlotCharacterRepository.CreateAsync`）；merge 走「整組砍掉重灌」（`TeamSlotRepository.UpdateAsync` = UPDATE 隊伍列 + **DELETE 全部成員列** + 重新 INSERT，見 `TeamSlotRepository.cs:172-202` 註解「先刪除再重新插入（簡單做法）」）。這是 Phase 2 要專門填空位方法的根本原因，不是 Update 語意不清。
+> - **現有安全網缺口在哪**：`TeamSlotMergeServiceMergeTests.cs` 已有 7 個單元測試覆蓋合併演算法決策（何時合併/跳過/範本配對/手動成員），但**全部 mock 掉 repository**，沒驗過真持久化。Phase 2 的風險在持久化層，**前置動作應是先補整合測試**（`Test.Integration`，真 Postgres）釘住現況 round-trip（尤其 auto-assign INSERT 的成員列被 merge `UpdateAsync` 砍掉重灌後換新 Id，這條交互只有真 DB 抓得到），再動重構。
 
 ### 非範圍（YAGNI/邊界對，永遠留 service）
 - **配額媒合演算法**（依 `BossTemplateRequirement` 挑職業/優先級/可用時段）：跨 character+requirement 的**領域計算**,不是 TeamSlot 內部不變式。
@@ -70,11 +74,13 @@ public void AddMember(TeamSlotCharacter member);        // append + 守容量/�
 - `HasRoom` 查詢 + `AddMember` **防禦性丟 `DomainException`**：auto-assign 迴圈用 `HasRoom` 挑有空位的隊,`AddMember` 保證「即使呼叫錯也絕不超額/重複」。
 
 ## 驗收
-- [ ] `TeamSlot` **純 Domain 單元測**（免 mock）：滿員 `AddMember` → `DomainException`、`HasRoom=false`；有空間 → append；重複 → 擋；`ReschedulableMembers` 排除 IsManual/空位。
-- [ ] `DomainException` 由 middleware 轉 400（可加一個 middleware 測或整合測）。
-- [ ] auto-assign：**Capacity 有被填**；改用 `HasRoom`/`Contains`/`AddMember` 後,既有單元測 + **本機整合測**（真 Postgres，Docker 已可用）仍綠（**行為不變**），再由 CI 覆核。
-- [ ] 搜不到 auto-assign 裡殘留的手刻容量/重複判斷。
-- [ ] merge / TeamSlotService **不動**（留 Phase 2）。
+- [x] `TeamSlot` **純 Domain 單元測**（免 mock）：滿員 `AddMember` → `DomainException`、`HasRoom=false`；有空間 → append；重複 → 擋；`ReschedulableMembers` 排除 IsManual/空位。（`Test/TeamSlotAggregateTests.cs`，5 測）
+- [x] `DomainException` 由 middleware 轉 400。
+- [x] auto-assign：**Capacity 有被填**；改用 `HasRoom`/`Contains`/`AddMember` 後,既有單元測（277 綠）+ **本機整合測**（真 Postgres，Testcontainers，4 測綠）仍過（**行為不變**）。
+- [x] 搜不到 auto-assign 裡殘留的手刻容量/重複判斷（已 grep 確認）。
+- [x] merge / TeamSlotService **不動**（留 Phase 2）。
+
+**Phase 1 完成。**
 
 ## 工時估
 - Phase 1（聚合 + 例外 + middleware + 純 Domain 測 + auto-assign 接線）≈ 半天~一天。
