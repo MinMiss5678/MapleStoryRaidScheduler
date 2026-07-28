@@ -89,7 +89,9 @@ Postgres 系統欄位天生就是給這個用途，省一次 schema 變更。
 - [x] 整合測試（真 Postgres，`pg_try_advisory_xact_lock` 非阻塞探測）：同隊伍互斥、不同隊伍不互卡——`TeamSlotEditLockIntegrationTests`，2 測。
 - [x] 單元測試驗證鎖有被正確呼叫（`AcquireTeamSlotEditLockAsync(teamSlotId)` Times.Once）。
 - [x] 既有 286 單元測試 + 28 整合測試（含新增的 3 個）全綠、`dotnet format --verify-no-changes` 乾淨。
-- [ ] ~~兩個併發請求同時對同一隊新增成員（超過容量）序列化後只有一筆成功~~——鎖本身用確定性探測驗過互斥，不用額外寫「真的並發打兩個 request」的計時測試（容易 flaky，advisory lock 互斥已經是 Postgres 保證的行為）。
+- [x] **真正併發（非序列）驗證容量競爭**（★ 原本判斷不用寫，後來收回）：一開始認為「鎖互斥已用確定性探測驗過 + 序列化後邏輯正確」兩者組合可以邏輯推論出併發也安全，不用另外寫真並發測試。後來想清楚：這個推論**沒有涵蓋「正式環境靠 UnitOfWorkMiddleware 包住整個 request 的交易生命週期」這件事本身有沒有被正確重現**——只有真正併發測試能測到這類整合層級的坑。
+  - `ConcurrentAdd_ToTeamWithOneSlotLeft_NeverExceedsCapacity`：兩個各自獨立連線的 `TeamSlotService` 用 `Task.WhenAll` 真正同時搶著新增成員到只剩 1 位的隊伍。
+  - **第一次寫測試直接抓到一個真的坑**：測試輔助方法沒有幫每個 `TeamSlotService` 呼叫包 `BeginAsync()`/`CommitAsync()`，而 `pg_advisory_xact_lock` 是交易級鎖——沒有交易可以綁，鎖形同虛設，兩個併發新增都通過檢查、一起成功（超編）。正式環境不會有這個問題（`UnitOfWorkMiddleware` 本來就會在 controller 執行前 `BeginAsync`），但**測試本身沒重現這個生命週期，等於沒測到真正的東西**。修正後（測試輔助方法補上交易包裹）重跑，鎖正確序列化：恰好一個成功、一個被 `AddMember` 正確擋下（`DomainException`），資料庫最終人數不超過容量。跑 5 次確認不是矇對，穩定通過。
 - [x] 悲觀鎖：併發「移除最後一人（觸發清團）」與「新增成員」→ 不再出現原生 FK violation，落到「隊伍消失」分支走統一衝突回報。**Phase B 合併後才補的端到端測試**（`TeamSlotConcurrentEditIntegrationTests`，真 Postgres，構造真實 `TeamSlotService` 走完整流程）：先移除最後一人驗證整團真的被砍、再對同一個（已消失的）`teamSlotId` 嘗試新增成員，斷言不拋 FK 例外、正確落入 `ConflictedTeamSlotIds`。之前 Phase A/B 的測試都只各自驗證了鎖跟衝突回報的機制本身，從未串起來驗過這個端到端情境，是遺漏、不是設計如此。
 
 **Phase A 完成。**
@@ -100,9 +102,12 @@ Postgres 系統欄位天生就是給這個用途，省一次 schema 變更。
 - [x] `TeamSlotCharacterDto`/`TeamSlotMemberDto`/`TeamSlotCharacter`（Domain）都加上 `Version`，讀取路徑（`TeamSlotQuery` 三個方法）補 `xmin::text AS "Version"`。
 - [x] `ITeamSlotService.UpdateAsync`/`ITeamSlotCharacterRepository.UpdateAsync` 回傳型別分別改為 `Task<TeamSlotUpdateResult>`/`Task<bool>`；`TeamSlotController` 回應同時帶 `conflictedTeamSlotIds` 與既有的 `teamSlots`（本來就有的重抓邏輯，不是新增行為）。
 - [x] 287 個單元測試（含新增的版本衝突/隊伍消失情境測試）+ 29 個整合測試全綠、`dotnet format --verify-no-changes` 乾淨。
-- [ ] 前端：讀取衝突清單 → 標示受影響卡片、提示重新確認（Phase C，範圍已縮小，見上方修訂）。
+- [x] 前端：`scheduleService.saveSchedule` 改回傳 `TeamSlotSaveResult`（`conflictedTeamSlotIds` + `teamSlots`），存檔後不再額外呼叫 `getTeamSlots` 重抓。`AdminRaidTeamCard` 加 `isConflicted` 原地標色（紅框 + icon + 卡片內文字），不重新排序；頁面加頂部摘要橫幅、點擊捲動到第一張衝突卡片。
+- [x] 驗證：`npx tsc --noEmit`（改動檔案本身無新增錯誤，既有 3 個型別錯誤跟這次改動無關，改動前後一致）、`next build` 生產建置成功、既有 32 個 vitest 測試全綠、`npm run dev` 實際啟動確認頁面編譯無誤並正常回應。
+- [x] **真實瀏覽器端到端驗證**（`web/e2e/admin-conflict.spec.ts`，Playwright，對隔離的 `compose.e2e.yaml` 測試環境，非本機常駐 dev DB）：admin 頁面載入 E2E王2 的隊伍（本地快照顯示 1 名成員）→ 背景直接呼叫 API 移除最後一人（真實觸發連帶砍團）→ admin 拿著舊快照存檔 → 斷言畫面正確顯示衝突 toast 與頂部摘要橫幅，而非假裝成功。
+  - 過程中連帶修掉兩個跟這次改動無關、但擋住驗證的既有問題：`compose.yaml` 的 `backend`/`bot` build context 設錯（見下方修訂）、`e2e-backend` image 未重建導致跑舊 code 撞已被 migration 移除的 `AccessToken` 欄位。
 
-**Phase B（後端）完成。**
+**Phase B（後端）+ Phase C（前端）皆完成。**
 
 ## 工時估
 - Phase A（悲觀鎖）≈ 半天，仿 auto-assign 既有作法，風險低。

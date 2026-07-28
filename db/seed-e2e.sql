@@ -32,6 +32,9 @@ DECLARE
     v_boss3_id    int;
     v_tpl3_id     int;
     v_reg3        int;
+    v_boss4_id    int;
+    v_tpl4_id     int;
+    v_team4_id    int;
     -- period 設「未來一週」：截止日永遠在 period 開始前一週（GetDeadlineForPeriod 的 -7），
     -- StartDate 要夠遠（+10）截止日才落在未來、報名才開著（符合 app「當前=即將開打的下週」模型）
     v_weekday     int         := EXTRACT(DOW FROM (CURRENT_DATE + 11))::int;
@@ -101,6 +104,20 @@ BEGIN
     INSERT INTO "PlayerRegister"("DiscordId","PeriodId") VALUES (5001, v_period_id) RETURNING "Id" INTO v_reg3;
     INSERT INTO "CharacterRegister"("PlayerRegisterId","CharacterId","BossId","Rounds") VALUES (v_reg3, 'ch5001', v_boss3_id, 1);
     INSERT INTO "PlayerAvailability"("PlayerRegisterId","Weekday","StartTime","EndTime") VALUES (v_reg3, v_weekday, TIME '20:00', TIME '22:00');
+
+    -- 第四隻王 E2E王4 + 只有 1 人的隊 → 供「管理員存檔衝突」測試（獨立王/隊隔離，
+    -- 不可跟 E2E王2 共用：admin-conflict 測試會把這隻隊的最後一人移除、連帶砍團，
+    -- 若跟補位測試共用同一隊，平行測試會互踩）。
+    INSERT INTO "Boss"("Name","RequireMembers","RoundConsumption") VALUES ('E2E王4', 6, 1) RETURNING "Id" INTO v_boss4_id;
+    INSERT INTO "BossTemplate"("BossId","Name") VALUES (v_boss4_id, 'E2E範本4') RETURNING "Id" INTO v_tpl4_id;
+    INSERT INTO "BossTemplateRequirement"("BossTemplateId","JobCategory","Count","Priority") VALUES (v_tpl4_id, '輸出', 6, 1);
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (4002, 'P-Dummy2', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower") VALUES ('ch4002', 4002, 'CDummy2', 'Hero', 900);
+    INSERT INTO "TeamSlot"("BossId","SlotDateTime","Source","TemplateId")
+    VALUES (v_boss4_id, v_slot_ts, 'auto', v_tpl4_id) RETURNING "Id" INTO v_team4_id;
+    INSERT INTO "TeamSlotCharacter"
+        ("TeamSlotId","DiscordId","DiscordName","CharacterId","CharacterName","Job","AttackPower","Rounds","IsManual")
+    VALUES (v_team4_id, 4002, 'P-Dummy2', 'ch4002', 'CDummy2', 'Hero', 900, 0, false);
 
     RAISE NOTICE 'E2E seed 就緒 → periodId=%, bossId=%, teamId=%', v_period_id, v_boss_id, v_team_id;
 END $$;

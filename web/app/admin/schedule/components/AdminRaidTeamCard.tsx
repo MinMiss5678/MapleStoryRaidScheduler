@@ -4,7 +4,7 @@ import { useState } from "react";
 import AddCharacterModal from "./AddCharacterModal";
 import {formatDateTime} from "@/utils/dateTimeUtil";
 import {TeamSlot, TeamSlotCharacter} from "@/types/raid";
-import {Trash2, UserPlus, Users, UserMinus} from "lucide-react";
+import {Trash2, UserPlus, Users, UserMinus, AlertTriangle} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/FormControls";
 
@@ -15,9 +15,10 @@ interface AdminRaidTeamCardProps {
     onTeamSlotDelete: (team: TeamSlot) => void;
     onAddCharacter: (teamSlot: TeamSlot, character: TeamSlotCharacter) => void;
     requireMembers?: number;
+    isConflicted?: boolean;
 }
 
-export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, onTeamSlotDelete, onAddCharacter, requireMembers = 6 }: AdminRaidTeamCardProps) {
+export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, onTeamSlotDelete, onAddCharacter, requireMembers = 6, isConflicted = false }: AdminRaidTeamCardProps) {
     const [isModalOpen, setModalOpen] = useState(false);
 
     const joinedMembers = teamSlot.characters.filter(m => m.characterId !== null);
@@ -39,8 +40,16 @@ export default function AdminRaidTeamCard({ bossId, teamSlot, onTeamSlotUpdate, 
 
     return (
         <Card className={`p-6 ${
-            isFull ? "border-green-500/50 dark:border-green-500/30 bg-green-50/10" : "border-border"
+            isConflicted
+                ? "border-red-500/70 dark:border-red-500/50 bg-red-50/10 dark:bg-red-950/10"
+                : isFull ? "border-green-500/50 dark:border-green-500/30 bg-green-50/10" : "border-border"
         }`}>
+            {isConflicted && (
+                <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+                    <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                    <span>此隊已被異動或消失，已略過此處編輯，已顯示最新資料，請重新確認。</span>
+                </div>
+            )}
             {/* Header: DateTime & Actions */}
             <div className="flex justify-between items-start mb-4">
                 <div className="space-y-1">
