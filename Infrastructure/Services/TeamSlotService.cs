@@ -12,15 +12,18 @@ public class TeamSlotService : ITeamSlotService
     private readonly ITeamSlotQuery _teamSlotQuery;
     private readonly ITeamSlotCharacterRepository _teamSlotCharacterRepository;
     private readonly IPeriodQuery _periodQuery;
+    private readonly IBossRepository _bossRepository;
 
     public TeamSlotService(ITeamSlotRepository teamSlotRepository, ITeamSlotQuery teamSlotQuery,
         ITeamSlotCharacterRepository teamSlotCharacterRepository,
-        IPeriodQuery periodQuery)
+        IPeriodQuery periodQuery,
+        IBossRepository bossRepository)
     {
         _teamSlotRepository = teamSlotRepository;
         _teamSlotQuery = teamSlotQuery;
         _teamSlotCharacterRepository = teamSlotCharacterRepository;
         _periodQuery = periodQuery;
+        _bossRepository = bossRepository;
     }
 
     public async Task<IEnumerable<TeamSlotDto>> GetByBossIdAsync(int bossId)
@@ -85,6 +88,9 @@ public class TeamSlotService : ITeamSlotService
             }
         }
 
+        // 容量 = Boss.RequireMembers；一次撈全部、迴圈內查表，避免逐筆 teamSlot 各打一次 N+1。
+        var bossesById = (await _bossRepository.GetAllAsync()).ToDictionary(b => b.Id);
+
         foreach (var teamSlot in teamSlotUpdateRequest.TeamSlots)
         {
             // 負 Id / 0 = 尚未存檔的新隊 → CREATE；正 Id = 既有隊 → UPDATE
@@ -115,6 +121,9 @@ public class TeamSlotService : ITeamSlotService
             var originalTeam = await _teamSlotRepository.GetByIdAsync(teamSlot.Id);
             if (originalTeam == null) continue;
 
+            // 不變式需要 Capacity 才守得住（見 TeamSlot.HasRoom/AddMember）
+            originalTeam.Capacity = bossesById.TryGetValue(originalTeam.BossId, out var boss) ? boss.RequireMembers : 6;
+
             foreach (var teamSlotCharacterId in teamSlot.DeleteTeamSlotCharacterIds)
             {
                 if (!isAdmin)
@@ -141,14 +150,11 @@ public class TeamSlotService : ITeamSlotService
                     if (!isAdmin && member.DiscordId != currentDiscordId)
                         throw new UnauthorizedAccessException("不能替他人新增角色");
 
-                    // 防止同一角色重複加入同一隊伍
-                    if (member.CharacterId != null &&
-                        originalTeam.Characters.Any(c => c.CharacterId == member.CharacterId))
-                        throw new InvalidOperationException("該角色已在此隊伍中，不可重複加入。");
-
                     var newChar = MapToEntity(member);
                     newChar.TeamSlotId = teamSlot.Id;
                     // IsManual 由來源端顯式決定（玩家補位/管理員微調=true，重排自動填=false），後端不強制。
+                    // 守隊伍不變式：擋重複加入、擋超額（含 admin，違反丟 DomainException → 400）。
+                    originalTeam.AddMember(newChar);
                     await _teamSlotCharacterRepository.CreateAsync(newChar);
                 }
                 else

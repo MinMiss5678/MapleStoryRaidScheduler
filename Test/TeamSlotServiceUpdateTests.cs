@@ -3,6 +3,7 @@ using Application.Exceptions;
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
+using Domain.Exceptions;
 using Domain.Repositories;
 using Infrastructure.Services;
 using Moq;
@@ -16,6 +17,7 @@ public class TeamSlotServiceUpdateTests
     private readonly Mock<ITeamSlotQuery> _teamSlotQueryMock;
     private readonly Mock<ITeamSlotCharacterRepository> _teamSlotCharacterRepositoryMock;
     private readonly Mock<IPeriodQuery> _periodQueryMock;
+    private readonly Mock<IBossRepository> _bossRepositoryMock;
     private readonly TeamSlotService _teamSlotService;
 
     public TeamSlotServiceUpdateTests()
@@ -24,12 +26,14 @@ public class TeamSlotServiceUpdateTests
         _teamSlotQueryMock = new Mock<ITeamSlotQuery>();
         _teamSlotCharacterRepositoryMock = new Mock<ITeamSlotCharacterRepository>();
         _periodQueryMock = new Mock<IPeriodQuery>();
+        _bossRepositoryMock = new Mock<IBossRepository>();
 
         _teamSlotService = new TeamSlotService(
             _teamSlotRepositoryMock.Object,
             _teamSlotQueryMock.Object,
             _teamSlotCharacterRepositoryMock.Object,
-            _periodQueryMock.Object);
+            _periodQueryMock.Object,
+            _bossRepositoryMock.Object);
     }
 
     [Fact]
@@ -298,7 +302,46 @@ public class TeamSlotServiceUpdateTests
             }
         };
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<DomainException>(() =>
+            _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 111));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldThrow_WhenAddingCharacterExceedsCapacity()
+    {
+        // 隊伍容量 1、已有 1 人，admin 再新增一人 → 應擋下超額（原本這條路徑完全沒做容量檢查）
+        int teamSlotId = 1;
+        int bossId = 9;
+        var existingTeamSlot = new TeamSlot
+        {
+            Id = teamSlotId,
+            BossId = bossId,
+            Characters = new List<TeamSlotCharacter>
+            {
+                new TeamSlotCharacter { Id = 1, CharacterId = "c1", DiscordId = 111, DiscordName = "", Job = "" }
+            }
+        };
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
+        _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss> { new Boss { Id = bossId, Name = "", RequireMembers = 1 } });
+
+        var request = new TeamSlotUpdateRequest
+        {
+            DeleteTeamSlotIds = new List<int>(),
+            TeamSlots = new List<TeamSlotUpdateCommand>
+            {
+                new TeamSlotUpdateCommand
+                {
+                    Id = teamSlotId,
+                    DeleteTeamSlotCharacterIds = new List<int>(),
+                    Characters = new List<TeamSlotMemberDto>
+                    {
+                        new TeamSlotMemberDto { Id = null, CharacterId = "c2", DiscordId = 222 }
+                    }
+                }
+            }
+        };
+
+        await Assert.ThrowsAsync<DomainException>(() =>
             _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 111));
     }
 
