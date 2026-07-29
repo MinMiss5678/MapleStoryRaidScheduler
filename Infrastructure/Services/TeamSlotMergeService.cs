@@ -35,15 +35,26 @@ public class TeamSlotMergeService : ITeamSlotMergeService
     {
         var bossIds = register.CharacterRegisters
             .Select(x => x.BossId)
-            .Distinct();
+            .Distinct()
+            .ToList();
+
+        // bosses / jobCategories 跟被合併的 bossId 迴圈無關（後者是全域資料、前者一次撈全部建字典查表），
+        // 迴圈外各撈一次，避免每個 boss 都重打一次 DB（jobCategories 甚至每次撈到的都是同一份資料）。
+        var bossesById = (await _bossRepository.GetAllAsync()).ToDictionary(b => b.Id);
+        var jobCategories = (await _jobCategoryRepository.GetAllAsync())
+            .GroupBy(x => x.CategoryName)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.JobName).ToHashSet());
 
         foreach (var bossId in bossIds)
         {
-            await TryMergeTeamsAsync(bossId, register.PeriodId);
+            await TryMergeTeamsAsync(bossId, register.PeriodId, bossesById, jobCategories);
         }
     }
 
-    private async Task TryMergeTeamsAsync(int bossId, int periodId)
+    private async Task TryMergeTeamsAsync(
+        int bossId, int periodId,
+        Dictionary<int, Boss> bossesById,
+        Dictionary<string, HashSet<string>> jobCategories)
     {
         var incompleteTeams = (await _teamSlotRepository
             .GetIncompleteTeamsAsync(bossId, periodId)).ToList();
@@ -53,14 +64,9 @@ public class TeamSlotMergeService : ITeamSlotMergeService
         var templates = await _bossRepository.GetTemplatesByBossIdAsync(bossId);
         var template = templates.FirstOrDefault();
 
-        var boss = (await _bossRepository.GetAllAsync()).FirstOrDefault(x => x.Id == bossId);
-        int requireMembers = boss?.RequireMembers ?? 6;
+        int requireMembers = bossesById.TryGetValue(bossId, out var boss) ? boss.RequireMembers : 6;
         foreach (var ts in incompleteTeams)
             ts.Capacity = requireMembers;
-
-        var jobCategories = (await _jobCategoryRepository.GetAllAsync())
-            .GroupBy(x => x.CategoryName)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.JobName).ToHashSet());
 
         // 🔥 一次撈所有 availability
         var allDiscordIds = incompleteTeams
