@@ -54,8 +54,10 @@
 ### 環境
 - 對 **docker compose stack**（仿 e2e 的 profile；非 prod）。seed 一個未來 period + boss 模板 + N 隻角色（比照 `db/seed-e2e.sql`）。
 - k6 以容器跑在 compose 網路內（比照 `compose.e2e.yaml` 的 e2e-playwright）。
-- **Phase 1/2 實測環境（誠實記錄，數字怎麼來的）**：本機 Windows，Intel Core i7-7700K @ 4.20GHz（實體 4 核心/8 邏輯執行緒）、~32GB RAM；Docker Desktop（WSL2）VM 分配到 8 CPU／15.6GB RAM，但**跟 host 上其他所有東西共用同一組實體核心**（沒有 `--cpus`/`--memory` 釘死、沒有專用機器）。
-- **這代表報告裡的數字是方向性的、量級對，不是可信賴的 benchmark**——足夠回答「lock_timeout 5s 有沒有安全邊際」「連線池斷點大概在哪」這種是非題，不足夠拿來說「正式環境 p95 就是這個數字」。要拿到精確數字得先有專用、資源固定、無其他負載的機器（本地或 CI 都一樣，跟平台無關）。
+- **實測環境（誠實記錄，數字怎麼來的）**：
+  - **環境 A：本機 Windows**，Intel Core i7-7700K @ 4.20GHz（實體 4 核心/8 邏輯執行緒）、約 32GB RAM；Docker Desktop（WSL2）VM 分配到 8 CPU／15.6GB RAM，但**跟 host 上其他所有東西共用同一組實體核心**（沒有 `--cpus`/`--memory` 釘死、沒有專用機器）。
+  - **環境 B：AWS Lightsail/EC2**（ap-northeast-1），4 vCPU／15GB RAM，獨立執行個體、無其他負載，但 Lightsail 入門規格的 vCPU 可能是共享／有節流的虛擬核心（見下方 Phase 2 觀察）。
+- **這代表報告裡的數字是方向性的、量級對，不是可信賴的 benchmark**——足夠回答「lock_timeout 5s 有沒有安全邊際」「連線池斷點大概在哪」這種是非題，不足夠拿來說「正式環境 p95 就是這個數字」。
 
 ### Auth
 - 壓測要帶已驗證身分。用 **Development 的 test-login 端點**（e2e 已用）鑄 JWT，或預先產一批 token。
@@ -85,34 +87,58 @@
 
 ## 驗收
 
-**Phase 1**（已跑，2026-07-29，對 `compose.e2e.yaml` 的 e2e-db/e2e-migrate/e2e-redis/e2e-backend）
-- [x] k6 腳本 + seed 可一鍵跑（`k6/register-load.js` + `db/seed-load.sql`，`docker run grafana/k6`）。
-- [x] 產出報告：見下方實測數字。
-- [x] **正確性**：VUS=60（10隊×6人滿編）與 VUS=200（乾淨環境）皆 0 error、DB 無重複隊、無超編、無漏派——`db/verify-load.sql` 驗證通過。
-- [x] **找出** advisory-lock 連線耗盡的併發斷點——**不是「併發量太大直接失敗」，是連線池 headroom=0 的配置問題**：
+**測試方法（兩個 phase 一致）**：每個 VUS 等級跑 **5 輪**，每輪之間**重啟 `e2e-backend`**（清空 Npgsql 連線池，避免上一輪殘留連線污染下一輪數字）＋ reseed，跑完再重啟一次才查 DB（reseed/查詢都是外部連線，pool 滿載時會被拒絕，必須先清空）。自動化腳本：`loadtest-multiround.sh`（repo 根目錄）；本機用 Git Bash 跑 docker 需加 `MSYS_NO_PATHCONV=1`，不然 `-v` 掛載路徑會被誤轉成 Windows 路徑。下表數字皆為 **5 輪的範圍**（min–max），不是單次量測。
 
-  | VUS | 結果 |
-  |---|---|
-  | 60 | 0% error，p95 register 1.67s |
-  | 150 | 0% error，p95 register 4.8s（線性隨鎖佇列變深） |
-  | 200（乾淨環境） | 0% error，p95 register 5.24s |
-  | 200（緊接著沒重啟就再跑一次） | **37.5% error**，且 Postgres 開始拒絕新連線（連 `psql` 都連不上：`FATAL: sorry, too many clients already`） |
+**Phase 1**（2026-07-29，`k6/register-load.js` + `db/seed-load.sql`；每輪跑序：重啟+reseed → VUS=60 → VUS=150（沿用同批連線，不重啟）→ 重啟+reseed → VUS=200（乾淨）→ VUS=200（不重啟，`OFFSET` 打全新 200 人）→ 重啟 → 查 DB）
+- [x] 兩環境各 5 輪、共 40 次 k6 執行，**checks_failed 全部 0.00%**。
+- [x] **正確性**：每輪查 DB 皆 `registered=400 overcap=0 dup=0`（驗證的是每輪最後 200+200=400 那組），兩環境、5 輪次無例外。
+- [x] **連線耗盡斷點**：每輪「查 DB 前」都必須先重啟 backend，不重啟的話 `psql` 直接 `FATAL: sorry, too many clients already`——兩環境、5 輪、10 次驗證動作全部重現，不是偶發。
 
-  **根因（比原本寫的更精確）**：**不是「併發量 > 100 就會爆」**——Npgsql pool 上限（預設 = `Maximum Pool Size` 100）本身會**自我限制**，超過 100 的請求會在 client 端排隊等一條連線空出來，不會硬跟 Postgres 要第 101 條（Phase 2 的 VUS=500 乾淨環境測試就是證據：全部靠 100 條連線輪流服務排隊排出來，0 error）。**真正的觸發條件是「兩輪測試間隔太短、pool 沒機會把閒置連線還給 Postgres」**：Npgsql 的 pool 設計是「用完先留著、晚點才收」——連線閒置超過 `Connection Idle Lifetime`（預設 300 秒）才會被 `Connection Pruning Interval`（預設 10 秒一次）掃掉。VUS=150 跑完到緊接著跑 VUS=200，中間間隔遠不到 5 分鐘，上一輪的 ~100+ 條連線都還原封不動躺在 pool 裡佔著 Postgres 的額度，這批新需求疊上去才瞬間衝過 `max_connections=100`（image 預設，沒有 headroom）。**這才是 `MSRS架構參照.md §10` 講的「連線池耗盡」訊號的具體條件**：不是穩態併發量的問題，是「pool 沒有時間自然收斂就被連續打」的問題。
-  **建議**：正式環境該給 Postgres `max_connections` 留 headroom（backend pool size + migrate + 其他服務 + 保留量 < max_connections），或明確設定 Npgsql `Maximum Pool Size` 上限／縮短 `Connection Idle Lifetime`，別讓它預設吃到跟 Postgres 一樣的天花板、又要等 5 分鐘才收斂。
+  **環境 A：本機 Windows**（i7-7700K，4 核 8 緒，跟 host 上其他東西共用資源）
 
-**Phase 2**（已跑，2026-07-29，同一套環境；`k6/teamslot-edit-load.js` + `db/seed-load-teamslot.sql`）
-- [x] **正確性**：VUS=60/250/500（乾淨環境）皆 0 error、0 個誤觸發衝突，TeamSlot 人數符合預期（每人填不同空位，不重疊）。
-- [x] **找出** TeamSlot 編輯鎖正常排隊等待 p99，判斷 `lock_timeout` 5s 預設會不會誤觸發：
+  | VUS | http_req p95（5 輪範圍） | iteration p95（5 輪範圍） |
+  |---|---|---|
+  | 60 | 1.45s–1.58s | 2.23s–2.53s |
+  | 150（沿用連線，不重啟） | 2.60s–2.83s | 3.20s–3.55s |
+  | 200（乾淨：重啟+reseed） | 3.24s–3.67s | 4.43s–4.91s |
+  | 200（不重啟，`OFFSET` 全新 200 人） | 3.49s–4.25s | 3.96s–4.78s |
 
-  | VUS | http_req p95（login+get+put 混合） | iteration p95（含 3 個請求） | lock_timeout 誤觸發？ |
+  **環境 B：AWS Lightsail/EC2**（ap-northeast-1，4 vCPU／15GB RAM，2026-07-29）
+
+  | VUS | http_req p95（5 輪範圍） | iteration p95（5 輪範圍） |
+  |---|---|---|
+  | 60 | 0.91s–1.01s | 1.55s–1.60s |
+  | 150（沿用連線，不重啟） | 1.63s–1.73s | 2.10s–2.24s |
+  | 200（乾淨：重啟+reseed） | 2.30s–2.48s | 3.42s–3.52s |
+  | 200（不重啟，`OFFSET` 全新 200 人） | 2.73s–2.90s | 3.14s–3.27s |
+
+  **觀察**：VUS 60 到 200 這個範圍，兩環境 5 輪的數字區間完全不重疊，EC2 穩定比本機快 30%–50%，符合「專用機器」預期。「200（不重啟）」這步在兩環境的 5 輪裡**全部 100% 成功**（checks_failed 0.00%）——連線池滿載、外部 `psql` 被拒絕的同一時刻，app 自己的請求仍全數排隊完成，這個結論在兩台機器、共 10 輪測試裡沒有一次例外。
+
+  **根因**：Npgsql pool 上限（預設 `Maximum Pool Size`=100）本身會**自我限制**——超過 100 的請求在 client 端排隊等連線空出來，不會硬跟 Postgres 要第 101 條；只有**繞過 app 自己 pool 的外部新連線**（`psql`、migration，直接跟 Postgres 要一條全新連線）在 backend pool 已佔滿 `max_connections`（預設 100）額度時才會被**直接拒絕**，不是排隊。連線閒置要等 `Connection Idle Lifetime`（預設 300 秒）才會被 `Connection Pruning Interval`（預設 10 秒一次）收回，測試輪次間隔遠不到 5 分鐘，上一輪的連線就還占著額度——這就是為什麼每輪查 DB 前都要先重啟 backend。真正的風險不是「玩家請求會失敗」，是**同一時間需要對 Postgres 開新連線的其他操作**（migration job、DBA 手動查資料庫、多服務共享同一個 Postgres）會連不上，且這個風險不需要 app 本身出問題就會發生。
+  **建議**：正式環境該給 Postgres `max_connections` 留 headroom（backend pool size + migrate + 其他服務 + 保留量 < max_connections），或明確設定 Npgsql `Maximum Pool Size` 上限／縮短 `Connection Idle Lifetime`。
+
+**Phase 2**（2026-07-29，`k6/teamslot-edit-load.js` + `db/seed-load-teamslot.sql`；每輪每個 VUS 跑序：重啟+reseed → 跑 k6 → 重啟 → 查 DB）
+- [x] 兩環境各 5 輪 × 3 個 VUS，共 30 次 k6 執行，**checks_failed 全部 0.00%、0 個誤觸發衝突**（每次 `✓ no conflict` 皆通過）。
+- [x] **正確性**：每次查 DB 皆 `filled=VUS dup=0`，兩環境、所有輪次、所有 VUS 無例外。
+
+  **環境 A：本機 Windows**
+
+  | VUS | http_req p95（5 輪範圍） | iteration p95（5 輪範圍） | lock_timeout 誤觸發？ |
   |---|---|---|---|
-  | 60 | 895ms | 1.42s | 無 |
-  | 250 | 3.63s | 6.24s | 無 |
-  | 500 | 9.69s | 17.19s（max 17.52s） | **無，0/500** |
+  | 60 | 1.76s–2.10s | 3.35s–3.97s | 無（0/240 × 5 輪） |
+  | 250 | 5.00s–5.41s | 9.08s–9.63s | 無（0/1000 × 5 輪） |
+  | 500 | 9.39s–9.65s | 15.48s–16.28s | 無（0/2000 × 5 輪） |
 
-  **結論（跟原本擔心的方向相反）**：500 個併發編輯同一支隊——這已經是遠超實際使用情境的極端值（一支隊正常 6-8 人，不可能有 500 人同時搶編輯權）——`lock_timeout=5s` **完全沒有誤觸發**，即使總延遲飆到 17 秒。**原因**：`SET LOCAL lock_timeout` 只計算「已進入交易、卡在 `pg_advisory_xact_lock` 本身」的等待時間；client 端觀察到的巨大延遲，大部分花在**進交易之前**——Kestrel request 排隊、等 Npgsql 連線池給連線——這些不算進 `lock_timeout` 的計時範圍，各自有自己的（更寬鬆的）逾時。也就是說：**在連線池被打爆之前（見 Phase 1 的連線數斷點），`lock_timeout` 5s 這個預設值的安全邊際比原本想的大很多**——真正該擔心的瓶頸是連線池，不是這個 timeout 本身太短。
-  **殘留的獨立問題**：500 併發下總延遲 17 秒是使用者體感很差的數字，但這是連線池/執行緒排隊的問題（跟 Phase 1 找到的斷點同源），不是 `lock_timeout` 該不該調的問題——兩個是不同層次的瓶頸，別混為一談。
+  **環境 B：AWS Lightsail/EC2**
+
+  | VUS | http_req p95（5 輪範圍） | iteration p95（5 輪範圍） | lock_timeout 誤觸發？ |
+  |---|---|---|---|
+  | 60 | 1.24s–1.32s | 2.76s–2.88s | 無（0/240 × 5 輪） |
+  | 250 | 5.49s–5.95s | 9.41s–9.93s | 無（0/1000 × 5 輪） |
+  | 500 | 9.86s–10.47s | 16.03s–16.90s | 無（0/2000 × 5 輪） |
+
+  **觀察（跟 Phase 1 的模式不同，值得注意）**：VUS=60 時 EC2 依然明顯較快，跟 Phase 1 一致；但 VUS=250 起兩環境開始拉近，**VUS=500 時本機甚至略快於 EC2**（本機 15.48s–16.28s vs EC2 16.03s–16.90s，5 輪範圍幾乎不重疊）。這跟「專用機器全面比較快」的直覺相反——推測 Lightsail 入門規格的 4 vCPU 可能是共享／有節流的虛擬核心，在這種大量小交易搶同一把鎖的 CPU 密集情境下，不一定贏過桌機的實體核心；換句話說，「環境 B 比較快」只在 Phase 1 的連線數/序列化排隊這種瓶頸類型下成立，到了 Phase 2 高 VUS 的 CPU 排隊瓶頸，優勢就消失甚至反轉。
+  **結論**：`lock_timeout=5s` 在兩環境、5 輪、3 個 VUS 等級（合計 30 次執行、約 12,150 次請求）裡**從未誤觸發**，即使 VUS=500 時 iteration 總延遲最高到過 16.9 秒。**原因**：`SET LOCAL lock_timeout` 只計算「已進入交易、卡在 `pg_advisory_xact_lock` 本身」的等待時間；client 端觀察到的巨大延遲，大部分花在進交易之前——Kestrel request 排隊、等 Npgsql 連線池給連線——這些不算進 `lock_timeout` 的計時範圍。安全邊際穩定存在，不受環境或測試輪次影響；真正該擔心的瓶頸是 Phase 1 找到的連線池斷點，不是這個 timeout 本身太短。
 
 **不進正式 phase（有空再做）**
 - [ ] idempotency／限流在併發下行為正確（409／429）。
