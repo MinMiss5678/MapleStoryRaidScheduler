@@ -54,6 +54,8 @@
 ### 環境
 - 對 **docker compose stack**（仿 e2e 的 profile；非 prod）。seed 一個未來 period + boss 模板 + N 隻角色（比照 `db/seed-e2e.sql`）。
 - k6 以容器跑在 compose 網路內（比照 `compose.e2e.yaml` 的 e2e-playwright）。
+- **Phase 1/2 實測環境（誠實記錄，數字怎麼來的）**：本機 Windows，Intel Core i7-7700K @ 4.20GHz（實體 4 核心/8 邏輯執行緒）、~32GB RAM；Docker Desktop（WSL2）VM 分配到 8 CPU／15.6GB RAM，但**跟 host 上其他所有東西共用同一組實體核心**（沒有 `--cpus`/`--memory` 釘死、沒有專用機器）。
+- **這代表報告裡的數字是方向性的、量級對，不是可信賴的 benchmark**——足夠回答「lock_timeout 5s 有沒有安全邊際」「連線池斷點大概在哪」這種是非題，不足夠拿來說「正式環境 p95 就是這個數字」。要拿到精確數字得先有專用、資源固定、無其他負載的機器（本地或 CI 都一樣，跟平台無關）。
 
 ### Auth
 - 壓測要帶已驗證身分。用 **Development 的 test-login 端點**（e2e 已用）鑄 JWT，或預先產一批 token。
