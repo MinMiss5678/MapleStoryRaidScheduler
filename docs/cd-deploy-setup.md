@@ -9,13 +9,15 @@
 
 ## 前置：GitHub Secrets（repo Settings → Secrets and variables → Actions；建議綁在 `production` Environment 而非 repo-wide，多一層核准閘）
 
-| Secret | 用途 | 怎麼拿 |
-|---|---|---|
-| `DOCKERHUB_USERNAME` | 推 `minqq/*` 到 Docker Hub（k8s 從這拉映像） | Docker Hub 帳號 |
-| `DOCKERHUB_TOKEN` | 同上（用 access token 非密碼） | Docker Hub → Account → Security → New Access Token |
-| `KUBE_CONFIG` | 讓 CI 連得到叢集 | `base64 -w0 ~/.kube/config`（貼整串）|
+| Secret | 用途 | 怎麼拿 | 最小權限 |
+|---|---|---|---|
+| `DOCKERHUB_USERNAME` | 推 `minqq/*` 到 Docker Hub（k8s 從這拉映像） | Docker Hub 帳號 | — |
+| `DOCKERHUB_TOKEN` | 同上（用 access token 非密碼） | Docker Hub → Account → Security → New Access Token | **Read & Write**（`build-push-action` 對 4 個 repo 都 `push: true`；Read-only 會 push 失敗，不需要 Delete） |
+| `KUBE_CONFIG` | 讓 CI 連得到叢集 | `base64 -w0 ~/.kube/config`（貼整串）| namespace `maple-raid` 範圍的 `Role`+`RoleBinding`（對 `Jobs`/`Deployments` 等 get/list/watch/create/update/patch/delete），**不需要 cluster-admin**——job 只跑 `delete job`/`apply -f`/`apply -k`/`rollout status`/`wait`，全部限定在這個 namespace |
 
 > GitHub Actions 的 secrets 預設就會在 log 裡自動遮罩，不用像 GitLab 另外勾 masked；scope 到 `production` Environment 等同 GitLab 的 protected（只有跑在該 Environment 的 job 才讀得到）。
+>
+> **kubeconfig 外洩的影響範圍取決於背後帳號的權限**——用專屬 ServiceAccount + 上面這個最小權限的 Role 產生 kubeconfig，而不是直接複製 admin 的 `~/.kube/config`，CI secret 一旦外洩也只能動這個 namespace，不是整個叢集。
 
 ## 流程（job 內做的事）
 
