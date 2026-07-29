@@ -96,12 +96,21 @@
   | 200（乾淨環境） | 0% error，p95 register 5.24s |
   | 200（緊接著沒重啟就再跑一次） | **37.5% error**，且 Postgres 開始拒絕新連線（連 `psql` 都連不上：`FATAL: sorry, too many clients already`） |
 
-  **根因**：Postgres `max_connections=100`（image 預設）跟 Npgsql pool 的預設上限（也是 100）**完全沒有 headroom**——一次 ~100+ 併發打滿後，Npgsql 把這批連線**留在池子裡閒置**（預設 `Connection Idle Lifetime` 到分鐘等級才會收縮，不會馬上還給 Postgres），導致 Postgres 的連線額度被 app 自己的閒置池佔滿，接下來**任何**新連線（包含 migration、`psql` 管理連線）都連不上，直到 idle 連線被 prune 或 app 重啟。**這才是 `MSRS架構參照.md §10` 講的「連線池耗盡」訊號的具體數字**：不是「鎖讓請求變慢」本身會爆，是「backend 自己的連線池吃光 Postgres 額度、擠掉其他連線」會爆。
-  **建議**：正式環境該給 Postgres `max_connections` 留 headroom（backend pool size + migrate + 其他服務 + 保留量 < max_connections），或明確設定 Npgsql `Maximum Pool Size` 上限，別讓它預設吃到跟 Postgres 一樣的天花板。
+  **根因（比原本寫的更精確）**：**不是「併發量 > 100 就會爆」**——Npgsql pool 上限（預設 = `Maximum Pool Size` 100）本身會**自我限制**，超過 100 的請求會在 client 端排隊等一條連線空出來，不會硬跟 Postgres 要第 101 條（Phase 2 的 VUS=500 乾淨環境測試就是證據：全部靠 100 條連線輪流服務排隊排出來，0 error）。**真正的觸發條件是「兩輪測試間隔太短、pool 沒機會把閒置連線還給 Postgres」**：Npgsql 的 pool 設計是「用完先留著、晚點才收」——連線閒置超過 `Connection Idle Lifetime`（預設 300 秒）才會被 `Connection Pruning Interval`（預設 10 秒一次）掃掉。VUS=150 跑完到緊接著跑 VUS=200，中間間隔遠不到 5 分鐘，上一輪的 ~100+ 條連線都還原封不動躺在 pool 裡佔著 Postgres 的額度，這批新需求疊上去才瞬間衝過 `max_connections=100`（image 預設，沒有 headroom）。**這才是 `MSRS架構參照.md §10` 講的「連線池耗盡」訊號的具體條件**：不是穩態併發量的問題，是「pool 沒有時間自然收斂就被連續打」的問題。
+  **建議**：正式環境該給 Postgres `max_connections` 留 headroom（backend pool size + migrate + 其他服務 + 保留量 < max_connections），或明確設定 Npgsql `Maximum Pool Size` 上限／縮短 `Connection Idle Lifetime`，別讓它預設吃到跟 Postgres 一樣的天花板、又要等 5 分鐘才收斂。
 
-**Phase 2**
-- [ ] **正確性**：高併發同隊編輯後，TeamSlot 人數不超容量。
-- [ ] **找出** TeamSlot 編輯鎖正常排隊等待 p99，判斷 `lock_timeout` 5s 預設會不會誤觸發（數字記下來，必要時回頭調整預設值或拆分使用者體感訊息）。
+**Phase 2**（已跑，2026-07-29，同一套環境；`k6/teamslot-edit-load.js` + `db/seed-load-teamslot.sql`）
+- [x] **正確性**：VUS=60/250/500（乾淨環境）皆 0 error、0 個誤觸發衝突，TeamSlot 人數符合預期（每人填不同空位，不重疊）。
+- [x] **找出** TeamSlot 編輯鎖正常排隊等待 p99，判斷 `lock_timeout` 5s 預設會不會誤觸發：
+
+  | VUS | http_req p95（login+get+put 混合） | iteration p95（含 3 個請求） | lock_timeout 誤觸發？ |
+  |---|---|---|---|
+  | 60 | 895ms | 1.42s | 無 |
+  | 250 | 3.63s | 6.24s | 無 |
+  | 500 | 9.69s | 17.19s（max 17.52s） | **無，0/500** |
+
+  **結論（跟原本擔心的方向相反）**：500 個併發編輯同一支隊——這已經是遠超實際使用情境的極端值（一支隊正常 6-8 人，不可能有 500 人同時搶編輯權）——`lock_timeout=5s` **完全沒有誤觸發**，即使總延遲飆到 17 秒。**原因**：`SET LOCAL lock_timeout` 只計算「已進入交易、卡在 `pg_advisory_xact_lock` 本身」的等待時間；client 端觀察到的巨大延遲，大部分花在**進交易之前**——Kestrel request 排隊、等 Npgsql 連線池給連線——這些不算進 `lock_timeout` 的計時範圍，各自有自己的（更寬鬆的）逾時。也就是說：**在連線池被打爆之前（見 Phase 1 的連線數斷點），`lock_timeout` 5s 這個預設值的安全邊際比原本想的大很多**——真正該擔心的瓶頸是連線池，不是這個 timeout 本身太短。
+  **殘留的獨立問題**：500 併發下總延遲 17 秒是使用者體感很差的數字，但這是連線池/執行緒排隊的問題（跟 Phase 1 找到的斷點同源），不是 `lock_timeout` 該不該調的問題——兩個是不同層次的瓶頸，別混為一談。
 
 **不進正式 phase（有空再做）**
 - [ ] idempotency／限流在併發下行為正確（409／429）。
