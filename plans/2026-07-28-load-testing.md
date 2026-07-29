@@ -6,24 +6,37 @@
 
 ## 目標
 
-對**部署起來的真系統**灌併發負載，量吞吐（RPS）、延遲（p50/p95/p99）、錯誤率，並找**斷點**——尤其 auto-assign 的 advisory lock 在高併發下的**連線池耗盡點**（我們判斷「該考慮換 MQ 序列化」的訊號）。順帶驗真-async 的價值（負載下同資源扛更多併發、p99 較平；阻塞式會較早 thread-pool 飢餓）。
+對**部署起來的真系統**灌併發負載，量吞吐（RPS）、延遲（p50/p95/p99）、錯誤率，並找**斷點**——尤其 auto-assign 的 advisory lock 在高併發下的**連線池耗盡點**（我們判斷「該考慮換 MQ 序列化」的訊號），以及 TeamSlot 編輯鎖的**正常排隊等待時間**是否逼近 `lock_timeout` 5s 預設值（判斷會不會誤把「排隊久」當成「持鎖方卡死」）。順帶驗真-async 的價值（負載下同資源扛更多併發、p99 較平；阻塞式會較早 thread-pool 飢餓）。
+
+## 階段
+
+- **Phase 1**：環境（k6/NBomber 腳本 + seed + compose load profile）+ 跑 §1（auto-assign lock）。獨立可交付——做完就有「連線耗盡斷點」這個成果，沒空做 Phase 2 也不虧。
+- **Phase 2**：重用 Phase 1 環境，加跑 §1b（TeamSlot 編輯鎖 + `lock_timeout` 驗證）。
+- §2/§3/§4（idempotency/限流、讀取基準、端到端）**不排進正式 phase**，維持「有空/有需求再做」，避免為它們預先付環境擴充成本。
 
 ## 範圍（依價值排序）
 
-### 1. advisory-lock 併發（★ 最高價值）
+### 1. advisory-lock 併發（★ 最高價值，Phase 1）
 - 同一 period **N 個併發報名** → 兩件事：
   - **正確性**：DB **不出現重複隊**（無 read-then-write race）——`RegistrationLockIntegrationTests` 用 2 條連線證明過序列化，壓測放大到數十條給信心。
   - **斷點**：量到多少併發時 Npgsql 連線池的 waiter 塞住、p99 爆 → 那條線就是「換 MQ 序列化」的訊號。
 
-### 2. idempotency + 限流 burst
+### 1b. TeamSlot 編輯鎖（classId 1002）+ `lock_timeout` 誤觸發驗證（★ 高價值，Phase 2；原計畫寫時這功能還不存在）
+- **背景**：`lock_timeout` 預設 5 秒是憑經驗設的，沒有負載數據佐證。目前拋 `AdvisoryLockTimeoutException` 的唯一訊號就是「等鎖等超過 5 秒」——**正常排隊排久了**跟**持鎖方真的異常卡住**現在用同一個訊號分不開。
+- **要驗的問題**：對同一 `teamSlotId` 灌 N 個併發編輯（管理員排團存檔 + 玩家補位混打），量**正常排隊等待時間的分布（p50/p95/p99）**——
+  - 若 p99 遠低於 5s：現有預設合理，維持。
+  - 若 p99 逼近甚至超過 5s：代表高併發下會出現**假陽性**（隊伍其實沒卡住，只是排隊久），要嘛調高 timeout、要嘛把「lock_timeout 逾時」跟「隊伍消失/樂觀鎖衝突」在使用者體感上區分開（目前三者都統一落進 `ConflictedTeamSlotIds`，UI 上看不出差異）。
+- **正確性硬條件同 §1**：無論併發多高，DB 最終人數不超過隊伍容量（`ConcurrentAdd_ToTeamWithOneSlotLeft_NeverExceedsCapacity` 的邏輯放大版）。
+
+### 2. idempotency + 限流 burst（不進正式 phase）
 - 同一 idempotency key 併發 → 一個 2xx、其餘 **409**。
 - 同 discordId burst >100/10s → 出現 **429**。
 - 驗 Redis 版在真併發下的行為 + fail-open（停 Redis 容器 → 放行不擋）。
 
-### 3. 讀取基準
+### 3. 讀取基準（不進正式 phase）
 - 主要查詢端點 ramp-up → p95/p99 與吞吐基準線。
 
-### 4. 端到端報名 → 排團
+### 4. 端到端報名 → 排團（不進正式 phase）
 - 完整流程 p95/p99、錯誤率。
 
 ### 非範圍（YAGNI）
@@ -52,28 +65,47 @@
 - 錯誤：Seq；資源：CPU / 記憶體 / GC（容器 `docker stats`）。
 
 ### 通過門檻（SLO，先訂再測）
-- **正確性硬條件**：壓測後 **DB 無重複隊**（auto-assign 不變量）。
+- **正確性硬條件**：壓測後 **DB 無重複隊**（auto-assign 不變量）、TeamSlot 成員數不超過容量。
 - p95 < 基準值（先量再訂，例：< 500ms）@ 目標 RPS。
 - error rate < 1%（不含刻意觸發的 409/429）。
 - advisory-lock 的**連線耗盡併發數**：這是要**找出來記下**的數字（非 pass/fail）。
+- TeamSlot 編輯鎖的**正常排隊等待 p99**：找出來記下，並跟 `lock_timeout` 預設 5s 比較，判斷會不會誤觸發（非 pass/fail，是決策依據）。
 
 ## k6 情境（草案）
 
 | 情境 | 打法 | 期望 |
 |---|---|---|
 | `same_period_contention` | M VU 同 period `POST register` | 回應正常 + 事後查 DB **隊數 = 預期、無重複** |
+| `teamslot_edit_contention` | M VU 同 teamSlotId 混打管理員存檔＋玩家補位 | DB 人數不超容量；記錄等鎖等待時間 p50/p95/p99，跟 5s `lock_timeout` 比較 |
 | `idempotency_burst` | 同 key 併發 | 一個 2xx、其餘 409 |
 | `ratelimit_burst` | 同 discordId >100/10s | 出現 429 |
 | `read_baseline` | GET 端點 ramp | p95/p99 基準 |
 
 ## 驗收
 
-- [ ] k6 腳本 + compose load profile 可一鍵跑。
-- [ ] 產出報告：RPS / p95 / p99 / error rate。
-- [ ] **正確性**：高併發同 period 報名後，DB 無重複隊。
-- [ ] **找出** advisory-lock 連線耗盡的併發斷點（數字記下來）。
+**Phase 1**（已跑，2026-07-29，對 `compose.e2e.yaml` 的 e2e-db/e2e-migrate/e2e-redis/e2e-backend）
+- [x] k6 腳本 + seed 可一鍵跑（`k6/register-load.js` + `db/seed-load.sql`，`docker run grafana/k6`）。
+- [x] 產出報告：見下方實測數字。
+- [x] **正確性**：VUS=60（10隊×6人滿編）與 VUS=200（乾淨環境）皆 0 error、DB 無重複隊、無超編、無漏派——`db/verify-load.sql` 驗證通過。
+- [x] **找出** advisory-lock 連線耗盡的併發斷點——**不是「併發量太大直接失敗」，是連線池 headroom=0 的配置問題**：
+
+  | VUS | 結果 |
+  |---|---|
+  | 60 | 0% error，p95 register 1.67s |
+  | 150 | 0% error，p95 register 4.8s（線性隨鎖佇列變深） |
+  | 200（乾淨環境） | 0% error，p95 register 5.24s |
+  | 200（緊接著沒重啟就再跑一次） | **37.5% error**，且 Postgres 開始拒絕新連線（連 `psql` 都連不上：`FATAL: sorry, too many clients already`） |
+
+  **根因**：Postgres `max_connections=100`（image 預設）跟 Npgsql pool 的預設上限（也是 100）**完全沒有 headroom**——一次 ~100+ 併發打滿後，Npgsql 把這批連線**留在池子裡閒置**（預設 `Connection Idle Lifetime` 到分鐘等級才會收縮，不會馬上還給 Postgres），導致 Postgres 的連線額度被 app 自己的閒置池佔滿，接下來**任何**新連線（包含 migration、`psql` 管理連線）都連不上，直到 idle 連線被 prune 或 app 重啟。**這才是 `MSRS架構參照.md §10` 講的「連線池耗盡」訊號的具體數字**：不是「鎖讓請求變慢」本身會爆，是「backend 自己的連線池吃光 Postgres 額度、擠掉其他連線」會爆。
+  **建議**：正式環境該給 Postgres `max_connections` 留 headroom（backend pool size + migrate + 其他服務 + 保留量 < max_connections），或明確設定 Npgsql `Maximum Pool Size` 上限，別讓它預設吃到跟 Postgres 一樣的天花板。
+
+**Phase 2**
+- [ ] **正確性**：高併發同隊編輯後，TeamSlot 人數不超容量。
+- [ ] **找出** TeamSlot 編輯鎖正常排隊等待 p99，判斷 `lock_timeout` 5s 預設會不會誤觸發（數字記下來，必要時回頭調整預設值或拆分使用者體感訊息）。
+
+**不進正式 phase（有空再做）**
 - [ ] idempotency／限流在併發下行為正確（409／429）。
 
 ## 工時估
-- k6 腳本 + seed + compose load profile ≈ 一天。
-- 跑 + 分析 + 記斷點 ≈ 半天。
+- **Phase 1**：k6 腳本 + seed + compose load profile ≈ 一天；跑 + 分析 + 記斷點 ≈ 半天。
+- **Phase 2**：重用 Phase 1 環境，加 `teamslot_edit_contention` 情境 + 跑 + 分析 ≈ 半天。
