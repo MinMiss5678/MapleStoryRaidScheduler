@@ -1,7 +1,7 @@
 # 部署流程（手動）
 
 > 這是**手動**部署（本機 `deploy.ps1` / `rollout.ps1`）。
-> **CI 自動化 CD**（GitLab `deploy` stage：推映像 → migrate → 滾動更新）見 `docs/cd-deploy-setup.md`——兩者做同一件事，CD 版把這裡的步驟搬進 pipeline。
+> **CI 自動化 CD**（GitHub Actions `deploy.yml`，`workflow_dispatch` 手動觸發：推映像 → migrate → 滾動更新）見 `docs/cd-deploy-setup.md`——兩者做同一件事，CD 版把這裡的步驟搬進 workflow。
 
 ## 前置條件
 

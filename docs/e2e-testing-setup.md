@@ -1,8 +1,12 @@
 # E2E 測試設定筆記（Playwright + 全 stack）
 
 Playwright 打**全端**（瀏覽器 → Next.js `/api` proxy → .NET API → Postgres），驗核心流程整條通不通。
-重點記**坑**——跑法照抄不難，難在時間相依業務規則、secure-context、dind 這些。
+重點記**坑**——跑法照抄不難，難在時間相依業務規則、secure-context 這些。
 計畫/進度看 `plans/2026-07-18-e2e-tests.md`；這份是「怎麼跑 + 為什麼這樣接」的參考。
+
+> CI 現在跑 **GitHub Actions**（`.github/workflows/ci.yml` 的 `e2e` job），ubuntu runner 內建 Docker
+> daemon，沒有 dind、沒有 buildx TLS/network 這類問題。dind 時代踩過的坑收在 `docs/gitlab-selfhost-ci-setup.md`
+> （已淘汰的自架方案，僅存原理參考），這裡只留現在還會踩到的坑。
 
 ## 架構
 
@@ -29,7 +33,7 @@ CI  ：e2e-playwright 容器共用 e2e-frontend 網路（network_mode）→ 走 
 | `db/seed-e2e.sql` | E2E seed（單一未來 period + 4 隻獨立王） |
 | `compose.e2e.yaml` | 全 stack + `e2e-playwright`(profile ci) |
 | `web/Dockerfile`（`dev` target）/ `web/Dockerfile.e2e` | 前端 dev / playwright 執行器映像 |
-| `.gitlab-ci.yml`（`e2e` job）| dind 起 compose 跑 E2E（coverage 全過後自動觸發） |
+| `.github/workflows/ci.yml`（`e2e` job）| ubuntu runner 內建 Docker，直接 compose 跑 E2E（PR 觸發，純文件變更會被 `changes` job 跳過） |
 
 ## 認證接縫（繞過 Discord OAuth）
 
@@ -60,8 +64,8 @@ cd web && npm run e2e                                     # 跑 8 支（reuse co
 docker compose -f compose.e2e.yaml --profile ci run --build --rm e2e-playwright
 ```
 
-### GitLab CI
-`.gitlab-ci.yml` 的 `e2e` job（coverage 全過後自動觸發）：dind 起 compose → **等 backend `/health/ready`**（e2e-frontend 的 node 在 compose 網路內 fetch backend readiness 探針；補 `service_started` ≠ app ready 的洞）→ seed → 跑 `e2e-playwright`。
+### GitHub Actions CI
+`.github/workflows/ci.yml` 的 `e2e` job：`docker compose --profile ci build` → `up -d e2e-frontend` → **等 backend `/health/ready`**（e2e-frontend 的 node 在 compose 網路內 fetch backend readiness 探針；補 `service_started` ≠ app ready 的洞）→ 灌 seed → `docker compose --profile ci run e2e-playwright`。ubuntu runner 原生 Docker，不需要 dind、不需要額外的 buildx TLS/network 設定。
 
 ### 收工
 ```bash
@@ -75,7 +79,7 @@ docker compose -f compose.e2e.yaml --profile ci down -v   # 含資料一起清
 | `smoke` | 首頁未登入 Landing + 登入鈕 |
 | `auth`（×2） | 玩家 → Dashboard；admin → `/admin/schedule` |
 | `schedule` | seeded 玩家在排團結果看到自己的隊（讀取整串） |
-| `register` | 新玩家報名 → 自動排隊 → 入隊（寫入整串） |
+| `register` | 新玩家報名 → 自動分配 → 入隊（寫入整串） |
 | `fill` | 玩家補位進未滿的隊（E2E王2） |
 | `admin-rebuild` | 管理員自動排團（E2E王3） |
 | `admin-conflict` | 管理員存檔時隊伍已被異動/消失 → 顯示衝突提示，不假裝成功（E2E王4） |
@@ -89,42 +93,33 @@ docker compose -f compose.e2e.yaml --profile ci down -v   # 含資料一起清
 | **報名表單 Step2 選角色後 row 重新分組**（角色 select 消失） | `.nth(1)` 找不到 | **先選 boss 再選角色** |
 | **補位場數規則**（`validateAddCharacter` #5：補位者場數 = 首位成員場數） | 補位靜默失敗、無 PUT | seed dummy 成員 `Rounds=0` |
 | **secure-context**：非 localhost HTTP 存取 → `crypto.randomUUID`（idempotency key）+ Secure cookie 失效 | 寫入測試全掛 | `e2e-playwright` 用 **`network_mode: "service:e2e-frontend"`** → 走 `localhost:3000` |
-| **dind volume 掛載**看不到 job 容器檔案 | CI 掛載跑不了 | Playwright 映像走 **build context**（`Dockerfile.e2e` COPY 源碼） |
 | **前端 prod build** `NODE_ENV=production` 擋 `test` 白名單 | proxy 403 | `web/Dockerfile` 加 **`dev` target** |
 | **stale next dev 卡 3000 / stack 停掉** | test-login 500 | 殺 3000 佔用 / `up -d` 重起 |
-| **buildx 讀不到 env TLS**（dind+TLS，CI） | `could not create a builder instance with TLS data loaded from environment` | `docker context create` 包 TLS，再 `buildx create <ctx>` |
-| **buildkit RUN 無對外網路**（dind，CI） | `dotnet restore`/`npm ci` NU1301 timeout（連不到 nuget/npm） | builder 加 `--driver-opt network=host` |
 
-## CI on gitlab.com（官方托管）
+## CI on GitHub Actions（現況）
 
-自架 GitLab CE 閒置吃 ~4GB → 改用 **gitlab.com 官方托管**（GitLab + runner 都在他們機器，本機 RAM 全省）。
-- **runner**：免費預設 `saas-linux-small-amd64` = **2 vCPU / 8 GB / 30 GB**，內建 Docker（dind 可跑）。
-- **遷移**：GitHub 匯入 project（或加 gitlab.com remote 推）；免費 CI 要**綁卡驗證**才給 shared runner。
-- `.gitlab-ci.yml` 的 `e2e` job（coverage 全過後自動觸發，不再 `when: manual`）已實跑綠：**7 passed**。
+CI 已從自架 GitLab CE → gitlab.com 官方托管，最終遷到 **GitHub Actions**（`.github/workflows/ci.yml`）——
+不用再管 runner 佈建，GitHub-hosted `ubuntu-latest` 內建 Docker + Docker Compose v2，e2e job 直接
+`docker compose --profile ci build/up/run`，不需要 dind、不需要額外的 buildx 設定。
 
-### layer cache（已驗證綠）
-buildx registry cache（`--cache-from/--cache-to type=registry`，`docker-container` driver + registry login）+ compose 改 `image:` 引用（`E2E_REGISTRY=$CI_REGISTRY_IMAGE`）。dind 每次全新 → 靠 registry cache 讓 `dotnet restore`/`npm ci` 層命中跳過。
+- **觸發**：PR 開/更新 + push `main`（post-merge 守門）。純文件變更（`docs/`、`plans/`、根目錄 `*.md`）
+  由 `changes` job（`dorny/paths-filter`）判定，`e2e` 跟其餘 6 個必要 job 標記 `skipped`——
+  GitHub 把 skipped 視為通過，不擋 merge，但也不用真的跑一次全 stack。
+- **layer cache**：GitHub Actions 原生快取（`docker/build-push-action` 的 `cache-from/cache-to: type=gha`），
+  比原本 GitLab dind 時代要另外接 registry cache（`type=registry` + 額外 registry 登入）簡單。
+- **required status checks**：`main` 分支保護要求 `format`/`build`/`unit-test`/`integration-test`/
+  `frontend-test`/`coverage`/`e2e` 全綠才能 merge，`enforce_admins` 開啟（admin 也不能跳過）。
 
-| 跑 | 時間 | 結果 |
-|---|---|---|
-| 第 1 跑（無 cache，建 + 推 cache） | 5.4 分 | 7 passed |
-| 第 2 跑（大量 `CACHED` 命中） | **4.5 分** | 7 passed（**<5 分達標**） |
-
-只快 ~17%：base image 拉取 + `--cache-to` 每次重推 + compose up/測試（~2 分固定）不受 cache 影響。想再快 → 預建映像 push 成正式 image、e2e 直接 `pull`（YAGNI，4.5 分已達標）。
-
-## 用 glab 驅動/除錯 CI（CLI）
+## 用 gh 驅動/除錯 CI（CLI）
 
 ```bash
-glab auth status                                        # 確認登入 gitlab.com
-glab ci status                                          # 當前 branch 最新 pipeline
-glab ci list -R <group/project>                         # 列 pipelines
-glab ci lint .gitlab-ci.yml                             # 驗 CI 設定語法
-glab api "projects/<id>/pipelines/<pid>/jobs"           # 找 job id（trigger 要數字 id 不是名字）
-glab ci run                                              # 重觸發整條 pipeline（e2e 已自動，不需 trigger）
-glab api "projects/<id>/jobs/<job-id>/trace" | tail     # 非阻塞讀 log（trace 會阻塞跟到結束）
-glab api --method POST "projects/<id>/jobs/<job-id>/cancel"   # 取消
+gh run list --branch <branch> --limit 5                 # 列這個分支最近幾次 run
+gh run watch <run-id> --exit-status                      # 阻塞等待 run 完成，非輪詢（配 run_in_background）
+gh run view <run-id> --json jobs                          # 看各 job 的 status/conclusion（含 skipped）
+gh run view <run-id> --log-failed                         # 只看失敗 job 的 log
+gh api repos/<owner>/<repo>/actions/jobs/<job-id>/logs    # 抓單一 job 的完整原始 log（run 未結束時也可用單 job）
+gh workflow run deploy.yml                                # 手動觸發 deploy（workflow_dispatch）
 ```
-（project 數字 id 可從任一 job log 的 `project-<id>` 看到。）
 
 ## 未決
 
