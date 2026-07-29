@@ -38,25 +38,75 @@ public class TeamSlotRepository : ITeamSlotRepository
 
     public async Task<TeamSlot?> GetByIdAsync(int id)
     {
+        // 原本是「查 TeamSlot」+「查 Characters」兩次往返，合併成一次 LEFT JOIN：
+        // 併發控制迴圈裡每個既有隊伍都會呼叫一次，逐隊各打兩次是可避免的 N+1（見 architecture.md）。
         var sql = new QueryBuilder()
             .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId })
+            .Select<TeamSlotCharacterDbModel>(x => new
+            {
+                CharacterRowId = x.Id,
+                x.DiscordId,
+                x.DiscordName,
+                x.CharacterId,
+                x.CharacterName,
+                x.Job,
+                x.AttackPower,
+                x.Rounds,
+                x.IsManual
+            }, "b")
             .From<TeamSlotDbModel>()
+            .LeftJoin<TeamSlotCharacterDbModel>("""a."Id" = b."TeamSlotId" """)
             .Where<TeamSlotDbModel>(x => x.Id == id);
 
-        var dbModel = await _dbContext.QuerySingleOrDefaultAsync<TeamSlotDbModel>(sql);
-        if (dbModel == null) return null;
+        var rows = (await _dbContext.QueryAsync<TeamSlotWithCharacterRow>(sql)).ToList();
+        if (rows.Count == 0) return null;
 
-        var characters = await GetCharactersByTeamSlotIdAsync(id);
+        var first = rows[0];
+        // 空隊的 LEFT JOIN 會產生 CharacterRowId=0 的 ghost row（Dapper 對 int? NULL 映射成 int 的慣例），需過濾掉
+        var characters = rows
+            .Where(r => r.CharacterRowId != 0)
+            .Select(r => new TeamSlotCharacter
+            {
+                Id = r.CharacterRowId,
+                TeamSlotId = id,
+                DiscordId = (ulong)r.DiscordId,
+                DiscordName = r.DiscordName ?? "",
+                CharacterId = r.CharacterId,
+                CharacterName = r.CharacterName,
+                Job = r.Job ?? "",
+                AttackPower = r.AttackPower,
+                Rounds = r.Rounds,
+                IsManual = r.IsManual
+            })
+            .ToList();
 
         return new TeamSlot
         {
-            Id = dbModel.Id,
-            BossId = dbModel.BossId,
-            SlotDateTime = dbModel.SlotDateTime,
-            Source = dbModel.Source,
-            TemplateId = dbModel.TemplateId,
-            Characters = characters.ToList()
+            Id = first.Id,
+            BossId = first.BossId,
+            SlotDateTime = first.SlotDateTime,
+            Source = first.Source,
+            TemplateId = first.TemplateId,
+            Characters = characters
         };
+    }
+
+    private class TeamSlotWithCharacterRow
+    {
+        public int Id { get; set; }
+        public int BossId { get; set; }
+        public DateTimeOffset SlotDateTime { get; set; }
+        public string Source { get; set; } = "";
+        public int? TemplateId { get; set; }
+        public int CharacterRowId { get; set; }
+        public long DiscordId { get; set; }
+        public string? DiscordName { get; set; }
+        public string? CharacterId { get; set; }
+        public string? CharacterName { get; set; }
+        public string? Job { get; set; }
+        public int AttackPower { get; set; }
+        public int Rounds { get; set; }
+        public bool IsManual { get; set; }
     }
 
     public async Task<IEnumerable<TeamSlot>> GetByPeriodIdAsync(int periodId)
@@ -234,10 +284,5 @@ public class TeamSlotRepository : ITeamSlotRepository
             Rounds = c.Rounds,
             IsManual = c.IsManual
         });
-    }
-
-    private async Task<IEnumerable<TeamSlotCharacter>> GetCharactersByTeamSlotIdAsync(int teamSlotId)
-    {
-        return await GetCharactersByTeamSlotIdsAsync(new[] { teamSlotId });
     }
 }
