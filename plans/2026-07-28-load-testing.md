@@ -112,7 +112,7 @@
   | 200（乾淨：重啟+reseed） | 2.30s–2.48s | 3.42s–3.52s |
   | 200（不重啟，`OFFSET` 全新 200 人） | 2.73s–2.90s | 3.14s–3.27s |
 
-  **觀察**：VUS 60 到 200 這個範圍，兩環境 5 輪的數字區間完全不重疊，EC2 穩定比本機快 30%–50%，符合「專用機器」預期。「200（不重啟）」這步在兩環境的 5 輪裡**全部 100% 成功**（checks_failed 0.00%）——連線池滿載、外部 `psql` 被拒絕的同一時刻，app 自己的請求仍全數排隊完成，這個結論在兩台機器、共 10 輪測試裡沒有一次例外。
+  **觀察**：VUS 60 到 200 這個範圍，兩環境 5 輪的數字區間完全不重疊，EC2 穩定比本機快，符合「專用機器」預期；但領先幅度不是固定值，**隨 VUS 上升而收斂**——用 5 輪中位數算，VUS=60/150 時 EC2 快 49%–58%，VUS=200（乾淨）收斂到 33%–37%，VUS=200（不重啟）只剩 28%–29%。「200（不重啟）」這步在兩環境的 5 輪裡**全部 100% 成功**（checks_failed 0.00%）——連線池滿載、外部 `psql` 被拒絕的同一時刻，app 自己的請求仍全數排隊完成，這個結論在兩台機器、共 10 輪測試裡沒有一次例外。
 
   **根因**：Npgsql pool 上限（預設 `Maximum Pool Size`=100）本身會**自我限制**——超過 100 的請求在 client 端排隊等連線空出來，不會硬跟 Postgres 要第 101 條；只有**繞過 app 自己 pool 的外部新連線**（`psql`、migration，直接跟 Postgres 要一條全新連線）在 backend pool 已佔滿 `max_connections`（預設 100）額度時才會被**直接拒絕**，不是排隊。連線閒置要等 `Connection Idle Lifetime`（預設 300 秒）才會被 `Connection Pruning Interval`（預設 10 秒一次）收回，測試輪次間隔遠不到 5 分鐘，上一輪的連線就還占著額度——這就是為什麼每輪查 DB 前都要先重啟 backend。真正的風險不是「玩家請求會失敗」，是**同一時間需要對 Postgres 開新連線的其他操作**（migration job、DBA 手動查資料庫、多服務共享同一個 Postgres）會連不上，且這個風險不需要 app 本身出問題就會發生。
   **建議**：正式環境該給 Postgres `max_connections` 留 headroom（backend pool size + migrate + 其他服務 + 保留量 < max_connections），或明確設定 Npgsql `Maximum Pool Size` 上限／縮短 `Connection Idle Lifetime`。
