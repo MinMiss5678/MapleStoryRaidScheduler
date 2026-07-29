@@ -68,7 +68,7 @@
 | E2 | 編輯既有隊伍前先對 `(classId=1002, teamSlotId)` 取交易級 advisory lock，序列化同一隊伍的併發編輯；不同隊伍不互斥 | `RegistrationLock.AcquireTeamSlotEditLockAsync`；`architecture.md §TeamSlot 編輯併發控制` |
 | E3 | 容量不超編、同一角色不重複加入，由 `TeamSlot.AddMember`（充血聚合）統一守，**含 admin 也擋**；違反丟 `DomainException` → 400 | `TeamSlot.AddMember` |
 | E4 | 隊伍已消失（被 merge / 連帶清團砍掉）或既有成員版本衝突（`xmin` 對不上，含 row 已被刪）→ **統一**收進 `ConflictedTeamSlotIds`，不丟例外、不中斷其他隊伍的處理 | `TeamSlotService.UpdateAsync`；`architecture.md §TeamSlot 編輯併發控制` |
-| E5 | 管理員排程頁存檔後，衝突的隊伍**原地標紅、不重新排序**；未列在衝突清單的隊伍皆已成功存檔 | `web/app/admin/schedule/page.tsx` |
+| E5 | 管理員排團頁存檔後，衝突的隊伍**原地標紅、不重新排序**；未列在衝突清單的隊伍皆已成功存檔 | `web/app/admin/schedule/page.tsx` |
 
 ## 七、通知（Notification）
 

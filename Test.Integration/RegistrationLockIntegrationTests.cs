@@ -7,7 +7,7 @@ using Xunit;
 namespace Test.Integration;
 
 /// <summary>
-/// 驗 advisory lock 真的互斥（對真 Postgres）：同一 period 的自動排隊會序列化 → 併發報名不會各開一隊。
+/// 驗 advisory lock 真的互斥（對真 Postgres）：同一 period 的自動分配會序列化 → 併發報名不會各開一隊。
 /// 用 pg_try_advisory_xact_lock（非阻塞）從另一條連線觀察：持鎖時拿不到、釋放後拿得到——確定性、無時序 race。
 /// classId 1001 對齊 RegistrationLock。
 /// </summary>

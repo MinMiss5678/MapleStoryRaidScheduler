@@ -1,34 +1,34 @@
-# CD 部署設定筆記（GitLab CI → k8s 滾動更新）
+# CD 部署設定筆記（GitHub Actions → k8s 滾動更新）
 
-`.gitlab-ci.yml` 的 `deploy` job：把 `k8s/rollout.ps1`（build + push `minqq/*` → `kubectl rollout restart`）＋ `migrate-job` 搬進 CI。
-**CD 到 prod 一律人工點擊**（`when: manual`）、只在 `main`。等於「一鍵發版」，但那一鍵是人按的。
+`.github/workflows/deploy.yml` 的 `deploy` job：把 `k8s/rollout.ps1`（build + push `minqq/*` → `kubectl rollout restart`）＋ `migrate-job` 搬進 CI。
+**CD 到 prod 一律人工點擊**（`workflow_dispatch`，非自動觸發）、`if: github.ref == 'refs/heads/main'` 限定只有 main 能跑，另外掛 `production` Environment（可設 required reviewers 當核准閘、記錄 who/when 部署）。等同「一鍵發版」，但那一鍵是人按的，而且跟 PR/push 觸發的 `ci.yml` 完全是兩個獨立 workflow——merge 進 main 不會自動部署。
 
-> 手動部署版（本機 `deploy.ps1` / `rollout.ps1`）見 `docs/deployment.md`——本 stage 就是把它搬進 CI。
+> 手動部署版（本機 `deploy.ps1` / `rollout.ps1`）見 `docs/deployment.md`——本 workflow 就是把它搬進 CI。
 
-> ⚠️ **EC2 叢集目前已移除**，`deploy` job 無法執行（kubeconfig 指向的叢集不存在）。重新佈建 k8s 叢集並更新 `KUBECONFIG_B64` 後可再啟用。
+> ⚠️ **EC2 叢集目前已移除**，`deploy` job 無法執行（kubeconfig 指向的叢集不存在）。重新佈建 k8s 叢集並更新 `KUBE_CONFIG` 後可再啟用。
 
-## 前置：CI/CD Variables（Settings → CI/CD → Variables，全設 protected + masked）
+## 前置：GitHub Secrets（repo Settings → Secrets and variables → Actions；建議綁在 `production` Environment 而非 repo-wide，多一層核准閘）
 
-| 變數 | 用途 | 怎麼拿 |
+| Secret | 用途 | 怎麼拿 |
 |---|---|---|
-| `DOCKERHUB_USER` | 推 `minqq/*` 到 Docker Hub（k8s 從這拉映像） | Docker Hub 帳號 |
+| `DOCKERHUB_USERNAME` | 推 `minqq/*` 到 Docker Hub（k8s 從這拉映像） | Docker Hub 帳號 |
 | `DOCKERHUB_TOKEN` | 同上（用 access token 非密碼） | Docker Hub → Account → Security → New Access Token |
-| `KUBECONFIG_B64` | 讓 CI 連得到叢集 | `base64 -w0 ~/.kube/config`（貼整串）|
+| `KUBE_CONFIG` | 讓 CI 連得到叢集 | `base64 -w0 ~/.kube/config`（貼整串）|
 
-> masked 需符合遮罩規則（無換行、長度足夠）；base64 的 kubeconfig 一般 OK。protected 確保只有 protected branch（main）能讀到。
+> GitHub Actions 的 secrets 預設就會在 log 裡自動遮罩，不用像 GitLab 另外勾 masked；scope 到 `production` Environment 等同 GitLab 的 protected（只有跑在該 Environment 的 job 才讀得到）。
 
 ## 流程（job 內做的事）
 
-1. buildx（docker-container driver + `network=host`）——與 e2e job 同套路（見 `e2e-testing-setup.md`）。
-2. 登入 Docker Hub（推映像）＋ GitLab Registry（存 layer cache，與 e2e 共用）。
-3. **build + push 4 映像**（雙標籤）：`:$CI_COMMIT_SHORT_SHA`（不可變，用來部署/回滾/追溯）＋ `:latest`（給首次部署 `deploy.ps1` / manifest 方便）。backend·frontend 走 registry layer cache，frontend 用 **prod 目標**（非 e2e 的 `--target dev`）。
+1. `docker/setup-buildx-action@v3`——GitHub-hosted runner 原生 Docker，不需要像自架 GitLab dind 那樣額外處理 TLS/`network=host`。
+2. 登入 Docker Hub（推映像）；layer cache 用 GitHub Actions 原生快取（`cache-from/cache-to: type=gha`），不需要另外的 registry cache。
+3. **build + push 4 映像**（雙標籤）：`:<short-sha>`（不可變，用來部署/回滾/追溯）＋ `:latest`（給首次部署 `deploy.ps1` / manifest 方便）。backend·frontend 走 GHA layer cache，frontend 用 **prod 目標**（非 e2e 的 `--target dev`）。
 4. **migration**：Job spec immutable → 先 `kubectl delete job migrate`，把映像 `sed` pin 成本次 SHA 再 `apply` → `kubectl wait complete`。
 5. **滾動更新**：Kustomize 宣告式部署——`sed` 把 `k8s/kustomization.yaml` 的 `images.newTag` 換成本次 SHA → `kubectl apply -k k8s`（內建 kustomize，只套三個應用，不碰 secret/db/migrate）→ `rollout status` 逐一等綠。SHA 不可變 → `rollout undo` 能真的退回上一版；`deploy.ps1` 與 CD 走同一份 kustomization → **兩條路徑不漂移**。
 
 ## 觸發
 
-`main` 有新 commit → pipeline 出現 `deploy`（manual，灰色）→ 進 pipeline 頁點 ▶ 才會跑。
-或 `glab ci trigger deploy`。
+GitHub repo 頁面 → **Actions** 分頁 → 左側選 **Deploy** workflow → 右上 **Run workflow** 按鈕（只能選 `main` 分支）。
+或 CLI：`gh workflow run deploy.yml`。跑之前若 `production` Environment 設了 required reviewers，會先卡在「Waiting」等核准。
 
 ## 回滾
 

@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { loginAs } from './helpers/auth';
 
-// Phase 4b：核心流程「報名 → 自動排隊」寫入半段。
+// Phase 4b：核心流程「報名 → 自動分配」寫入半段。
 // 新玩家 P-New(2001) 走報名表單 → 後端 AutoAssign 排進隊 → /scheduleResult 看到自己入隊。
-// 驗整串寫入路徑：報名表單 → proxy → API → 排隊演算法 → DB → 讀回呈現（非 mock）。
+// 驗整串寫入路徑：報名表單 → proxy → API → 分配演算法 → DB → 讀回呈現（非 mock）。
 // 前置：compose.e2e backend + db/seed-e2e.sql（含 2001 有角色 ch2001、未入隊）。
 test('新玩家報名後被自動排入隊伍', async ({ page }) => {
   await loginAs(page, { discordId: 2001, name: 'P-New', role: 'user' });

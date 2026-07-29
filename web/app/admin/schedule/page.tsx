@@ -74,7 +74,7 @@ export default function RaidSchedulerPage() {
 
     const handleAutoSchedule = async () => {
         if (selectedTemplate <= 0 || !selectedBoss) {
-            toast.error("請選擇一個排程範本");
+            toast.error("請選擇一個排團範本");
             return;
         }
 
@@ -187,7 +187,7 @@ export default function RaidSchedulerPage() {
         <div className="relative min-h-screen p-4 md:p-8 bg-background text-foreground transition-colors">
             <div className="max-w-7xl mx-auto">
                 <div className="flex justify-between items-center mb-8">
-                    <h1 className="text-3xl font-bold tracking-tight">團隊排程</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">排團管理</h1>
                 </div>
 
                 <div className="flex flex-col gap-6 mb-8">
@@ -370,7 +370,7 @@ export default function RaidSchedulerPage() {
                     className="flex items-center gap-2 px-6 py-4 bg-green-600 text-white rounded-full hover:bg-green-700 transition-all shadow-xl hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 group"
                 >
                     <Save size={24} className="group-hover:rotate-12 transition-transform" />
-                    <span className="font-bold text-lg">儲存排程</span>
+                    <span className="font-bold text-lg">儲存排團</span>
                 </button>
             </div>
         </div>

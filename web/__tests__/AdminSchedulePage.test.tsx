@@ -68,7 +68,7 @@ describe('RaidSchedulerPage 存檔衝突提示', () => {
 
     // 存檔按鈕預設 disabled（沒有變更）；新增一隊觸發 hasChanges，才能點儲存
     fireEvent.click(screen.getByText('新增隊伍'));
-    fireEvent.click(screen.getByText('儲存排程'));
+    fireEvent.click(screen.getByText('儲存排團'));
 
     await waitFor(() => {
       expect(screen.getByText('1 隊有衝突，點此查看')).toBeDefined();
@@ -83,7 +83,7 @@ describe('RaidSchedulerPage 存檔衝突提示', () => {
 
     await renderPageWithData();
     fireEvent.click(screen.getByText('新增隊伍'));
-    fireEvent.click(screen.getByText('儲存排程'));
+    fireEvent.click(screen.getByText('儲存排團'));
 
     const banner = await screen.findByText('1 隊有衝突，點此查看');
     fireEvent.click(banner);
@@ -98,7 +98,7 @@ describe('RaidSchedulerPage 存檔衝突提示', () => {
 
     await renderPageWithData();
     fireEvent.click(screen.getByText('新增隊伍'));
-    fireEvent.click(screen.getByText('儲存排程'));
+    fireEvent.click(screen.getByText('儲存排團'));
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('排團已儲存！');

@@ -54,7 +54,7 @@ Presentation.WebApi  →  Application  →  Domain
 
 ### 1. 不使用 EF Core（Runtime），改用 Dapper + 自製 SqlBuilder
 
-**決策原因**：Runtime 不用 EF Core 是刻意選擇——主要想理解無模型（model-less）的資料存取。誠實說，EF Core 也能手寫 SQL（`FromSqlRaw`），這不是能力上的必要；Dapper 真正獨有的是不背 ORM 模型、輕量映射。以這專案規模，EF Core 其實更務實，選 Dapper 偏學習導向。手寫 SQL 的字串散落問題，用自製 SqlBuilder（Expression Tree 解析 Lambda 產生型別安全 SQL）解掉。
+**決策原因**：Runtime 刻意不用 EF Core，改用 Dapper——目的是練習無模型（model-less）的資料存取方式，不是規模考量（EF Core 對此規模其實更省事）。手寫 SQL 的字串散落問題，用自製 SqlBuilder（Expression Tree 解析 Lambda 產生型別安全 SQL）解決。
 
 > **注意**：`Infrastructure/Migrations/MigrationDbContext` 僅供 design-time 使用（詳見第 6 點），不注冊到 DI，不影響 runtime 行為。
 
@@ -359,7 +359,7 @@ flowchart TD
     E --> F
     F --> Fend[分配完成]
 
-    G[管理員選定 boss+範本，觸發批次重排] --> H["ScheduleService.AutoScheduleWithTemplateAsync\n（完全獨立的演算法，不呼叫上面的 AutoAssignAsync/MergeTeamsAsync）"]
+    G[管理員選定 boss+範本，觸發批次重排] --> H["ScheduleService.AutoScheduleWithTemplateAsync\n（完全獨立的演算法，不呼叫 AutoAssignAsync/MergeTeamsAsync）"]
     H --> I["保留隊 = Source=admin 的隊 或 含 IsManual 成員的 auto 隊\n→ 整隊保留，FillTeamFromPool 只補空位"]
     I --> J["其餘報名者依時段+場次分組，\n嚴格依 BossTemplateRequirement 優先序貪婪組新隊"]
     J --> K["回傳保留隊（正 Id）+ 新隊預覽（負 Id）\n存檔時才真的 CREATE"]
@@ -375,7 +375,7 @@ flowchart TD
 
 解法：`AutoAssignAsync` 開頭對 `(classId, periodId)` 取 **交易級 advisory lock**（`pg_advisory_xact_lock`，見 `IRegistrationLock`）：
 
-- 同一 period 的自動排隊**序列化** → 第二個看得到第一個建的隊
+- 同一 period 的自動分配**序列化** → 第二個看得到第一個建的隊
 - **不同 period 不互斥**（並行保留，per-key 粒度）
 - 交易級鎖隨 UoW commit/rollback **自動釋放**；鎖在 DB → **多 pod 安全**（不像 C# 程序內鎖，多副本會失效）
 
@@ -394,7 +394,7 @@ flowchart TD
 
 ## TeamSlot 編輯併發控制
 
-編輯既有隊伍（`TeamSlotService.UpdateAsync`，管理員排程存檔 / 玩家補位共用這條路徑）跟上面的自動分配是**不同的併發問題、不同的鎖**：自動分配鎖的是「同一 period 讀現有隊 → 開新隊」的 race；這裡鎖的是「同一隊伍同時被兩個請求編輯」的 race（容量競爭、以及一邊清空觸發連帶砍團、另一邊還在對同一隊寫入）。兩把鎖用不同 `classId`（1001 / 1002），互不影響、可同時持有。
+編輯既有隊伍（`TeamSlotService.UpdateAsync`，管理員排團存檔 / 玩家補位共用這條路徑）跟上面的自動分配是**不同的併發問題、不同的鎖**：自動分配鎖的是「同一 period 讀現有隊 → 開新隊」的 race；這裡鎖的是「同一隊伍同時被兩個請求編輯」的 race（容量競爭、以及一邊清空觸發連帶砍團、另一邊還在對同一隊寫入）。兩把鎖用不同 `classId`（1001 / 1002），互不影響、可同時持有。
 
 兩階段合起來的完整時序（悲觀鎖序列化 + 拿到鎖後樂觀鎖檢查的三種分支）：
 
@@ -449,7 +449,7 @@ sequenceDiagram
 1. **隊伍是否還存在**：`GetByIdAsync` 查無 → 隊伍已被別的流程砍掉（merge / 連帶清團），略過此隊、不拋例外中斷其他隊伍的處理
 2. **既有成員是否被別人動過**：`TeamSlotCharacterRepository.UpdateAsync` 的 `WHERE` 子句比對 `xmin = @version`（`TeamSlotCharacter.Version`）；對不上（含 row 已被刪、根本查無此 Id）→ 回傳 `false`
 
-兩種情況（隊伍消失 / 版本衝突）**統一收進 `TeamSlotUpdateResult.ConflictedTeamSlotIds`**，不是分別丟不同例外——呼叫端（前端）只需要處理一份「這些隊被略過」的清單。管理員排程頁收到後，衝突的隊伍**原地標紅、不重新排序**，不假裝存檔成功。
+兩種情況（隊伍消失 / 版本衝突）**統一收進 `TeamSlotUpdateResult.ConflictedTeamSlotIds`**，不是分別丟不同例外——呼叫端（前端）只需要處理一份「這些隊被略過」的清單。管理員排團頁收到後，衝突的隊伍**原地標紅、不重新排序**，不假裝存檔成功。
 
 > 選型同自動分配鎖：本規模用 advisory lock + xmin 即可，不需要 SERIALIZABLE 重試迴圈或分散式鎖服務。
 
@@ -740,7 +740,7 @@ sequenceDiagram
 | 功能 | 說明 |
 |---|---|
 | **每日提醒** | 背景作業每天掃描當日 `TeamSlot`，Bot 標記玩家提醒行程 |
-| **截止提醒** | 報名截止日自動觸發，附上排程結果 URL |
+| **截止提醒** | 報名截止日自動觸發，附上排團結果 URL |
 | **身分組同步** | 登入時透過 Bot Token 查詢 Discord Guild Member，判斷 `Admin` / `User` |
 
 ---
@@ -749,8 +749,8 @@ sequenceDiagram
 
 | 服務 | 職責 |
 |---|---|
-| `RegisterService` | 玩家報名寫入，報名後觸發即時自動排程 |
-| `TeamSlotAutoAssignService` | 自動排程核心：即時分配 + 批次排程 |
+| `RegisterService` | 玩家報名寫入，報名後觸發即時自動分配 |
+| `TeamSlotAutoAssignService` | 自動分配核心：即時分配 + 批次重排 |
 | `TeamSlotMergeService` | 合併零散隊伍，根據 BossTemplate 優化陣容 |
 | `TeamSlotCharacterService` | 補位、移除成員，設定 `IsManual` 保護旗標 |
 | `AuthAppService` | Discord OAuth2 流程、角色判斷、憑證核發 |
@@ -811,9 +811,9 @@ graph TD
     sec -. 掛載 .-> db
 ```
 
-- **CI（MR 流程）**：feature 分支 → 開 MR → CI 在 MR 上跑 **format（Roslyn 格式檢查）→ build（含 `WarningsAsErrors=nullable`）→ 單元 + 整合測試（dind + Testcontainers）→ 覆蓋率合併 → E2E**，綠燈才 merge。純文件 MR 只跑秒過的 `docs-ok`（滿足 merge check、不燒重的 job）。見 `docs/e2e-testing-setup.md`、`docs/gitlab-selfhost-ci-setup.md`（自架學習參考，實際已用 gitlab.com）。
-- **CD**：merge 進 main → main pipeline **只留 `deploy`（manual、限 main）**，不重跑驗證。點下去 → 推 **SHA 版本化**的 `minqq/*` 映像 → migrate Job → **Kustomize `kubectl apply -k`**（映像 pin git SHA、可真回滾）。見 `docs/cd-deploy-setup.md`。
-- **手動部署**（不走 CI）：`docs/deployment.md`（`deploy.ps1` / `rollout.ps1`）。
+- **CI**（GitHub Actions，`ci.yml`）：PR 綠燈才 merge，純文件變更自動跳過重量級 job。細節見下方流程圖 + `docs/e2e-testing-setup.md`。
+- **CD**（GitHub Actions，`deploy.yml`，跟 CI 完全獨立）：`workflow_dispatch` 人工手動觸發，SHA 版本化映像 + Kustomize 滾動更新。細節見 `docs/cd-deploy-setup.md`。
+- **手動部署**（不走 CI，本機直接操作）：`docs/deployment.md`（`deploy.ps1` / `rollout.ps1`）。
 
 ### CI/CD 流程（總覽）
 

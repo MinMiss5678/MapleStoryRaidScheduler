@@ -1,16 +1,17 @@
 ﻿# MapleStory Raid Scheduler
 
-> 一個為楓之谷玩家設計的 **Boss 副本排程管理系統**，整合 Discord OAuth2 登入、自動排程引擎與 Bot 通知，從零到部署完整實作。
+> 一個為楓之谷玩家設計的 **Boss 副本排團管理系統**，整合 Discord OAuth2 登入、自動分配引擎、隊伍編輯併發控制（悲觀鎖 + 樂觀鎖）與 Bot 通知，從零到部署完整實作。
 
 ## 技術亮點
 
 - **自製 SqlBuilder**：不依賴 EF Core，以 Lambda 表達式（`Expression<Func<T, bool>>`）解析欄位與條件建構 SQL，支援 CTE、條件群組（AND/OR）、NULL 比較；欄位參照走屬性、編譯期就能抓到打錯，避免字串拼接。
 - **CQRS-Lite 讀寫分離**：寫入路徑走 Service + Repository（逐筆操作、語意清晰），讀取路徑走獨立 Query 介面（不受寫入模型約束，可自由使用 JOIN 等最佳化 SQL 一次查回所需資料）。
-- **重複提交防護**：POST/PUT/DELETE 強制帶合法 UUID 的 `X-Idempotency-Key`（否則 400），同一 key 60 秒內重送回 409，防止連點 / 網路重試造成重複寫入。（擋重送，非重播原結果的完整冪等）
-- **雙軌身分驗證**：一般玩家使用自定義 JWT，管理員使用 Session（儲存於 DB），兩者在同一 Middleware 中統一驗證，依 Discord 身分組自動分流。
-- **按身分限流**：以已驗證的 `discordId`（session/JWT claim）為 key 做 per-user 限流（換 IP 也繞不掉），Middleware 掛在驗證之後、交易之前，被擋的請求不白開 DB 交易。
+- **重複提交防護**：POST/PUT/DELETE 強制帶合法 UUID 的 `X-Idempotency-Key`（否則 400），同一 key 60 秒內重送回 409，防止連點 / 網路重試造成重複寫入。去重狀態存 **Redis**（跨 pod 共享），Redis 不可用時 fail-open 放行。（擋重送，非重播原結果的完整冪等）
+- **雙軌身分驗證**：一般玩家使用自定義 JWT，管理員使用 Session（DB 為真實來源，讀取路徑走 **Redis** 快取），兩者在同一 Middleware 中統一驗證，依 Discord 身分組自動分流。管理員撤銷（登出／拔身分組／踢人）靠共用 Redis 一次刪除即在所有 pod 立即生效。
+- **按身分限流**：以已驗證的 `discordId`（session/JWT claim）為 key 做 per-user 限流（換 IP 也繞不掉），計數存 **Redis**（跨 pod 共用上限），Middleware 掛在驗證之後、交易之前，被擋的請求不白開 DB 交易。
 - **自動分配引擎**：玩家報名後即時觸發，根據可用時段比對現有隊伍空位，無匹配則建立新隊（來源標記 `auto`）。
-- **併發控制**：自動排隊的「讀隊 → 開新隊」是 read-then-write，兩人同時報名同一 period 會重複開隊；以交易級 **advisory lock**（`pg_advisory_xact_lock`）按 period 序列化，不同 period 並行、鎖在 DB 故多 pod 安全。
+- **併發控制**：自動分配的「讀隊 → 開新隊」是 read-then-write，兩人同時報名同一 period 會重複開隊；以交易級 **advisory lock**（`pg_advisory_xact_lock`）按 period 序列化，不同 period 並行、鎖在 DB 故多 pod 安全。
+- **隊伍編輯併發控制**：管理員排團存檔與玩家補位共用同一寫入路徑，同一隊伍被兩個請求同時編輯會超編或撞外鍵違反；先以交易級 advisory lock 序列化同隊編輯，取鎖後用重新讀到的當下狀態做**樂觀鎖**（Postgres `xmin`）版本比對——隊伍已消失或版本衝突統一收進衝突清單、不中斷其他隊伍的處理，前端原地標紅、不重新排序。用 `Task.WhenAll` 真並發（非序列）測試驗證鎖確實擋住超編。
 - **批次組隊預覽**：管理員以職業範本手動觸發，從所有報名者批次生成完整隊伍**預覽**（來源標記 `admin`、以未存檔的隊伍呈現），存檔後才寫入。
 - **補位保護機制**：手動補位 / 微調的成員標記 `IsManual = true`；批次重排時，**含 `IsManual` 成員的隊伍（與管理員隊）整隊保留、只自動補滿空位**，防止人工調整被覆蓋。
 - **Schema 版本管理**：以 golang-migrate 管理資料庫 migration，up/down 分開維護，Docker Compose 與 Kubernetes 皆整合 migrate 服務，確保各環境 schema 一致。
@@ -22,6 +23,7 @@
 | **後端** | .NET 9 (C# 13)、ASP.NET Core Web API |
 | **前端** | Next.js 15 (App Router)、Tailwind CSS、Shadcn/UI |
 | **資料庫** | PostgreSQL 18（手寫 SQL + Dapper 對映，無 EF Core） |
+| **快取 / 跨 pod 共享狀態** | Redis 7（session 快取、重複提交去重、限流計數） |
 | **Schema 管理** | golang-migrate（up/down SQL，版本追蹤） |
 | **身分驗證** | Discord OAuth2、自定義 JWT、DB Session |
 | **通知** | DSharpPlus Discord Bot |
@@ -44,7 +46,7 @@ Presentation.WebApi  →  Application  →  Domain
 - **Infrastructure**：Dapper Repository、Discord 整合、背景作業，實作所有外部依賴。
 - **Presentation.WebApi**：Controller + Middleware 管線（例外處理 / 冪等 / 驗證 / 限流 / 交易）。
 
-詳細設計請見 [架構設計文件](docs/architecture.md)。
+詳細設計請見 [架構設計文件](docs/architecture.md)；其餘文件（業務規則、部署、E2E 測試）見 [文件索引](docs/README.md)。
 
 ## 專案結構
 
@@ -79,6 +81,7 @@ docker compose up -d
 |---|---|---|
 | `database` PostgreSQL 18 | 5432 | — |
 | `migrate` golang-migrate | — | 執行 schema migration 後自動退出 |
+| `redis` Redis 7 | 6379 | session 快取 / 重複提交去重 / 限流計數；fail-open，掛了不擋主流程 |
 | `backend` ASP.NET Core Web API | 5230 | — |
 | `frontend` Next.js | 3000 | — |
 | `bot` Discord Bot | — | — |
@@ -102,17 +105,20 @@ kubectl apply -f k8s/cloudflared.yaml
 ### 新增 Migration
 
 ```bash
-# 1. 建立 up/down SQL 檔
-touch db/migrations/000002_your_change.up.sql
-touch db/migrations/000002_your_change.down.sql
+# 1. 修改 Infrastructure/Entities/*DbModel.cs
 
-# 2. 重新 build migrate image
-docker build -f db/Dockerfile.migrate -t minqq/migrate:latest db/
-docker push minqq/migrate:latest
+# 2. 執行草稿產生器（自動跑 ef diff → 輸出 SQL → 清理 .cs，不需要額外的 DB/State File）
+bash db/create-migration.sh <MigrationName>
 
-# 3. 本機套用
+# 3. 審閱並補齊產出的 SQL 草稿
+#    db/migrations/000002_<name>.up.sql   ← 補 FK constraints / indexes
+#    db/migrations/000002_<name>.down.sql ← 確認 rollback 正確性
+
+# 4. 本機套用
 docker compose run --rm migrate
 ```
+
+詳細原理（為何用 EF Core 產 diff、golang-migrate 只負責套用）見 [架構設計文件 §6](docs/architecture.md)。
 
 ### 手動啟動（開發用）
 
