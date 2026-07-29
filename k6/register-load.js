@@ -19,6 +19,8 @@ const BASE_URL = __ENV.BASE_URL || 'http://host.docker.internal:5230';
 const VUS = parseInt(__ENV.VUS || '60', 10);
 const PERIOD_ID = parseInt(__ENV.PERIOD_ID || '1', 10);
 const BOSS_ID = parseInt(__ENV.BOSS_ID || '1', 10);
+// 選用：跳過前 OFFSET 個玩家（例如已經在前一輪跑過、報名過的），不用重新 seed 就能連續測試多輪。
+const OFFSET = parseInt(__ENV.OFFSET || '0', 10);
 
 export const options = {
   scenarios: {
@@ -45,7 +47,7 @@ function uuidv4() {
 }
 
 export default function () {
-  const idx = __VU; // per-vu-iterations：__VU 是 1..VUS，唯一對應一個已 seed 好的玩家
+  const idx = OFFSET + __VU; // per-vu-iterations：__VU 是 1..VUS，+OFFSET 對應一個已 seed 好的玩家
   const discordId = 9000000 + idx;
   const characterId = 'load' + idx;
 
