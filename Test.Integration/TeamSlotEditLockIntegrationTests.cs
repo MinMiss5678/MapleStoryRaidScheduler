@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using Dapper;
+using Domain.Exceptions;
 using Infrastructure.Dapper;
 using Infrastructure.Repositories;
 using Npgsql;
@@ -63,5 +65,41 @@ public class TeamSlotEditLockIntegrationTests
         Assert.True(await TryLockFromOtherConnection(2));
 
         await ctx1.CommitAsync();
+    }
+
+    /// <summary>
+    /// 驗 lock_timeout 真的有生效（對真 Postgres）：pg_advisory_xact_lock 預設無限期等待，
+    /// 持鎖方異常卡住時，後面的請求不該跟著無限期掛住。用短逾時（300ms）確認會在極短時間內
+    /// 丟 AdvisoryLockTimeoutException，不是真的等到底。
+    /// </summary>
+    [Fact]
+    public async Task AcquireTeamSlotEditLock_TimesOut_WhenHeldByAnotherTransaction()
+    {
+        await _fx.ResetAsync();
+        const int teamSlotId = 1;
+
+        // A：持鎖不放（模擬持鎖方異常卡住，例如慢查詢或連線異常沒正常 commit/rollback）
+        await using var connA = new NpgsqlConnection(_fx.ConnectionString);
+        await connA.OpenAsync();
+        var ctxA = new DbContext(connA);
+        await ctxA.BeginAsync();
+        await new RegistrationLock(ctxA).AcquireTeamSlotEditLockAsync(teamSlotId);
+
+        // B：短逾時去搶同一把鎖 → 應該在遠低於「無限等待」的時間內丟例外
+        await using var connB = new NpgsqlConnection(_fx.ConnectionString);
+        await connB.OpenAsync();
+        var ctxB = new DbContext(connB);
+        await ctxB.BeginAsync();
+
+        var sw = Stopwatch.StartNew();
+        await Assert.ThrowsAsync<AdvisoryLockTimeoutException>(
+            () => new RegistrationLock(ctxB, "300ms").AcquireTeamSlotEditLockAsync(teamSlotId));
+        sw.Stop();
+
+        // 真的被短 timeout 擋下，不是巧合瞬間成功又被誤判；給寬鬆上限，不是精確計時斷言
+        Assert.True(sw.ElapsedMilliseconds < 5000, $"逾時花了 {sw.ElapsedMilliseconds}ms，看起來沒有真的套用短 lock_timeout");
+
+        await ctxB.RollbackAsync();
+        await ctxA.CommitAsync();
     }
 }

@@ -2,6 +2,7 @@
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
+using Domain.Exceptions;
 using Domain.Repositories;
 
 namespace Infrastructure.Services;
@@ -127,7 +128,17 @@ public class TeamSlotService : ITeamSlotService
             }
 
             // 序列化同一隊伍的併發編輯（容量檢查 + 清團連帶都靠這把鎖擋住 TOCTOU race）。
-            await _registrationLock.AcquireTeamSlotEditLockAsync(teamSlot.Id);
+            // lock_timeout 逾時（持鎖方異常卡住，非正常排隊）→ 當成這隊存檔失敗，落進統一衝突回報，
+            // 不中斷其他隊伍的處理、也不讓整個請求 500。
+            try
+            {
+                await _registrationLock.AcquireTeamSlotEditLockAsync(teamSlot.Id);
+            }
+            catch (AdvisoryLockTimeoutException)
+            {
+                conflicts.Add(teamSlot.Id);
+                continue;
+            }
 
             var originalTeam = await _teamSlotRepository.GetByIdAsync(teamSlot.Id);
             if (originalTeam == null)
