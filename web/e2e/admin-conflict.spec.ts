@@ -50,7 +50,7 @@ test('管理員存檔時隊伍已消失 → 顯示衝突提示', async ({ page }
   // admin 拿著舊畫面（快照 A，還顯示 CDummy2）操作：不動 E2E王4 這隊，
   // 只是新增一個手動隊伍觸發「有變更」→ 存檔時 E2E王4（快照 A 的舊資料）仍會一併送出
   await page.getByRole('button', { name: '新增隊伍' }).click();
-  await page.getByRole('button', { name: '儲存排程' }).click();
+  await page.getByRole('button', { name: '儲存排團' }).click();
 
   // 應該顯示衝突提示，不是「排團已儲存！」的一般成功訊息
   await expect(page.getByText(/隊因被異動或消失而略過/)).toBeVisible();

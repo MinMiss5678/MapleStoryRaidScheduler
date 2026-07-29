@@ -57,7 +57,7 @@ export default function BossAdminPage() {
                 <div className="flex justify-between items-center mb-8">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight">Boss 管理</h1>
-                        <p className="text-muted-foreground mt-1">管理可供排程的 Boss 及其基本屬性。</p>
+                        <p className="text-muted-foreground mt-1">管理可供排團的 Boss 及其基本屬性。</p>
                     </div>
                     <button
                         onClick={handleCreateBoss}
@@ -170,7 +170,7 @@ export default function BossAdminPage() {
                                             className="w-full p-2.5 rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none"
                                             min={0}
                                         />
-                                        <p className="text-xs text-muted-foreground mt-1">此 Boss 會消耗角色的每週排程次數。</p>
+                                        <p className="text-xs text-muted-foreground mt-1">此 Boss 會消耗角色的每週排團次數。</p>
                                     </div>
                                 </div>
                             </div>

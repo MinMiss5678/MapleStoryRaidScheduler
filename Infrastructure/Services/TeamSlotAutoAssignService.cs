@@ -39,7 +39,7 @@ public class TeamSlotAutoAssignService : ITeamSlotAutoAssignService
 
     public async Task AutoAssignAsync(Register register)
     {
-        // 併發防護：序列化同一 period 的自動排隊，避免兩人同時報名各開一隊（read-then-write race）。
+        // 併發防護：序列化同一 period 的自動分配，避免兩人同時報名各開一隊（read-then-write race）。
         // 取在最前面（讀隊伍之前），鎖隨 UoW 交易結束自動釋放。
         await _registrationLock.AcquireAutoAssignLockAsync(register.PeriodId);
 
