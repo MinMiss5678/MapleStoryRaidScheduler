@@ -87,7 +87,14 @@
 - [x] 補一個 unit test：`TeamSlot.SetRoster` 剛好等於容量（`filledCount == Capacity`）應該成功，不丟例外。→ `Test/TeamSlotAggregateTests.cs` 的 `SetRoster_Succeeds_WhenFilledCountExactlyEqualsCapacity`。
 - [x] `TeamSlotService.cs` 剩餘存活 mutant 分類時發現一個**授權邏輯 bug**（非漏測，是 production code 本身錯）——見下方「額外發現」。已修復 + 補回歸測試。
 - [x] `TeamSlotMergeService.cs:102` 邊界值（合併後人數剛好等於容量應該成功，只測了超過）→ `Test/TeamSlotMergeServiceMergeTests.cs` 的 `MergeTeamsAsync_ShouldMergeTeams_WhenCombinedCountExactlyEqualsCapacity`（驗證後確認這條**不是 bug**，邏輯本來就對，純粹補測試殺 mutant）。
-- [ ] `ScheduleService.cs` / `TeamSlotMergeService.cs` 其餘存活 mutant（見 HTML report）尚未逐一分類，量大（合計 ~80 個）；粗看過 `TeamSlotMergeService.cs` 全部 34 個，多數屬於等價變異（`Concat`→`Except` 因 `TeamSlotCharacter` 沒 override `Equals` 用參考相等、實質等價；`for` 迴圈邊界因存取寫在內層迴圈內、外層邊界改了也不影響實際執行範圍）或測試斷言深度不足（3+ 隊多輪合併迴圈、跨隊重複玩家的部分重疊情境）但沒再發現第二個像 `TeamSlotService.cs:195` 那種真正的邏輯 bug；`ScheduleService.cs` 47 個完全還沒看。先在此打住，值不值得繼續深挖留給使用者決定。
+- [x] `TeamSlotMergeService.cs` 全部 34 個存活 mutant 已粗看分類，多數屬於等價變異（`Concat`→`Except` 因 `TeamSlotCharacter` 沒 override `Equals` 用參考相等、實質等價；`for` 迴圈邊界因存取寫在內層迴圈內、外層邊界改了也不影響實際執行範圍）或測試深度不足（3+ 隊多輪合併迴圈、跨隊重複玩家的部分重疊情境）；沒再發現第二個像 `TeamSlotService.cs:195` 那種邏輯 bug，這批剩餘的不逐一補測試。
+- [x] `ScheduleService.cs` 全部 47 個存活 mutant 已看完，同樣沒發現第二個真 bug。挑出兩個「程式碼本來就對、但邊界窄到目前測試測不到」的補了：
+  - `L75` 保留隊成員扣場數用 `-=`，但沒測扣完後的確切數值——若誤植成 `+=`，玩家可能被排超過實際報名場數的團數 → `AutoScheduleWithTemplateAsync_ShouldDeductRounds_NotAddRounds_ForProtectedTeamMembers`。
+  - `L230` `if (!scheduledPlayersByDay.ContainsKey(day))` 的惰性初始化，若 `!` 被拿掉，同一天處理第二支保留隊時會把已追蹤的「今天已排」名單整包清空，導致同一個候補角色被重複塞進兩支隊 → `AutoScheduleWithTemplateAsync_ShouldNotDoubleBookPoolCandidate_AcrossTwoProtectedTeamsSameDay`。
+  - `L76`（`scheduledPlayersByDay[day].Add(reg.Id)` 的 statement mutation）同類但沒特別補測試，留著。
+  - 其餘 30+ 個（排序方向、`First`/`FirstOrDefault` 對非空群組等價、範本比對細節）評估後判斷是等價變異或低價值，不逐一補。
+
+重跑 Stryker 驗證：`TeamSlotService.cs` 62.67%→68.00%、`ScheduleService.cs` 存活數 47→41（L75、L230 目標 mutant 確認轉 Killed）。
 
 ### 額外發現：`TeamSlotService.cs:195` 授權邏輯 bug（非計畫內，分類存活 mutant 時撞到）
 
