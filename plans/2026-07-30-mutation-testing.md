@@ -116,12 +116,14 @@ if (originalCharacter.DiscordId != currentDiscordId &&
 - `TeamSlotAutoAssignService.cs:44`（鎖）、`:77`（避免重複建隊）兩顆目標 mutant 確認轉為 **Killed**。
 - `TeamSlot.cs:56`（容量邊界）確認轉為 **Killed**。
 - Infrastructure 4 檔合計分數 57.59% → **58.38%**（214→217 killed）；`TeamSlot.cs` 81.40% → **83.72%**（35→36 killed）。
-- 分數漲幅不大是預期的——這三項只解決最高優先的具體漏洞，不是把 130+8 個存活 mutant 全部清掉；重點是驗證「跟本 plan 動機直接相關的缺口」確實被補上，而非刷分數。
+- 分數漲幅不大是預期的——這三項只解決最高優先的具體漏洞，不是要把當時 130+8 個存活 mutant 全部清掉；重點是驗證「跟本 plan 動機直接相關的缺口」確實被補上，而非刷分數。
+- **（後續更新）** 上面這輪只覆蓋最高優先項目，範圍清單其餘檔案（`TeamSlotService.cs`/`TeamSlotMergeService.cs`/`ScheduleService.cs`）當時還沒看過——後續在同一份 plan 下繼續分類，過程與結果見上方「額外發現」與「Follow-up」兩節。最終狀態：範圍清單 5 個核心檔 + `TeamSlot.cs` 的存活 mutant**已全部看過一輪**（不是每顆都補測試，等價變異/低價值的判斷後跳過），過程中額外抓到並修掉一個授權漏洞（見「額外發現」）。
 
 ## 工時預估（實際）
 
 - 裝置 + 單檔案 POC（`RegisterService.cs`）驗證流程可行：**2.5 分鐘跑完**（遠低於估計的 0.5 天，主要時間花在讀 code/寫 config，跑測試本身很快）。
-- 擴大到範圍清單 5 個核心檔 + `TeamSlot.cs` + 存活 mutant 初步分類：**約 1 小時**（4 個 Infra 檔案跑 3m54s、Domain 檔案跑 1m17s，其餘是分析時間）。原估 1~1.5 天是高估——Stryker 執行本身不慢，瓶頸在人工分類存活 mutant 的判讀時間，且本輪只深入分類了 auto-assign/TeamSlot 相關的高優先項目，未逐一過完全部 130+8 個存活項目。
+- 擴大到範圍清單 5 個核心檔 + `TeamSlot.cs` + 存活 mutant 初步分類（第一輪，只做最高優先 3 項）：**約 1 小時**（4 個 Infra 檔案跑 3m54s、Domain 檔案跑 1m17s，其餘是分析時間）。原估 1~1.5 天是高估。
+- 後續延伸：分類完剩餘 `TeamSlotService.cs`／`TeamSlotMergeService.cs`／`ScheduleService.cs` 存活 mutant（總計約 105 顆）+ 修授權 bug + 補 4 個邊界測試：多輪 Stryker 重跑（每次約 1~1.5 分鐘）+ 人工判讀，同樣是分類判讀佔大部分時間，非 Stryker 執行本身。
 
 ## 未解問題
 - Stryker 對 Infrastructure 這種有大量外部相依（Dapper/Redis/Discord client）需要 mock 的 project，mutant 數量/跑分鐘數還沒實測過，可能要先跑小範圍 POC 才知道整體時間量級。
