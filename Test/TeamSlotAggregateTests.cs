@@ -75,6 +75,18 @@ public class TeamSlotAggregateTests
     }
 
     [Fact]
+    public void SetRoster_Succeeds_WhenFilledCountExactlyEqualsCapacity()
+    {
+        // 邊界值：剛好等於容量是合法情況，只有「超過」才該丟例外
+        var slot = new TeamSlot { Capacity = 2 };
+        var roster = new List<TeamSlotCharacter> { Member("c1", discordId: 1), Member("c2", discordId: 2) };
+
+        slot.SetRoster(roster, DateTimeOffset.UtcNow);
+
+        Assert.Equal(2, slot.FilledCount);
+    }
+
+    [Fact]
     public void SetRoster_Throws_WhenDuplicateDiscordId()
     {
         var slot = new TeamSlot { Capacity = 6 };
