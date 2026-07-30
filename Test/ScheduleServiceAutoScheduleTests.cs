@@ -269,7 +269,11 @@ public class ScheduleServiceAutoScheduleTests
 
         var teamX = new TeamSlot
         {
-            Id = 100, BossId = bossId, TemplateId = templateId, SlotDateTime = slotDateTime, Source = TeamSlotSource.Admin,
+            Id = 100,
+            BossId = bossId,
+            TemplateId = templateId,
+            SlotDateTime = slotDateTime,
+            Source = TeamSlotSource.Admin,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { Id = 1, TeamSlotId = 100, DiscordId = 11111, DiscordName = "", CharacterId = "cX", CharacterName = "Hero", Job = "Hero", Rounds = 1, IsManual = true }
@@ -277,7 +281,11 @@ public class ScheduleServiceAutoScheduleTests
         };
         var teamY = new TeamSlot
         {
-            Id = 200, BossId = bossId, TemplateId = templateId, SlotDateTime = slotDateTime, Source = TeamSlotSource.Admin,
+            Id = 200,
+            BossId = bossId,
+            TemplateId = templateId,
+            SlotDateTime = slotDateTime,
+            Source = TeamSlotSource.Admin,
             Characters = new List<TeamSlotCharacter>
             {
                 new TeamSlotCharacter { Id = 2, TeamSlotId = 200, DiscordId = 22222, DiscordName = "", CharacterId = "cY", CharacterName = "Hero", Job = "Hero", Rounds = 1, IsManual = true }
