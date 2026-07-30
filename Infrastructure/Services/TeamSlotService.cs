@@ -193,7 +193,7 @@ public class TeamSlotService : ITeamSlotService
 
                         // 允許修改自己的角色，或是填補空位 (CharacterId == null)
                         if (originalCharacter.DiscordId != currentDiscordId &&
-                            originalCharacter.CharacterId != null && originalCharacter.DiscordId == 0)
+                            originalCharacter.CharacterId != null)
                             throw new UnauthorizedAccessException("不能修改他人的角色");
 
                         // 確保填補空位時，填入的是自己的角色

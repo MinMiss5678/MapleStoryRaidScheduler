@@ -237,6 +237,75 @@ public class TeamSlotServiceUpdateTests
     }
 
     [Fact]
+    public async Task UpdateAsync_NonAdmin_ShouldThrow_WhenModifyingOthersFilledCharacterSlot()
+    {
+        // 授權漏洞回歸測試：舊條件多了一個 `&& originalCharacter.DiscordId == 0`，
+        // 導致「已填人的角色位」（DiscordId 必為對方真實非 0 ID）永遠不會觸發這個檢查，
+        // 非管理員實質上可以任意竄改別人已排定的角色資料。
+        ulong currentDiscordId = 12345;
+        ulong otherDiscordId = 99999;
+        int teamSlotId = 1;
+        int? charSlotId = 5;
+
+        var existingChar = new TeamSlotCharacter { Id = charSlotId, DiscordId = otherDiscordId, DiscordName = "", Job = "", CharacterId = "other-char" };
+        var existingTeamSlot = new TeamSlot { Id = teamSlotId, Characters = new List<TeamSlotCharacter> { existingChar } };
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
+
+        var tamperedChar = new TeamSlotMemberDto { Id = charSlotId, DiscordId = otherDiscordId, CharacterId = "hacked-char", Rounds = 999 };
+        var request = new TeamSlotUpdateRequest
+        {
+            DeleteTeamSlotIds = new List<int>(),
+            TeamSlots = new List<TeamSlotUpdateCommand>
+            {
+                new TeamSlotUpdateCommand
+                {
+                    Id = teamSlotId,
+                    DeleteTeamSlotCharacterIds = new List<int>(),
+                    Characters = new List<TeamSlotMemberDto> { tamperedChar }
+                }
+            }
+        };
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: currentDiscordId));
+        _teamSlotCharacterRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NonAdmin_ShouldSucceed_WhenModifyingOwnFilledCharacterSlot()
+    {
+        // 正向對照：授權檢查不能誤擋合法情境——非管理員修改「自己」已填的角色位應該成功。
+        ulong currentDiscordId = 12345;
+        int teamSlotId = 1;
+        int? charSlotId = 5;
+
+        var existingChar = new TeamSlotCharacter { Id = charSlotId, DiscordId = currentDiscordId, DiscordName = "", Job = "", CharacterId = "my-char", Version = "v1" };
+        var existingTeamSlot = new TeamSlot { Id = teamSlotId, Characters = new List<TeamSlotCharacter> { existingChar } };
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeamSlot);
+        _teamSlotCharacterRepositoryMock.Setup(r => r.UpdateAsync(It.IsAny<TeamSlotCharacter>())).ReturnsAsync(true);
+
+        var updatedChar = new TeamSlotMemberDto { Id = charSlotId, DiscordId = currentDiscordId, CharacterId = "my-char", Rounds = 3, Version = "v1" };
+        var request = new TeamSlotUpdateRequest
+        {
+            DeleteTeamSlotIds = new List<int>(),
+            TeamSlots = new List<TeamSlotUpdateCommand>
+            {
+                new TeamSlotUpdateCommand
+                {
+                    Id = teamSlotId,
+                    DeleteTeamSlotCharacterIds = new List<int>(),
+                    Characters = new List<TeamSlotMemberDto> { updatedChar }
+                }
+            }
+        };
+
+        var result = await _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: currentDiscordId);
+
+        Assert.Empty(result.ConflictedTeamSlotIds);
+        _teamSlotCharacterRepositoryMock.Verify(r => r.UpdateAsync(It.Is<TeamSlotCharacter>(c => c.Rounds == 3)), Times.Once);
+    }
+
+    [Fact]
     public async Task UpdateAsync_ShouldAcquireTeamSlotEditLock_ForExistingTeamSlot()
     {
         // 併發控制：編輯既有隊伍前必須序列化取鎖，擋同瞬間兩請求的 TOCTOU race
