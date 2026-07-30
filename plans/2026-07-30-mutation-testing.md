@@ -85,7 +85,24 @@
 - [x] 補一個 unit test：`TeamSlotAutoAssignService.AutoAssignAsync` 驗證 `_registrationLock.AcquireAutoAssignLockAsync` 有被呼叫。→ `Test/TeamSlotServiceTests.cs` 的 `AutoAssignAsync_ShouldAcquireAutoAssignLock_ForRegisterPeriod`。
 - [x] 補一個 unit test：同一 register 兩隻角色排同一王、目前無現成隊伍 → 驗證只建一隊、第二隻角色併入而非重複建隊。→ `AutoAssignAsync_MultipleCharactersSameBoss_ShouldJoinSameNewlyCreatedTeam`。
 - [x] 補一個 unit test：`TeamSlot.SetRoster` 剛好等於容量（`filledCount == Capacity`）應該成功，不丟例外。→ `Test/TeamSlotAggregateTests.cs` 的 `SetRoster_Succeeds_WhenFilledCountExactlyEqualsCapacity`。
-- [ ] `TeamSlotService.cs` / `TeamSlotMergeService.cs` / `ScheduleService.cs` 剩餘存活 mutant（見 HTML report）尚未逐一分類，量大（合計 ~96 個），先以本清單三項高優先為主；有餘力再擴大分類範圍。
+- [x] `TeamSlotService.cs` 剩餘存活 mutant 分類時發現一個**授權邏輯 bug**（非漏測，是 production code 本身錯）——見下方「額外發現」。已修復 + 補回歸測試。
+- [ ] `TeamSlotMergeService.cs` / `ScheduleService.cs` 剩餘存活 mutant（見 HTML report）尚未分類，量大（合計 ~81 個），先以本清單為主；有餘力再擴大範圍。
+
+### 額外發現：`TeamSlotService.cs:195` 授權邏輯 bug（非計畫內，分類存活 mutant 時撞到）
+
+`UpdateAsync` 裡「非管理員不能修改別人角色」的檢查：
+```csharp
+if (originalCharacter.DiscordId != currentDiscordId &&
+    originalCharacter.CharacterId != null && originalCharacter.DiscordId == 0)
+    throw new UnauthorizedAccessException("不能修改他人的角色");
+```
+多了一個 `&& originalCharacter.DiscordId == 0`。已填人的角色位 `DiscordId` 必為對方真實非 0 ID，不可能同時等於 0 → 這個檢查**實質上永遠不會觸發**，非管理員可任意竄改別人已排定的角色資料（角色、職業、戰力、輪數）。寫測試實測驗證過：非管理員改別人已填角色位，預期丟 `UnauthorizedAccessException`，實際沒丟。現有測試只覆蓋「刪除別人角色」「幫別人新增角色」兩條路徑，完全沒測「修改別人已填角色位」，也沒有「非管理員改自己角色應該成功」的正向測試——這正是這行附近好幾顆 mutant 同時存活的原因。
+
+**已修復**：拿掉多餘的 `&& originalCharacter.DiscordId == 0`，改成 `originalCharacter.DiscordId != currentDiscordId && originalCharacter.CharacterId != null`。補兩個測試（`Test/TeamSlotServiceUpdateTests.cs`）：
+- `UpdateAsync_NonAdmin_ShouldThrow_WhenModifyingOthersFilledCharacterSlot`（負向，回歸測試）
+- `UpdateAsync_NonAdmin_ShouldSucceed_WhenModifyingOwnFilledCharacterSlot`（正向對照，確認沒誤擋合法情境）
+
+重跑 Stryker 驗證：`TeamSlotService.cs` 單檔分數 62.67% → **68.00%**（47→51 killed），L195 相關 mutant 全部轉 Killed。
 
 **補完後重跑 Stryker 驗證（2026-07-30，全數 290 個 unit test 通過）**：
 - `TeamSlotAutoAssignService.cs:44`（鎖）、`:77`（避免重複建隊）兩顆目標 mutant 確認轉為 **Killed**。
