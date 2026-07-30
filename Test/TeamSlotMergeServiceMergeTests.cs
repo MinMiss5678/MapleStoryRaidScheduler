@@ -390,4 +390,65 @@ public class TeamSlotMergeServiceMergeTests
         // Assert - no merge (combined 3 > limit 2)
         _teamSlotRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<TeamSlot>()), Times.Never);
     }
+
+    [Fact]
+    public async Task MergeTeamsAsync_ShouldMergeTeams_WhenCombinedCountExactlyEqualsCapacity()
+    {
+        // 邊界值：合併後人數剛好等於容量是合法情況，只有「超過」才該跳過（同 TeamSlot.SetRoster 的邊界不變式）
+        ulong discordId1 = 111, discordId2 = 222;
+        var teamA = new TeamSlot
+        {
+            Id = 1,
+            BossId = 5,
+            Characters = new List<TeamSlotCharacter>
+            {
+                new TeamSlotCharacter { CharacterId = "c1", DiscordId = discordId1, DiscordName = "", Job = "", IsManual = false }
+            }
+        };
+        var teamB = new TeamSlot
+        {
+            Id = 2,
+            BossId = 5,
+            Characters = new List<TeamSlotCharacter>
+            {
+                new TeamSlotCharacter { CharacterId = "c2", DiscordId = discordId2, DiscordName = "", Job = "", IsManual = false }
+            }
+        };
+
+        var period = new Period
+        {
+            Id = 1,
+            StartDate = new DateTimeOffset(2026, 4, 2, 0, 0, 0, TimeSpan.Zero),
+            EndDate = new DateTimeOffset(2026, 4, 8, 23, 59, 59, TimeSpan.Zero)
+        };
+
+        _teamSlotRepositoryMock.Setup(r => r.GetIncompleteTeamsAsync(5, 1))
+            .ReturnsAsync(new List<TeamSlot> { teamA, teamB });
+        _bossRepositoryMock.Setup(r => r.GetTemplatesByBossIdAsync(5)).ReturnsAsync(new List<BossTemplate>());
+        _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss>
+        {
+            new Boss { Id = 5, RequireMembers = 2, Name = "" } // 合併後剛好 1+1=2，等於容量
+        });
+        _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<JobCategory>());
+        _periodQueryMock.Setup(q => q.GetByIdAsync(1)).ReturnsAsync(period);
+        _playerAvailabilityRepositoryMock.Setup(r =>
+            r.GetByDiscordIdsAndPeriodIdAsync(It.IsAny<List<ulong>>(), 1))
+            .ReturnsAsync(new List<PlayerAvailability>
+            {
+                new PlayerAvailability { DiscordId = discordId1, Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) },
+                new PlayerAvailability { DiscordId = discordId2, Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) }
+            });
+
+        var register = new Register
+        {
+            PeriodId = 1,
+            CharacterRegisters = new List<CharacterRegister> { new CharacterRegister { BossId = 5, CharacterId = "c1" } }
+        };
+
+        await _mergeService.MergeTeamsAsync(register);
+
+        // 剛好等於容量應該合併成功，不該被跳過
+        _teamSlotRepositoryMock.Verify(r => r.UpdateAsync(teamA), Times.Once);
+        _teamSlotRepositoryMock.Verify(r => r.DeleteAsync(teamB.Id), Times.Once);
+    }
 }

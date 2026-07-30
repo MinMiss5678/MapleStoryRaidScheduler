@@ -86,7 +86,8 @@
 - [x] 補一個 unit test：同一 register 兩隻角色排同一王、目前無現成隊伍 → 驗證只建一隊、第二隻角色併入而非重複建隊。→ `AutoAssignAsync_MultipleCharactersSameBoss_ShouldJoinSameNewlyCreatedTeam`。
 - [x] 補一個 unit test：`TeamSlot.SetRoster` 剛好等於容量（`filledCount == Capacity`）應該成功，不丟例外。→ `Test/TeamSlotAggregateTests.cs` 的 `SetRoster_Succeeds_WhenFilledCountExactlyEqualsCapacity`。
 - [x] `TeamSlotService.cs` 剩餘存活 mutant 分類時發現一個**授權邏輯 bug**（非漏測，是 production code 本身錯）——見下方「額外發現」。已修復 + 補回歸測試。
-- [ ] `TeamSlotMergeService.cs` / `ScheduleService.cs` 剩餘存活 mutant（見 HTML report）尚未分類，量大（合計 ~81 個），先以本清單為主；有餘力再擴大範圍。
+- [x] `TeamSlotMergeService.cs:102` 邊界值（合併後人數剛好等於容量應該成功，只測了超過）→ `Test/TeamSlotMergeServiceMergeTests.cs` 的 `MergeTeamsAsync_ShouldMergeTeams_WhenCombinedCountExactlyEqualsCapacity`（驗證後確認這條**不是 bug**，邏輯本來就對，純粹補測試殺 mutant）。
+- [ ] `ScheduleService.cs` / `TeamSlotMergeService.cs` 其餘存活 mutant（見 HTML report）尚未逐一分類，量大（合計 ~80 個）；粗看過 `TeamSlotMergeService.cs` 全部 34 個，多數屬於等價變異（`Concat`→`Except` 因 `TeamSlotCharacter` 沒 override `Equals` 用參考相等、實質等價；`for` 迴圈邊界因存取寫在內層迴圈內、外層邊界改了也不影響實際執行範圍）或測試斷言深度不足（3+ 隊多輪合併迴圈、跨隊重複玩家的部分重疊情境）但沒再發現第二個像 `TeamSlotService.cs:195` 那種真正的邏輯 bug；`ScheduleService.cs` 47 個完全還沒看。先在此打住，值不值得繼續深挖留給使用者決定。
 
 ### 額外發現：`TeamSlotService.cs:195` 授權邏輯 bug（非計畫內，分類存活 mutant 時撞到）
 
