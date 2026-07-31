@@ -103,6 +103,7 @@ public class TeamSlotServiceFillTests
             c.DiscordId == currentDiscordId &&
             c.CharacterId == "ch3001" &&
             c.TeamSlotId == teamSlotId &&
+            c.DiscordName == "P-Fill" &&
             c.IsManual)), Times.Once);
         // 既有的 P-Dummy 那筆完全沒被碰過——這正是修這個 bug 的重點。
         _teamSlotCharacterRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
@@ -163,6 +164,33 @@ public class TeamSlotServiceFillTests
         var request = new TeamSlotFillRequest { TeamSlotId = teamSlotId, CharacterId = "c1", Job = "Hero" };
 
         await Assert.ThrowsAsync<DomainException>(() =>
+            _teamSlotService.FillSlotAsync(request, currentDiscordId: 111));
+    }
+
+    [Fact]
+    public async Task FillSlotAsync_ShouldThrow_WhenReQueryFindsNoMatchingTeamSlot()
+    {
+        // 邊界情況：寫入成功後重新查詢，卻找不到剛剛那個 teamSlotId（極端情況，例如同時被刪除）。
+        // 防禦性判斷要能正確擋下，不能讓 FirstOrDefault 被改成 First 後直接丟未預期的 InvalidOperationException。
+        int teamSlotId = 1;
+        int bossId = 9;
+        var existingTeam = new TeamSlot
+        {
+            Id = teamSlotId,
+            BossId = bossId,
+            Characters = new List<TeamSlotCharacter>()
+        };
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeam);
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { Id = bossId, Name = "", RequireMembers = 6 });
+
+        // 重查回傳的清單裡沒有這個 teamSlotId（模擬「重查時剛好被刪掉」的極端情況）
+        var period = new Period { Id = 1, StartDate = DateTimeOffset.UtcNow, EndDate = DateTimeOffset.UtcNow.AddDays(7) };
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
+        _teamSlotQueryMock.Setup(q => q.GetByPeriodAndBossIdAsync(period, bossId)).ReturnsAsync(new List<TeamSlotCharacterDto>());
+
+        var request = new TeamSlotFillRequest { TeamSlotId = teamSlotId, CharacterId = "c1", Job = "Hero" };
+
+        await Assert.ThrowsAsync<BusinessException>(() =>
             _teamSlotService.FillSlotAsync(request, currentDiscordId: 111));
     }
 

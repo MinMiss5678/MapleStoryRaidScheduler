@@ -159,6 +159,36 @@ public class TeamSlotServiceUpdateTests
     }
 
     [Fact]
+    public async Task UpdateAsync_ShouldReportConflict_WhenLockTimesOut()
+    {
+        // AcquireAndLoadTeamSlotAsync 共用 helper 的 lock timeout 分支：取不到鎖要記進衝突清單、
+        // 不中斷其他隊伍處理，不是丟例外讓整個請求 500（FillSlotAsync 也共用同一段邏輯）。
+        int teamSlotId = 42;
+        _registrationLockMock.Setup(l => l.AcquireTeamSlotEditLockAsync(teamSlotId))
+            .ThrowsAsync(new AdvisoryLockTimeoutException("teamslot_edit lock timeout"));
+
+        var request = new TeamSlotUpdateRequest
+        {
+            DeleteTeamSlotIds = new List<int>(),
+            TeamSlots = new List<TeamSlotUpdateCommand>
+            {
+                new TeamSlotUpdateCommand
+                {
+                    Id = teamSlotId,
+                    Source = TeamSlotSource.Auto,
+                    Characters = new List<TeamSlotMemberDto>(),
+                    DeleteTeamSlotCharacterIds = new List<int>()
+                }
+            }
+        };
+
+        var result = await _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 0);
+
+        Assert.Contains(teamSlotId, result.ConflictedTeamSlotIds);
+        _teamSlotRepositoryMock.Verify(r => r.GetByIdAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
     public async Task UpdateAsync_NonAdmin_ShouldThrow_WhenDeletingOtherPersonsCharacter()
     {
         // Arrange
