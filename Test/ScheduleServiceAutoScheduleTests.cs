@@ -189,6 +189,144 @@ public class ScheduleServiceAutoScheduleTests
     }
 
     [Fact]
+    public async Task AutoScheduleWithTemplateAsync_ShouldDeductRounds_NotAddRounds_ForProtectedTeamMembers()
+    {
+        // 保留隊既有成員扣場數用 `-=`；驗證扣完後剩餘場數真的不夠，該玩家不會在其他天被重複排入
+        // （若誤植成 `+=`，場數會越用越多，同一玩家可能超出實際報名場數被排更多團）
+        int bossId = 1, templateId = 10;
+        var template = new BossTemplate
+        {
+            Id = templateId,
+            BossId = bossId,
+            Name = "",
+            Requirements = new List<BossTemplateRequirement> { new BossTemplateRequirement { JobCategory = "任意", Count = 1, Priority = 1 } }
+        };
+        var period = CreatePeriod();
+
+        _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId))
+            .ReturnsAsync(new Boss { RoundConsumption = 1, RequireMembers = 1, Name = "" });
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
+        _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(CreateJobCategories());
+
+        // 保留隊：週四 20:00，已滿（RequireMembers=1、manual 成員 c1 剛好 1 人）
+        var protectedTeam = new TeamSlot
+        {
+            Id = 100,
+            BossId = bossId,
+            TemplateId = templateId,
+            SlotDateTime = new DateTimeOffset(2026, 4, 2, 20, 0, 0, TimeSpan.FromHours(8)),
+            Source = TeamSlotSource.Admin,
+            Characters = new List<TeamSlotCharacter>
+            {
+                new TeamSlotCharacter { Id = 1, TeamSlotId = 100, DiscordId = 11111, DiscordName = "", CharacterId = "c1", CharacterName = "Hero", Job = "Hero", Rounds = 1, IsManual = true }
+            }
+        };
+        _teamSlotRepositoryMock.Setup(r => r.GetTemporaryByPeriodIdAsync(period.Id))
+            .ReturnsAsync(new List<TeamSlot> { protectedTeam });
+        _teamSlotRepositoryMock.Setup(r => r.GetByPeriodIdAsync(period.Id))
+            .ReturnsAsync(new List<TeamSlot>());
+
+        // c1 只報名了 1 場（週四已被保留隊用掉），週五同樣有空但不該再被排——場數應該只剩 0
+        var registrations = new List<PlayerRegisterSchedule>
+        {
+            new PlayerRegisterSchedule
+            {
+                Id = 1, DiscordId = 11111, DiscordName = "P1", CharacterId = "c1",
+                CharacterName = "Hero", Job = "Hero", AttackPower = 1000, Rounds = 1,
+                Availabilities = new List<PlayerAvailability>
+                {
+                    new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) },
+                    new PlayerAvailability { Weekday = 5, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) }
+                }
+            }
+        };
+        _playerRegisterQueryMock.Setup(q => q.GetByNowPeriodIdAsync(bossId)).ReturnsAsync(registrations);
+
+        // Act
+        var result = (await _scheduleService.AutoScheduleWithTemplateAsync(bossId, templateId)).ToList();
+
+        // Assert：週五不該再開一團給 c1（場數已被保留隊扣完，剩 0 < roundConsumption）
+        Assert.DoesNotContain(result, t => t.Id <= 0);
+    }
+
+    [Fact]
+    public async Task AutoScheduleWithTemplateAsync_ShouldNotDoubleBookPoolCandidate_AcrossTwoProtectedTeamsSameDay()
+    {
+        // 兩支保留隊同一天各缺 1 人，池裡只有 1 個符合條件的候補（cZ）——只能補進其中一隊，
+        // 不該同時出現在兩隊（scheduledPlayersByDay 若被錯誤清空會導致這個候補被重複塞進第二隊）
+        int bossId = 1, templateId = 10;
+        var template = CreateTemplate(bossId, templateId); // 需要 2 個「任意」
+        var period = CreatePeriod();
+
+        _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(templateId)).ReturnsAsync(template);
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId))
+            .ReturnsAsync(new Boss { RoundConsumption = 1, RequireMembers = 2, Name = "" });
+        _periodQueryMock.Setup(q => q.GetActivePeriodAsync()).ReturnsAsync(period);
+        _jobCategoryRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(CreateJobCategories());
+
+        var slotDateTime = new DateTimeOffset(2026, 4, 2, 20, 0, 0, TimeSpan.FromHours(8)); // 週四 20:00
+
+        var teamX = new TeamSlot
+        {
+            Id = 100,
+            BossId = bossId,
+            TemplateId = templateId,
+            SlotDateTime = slotDateTime,
+            Source = TeamSlotSource.Admin,
+            Characters = new List<TeamSlotCharacter>
+            {
+                new TeamSlotCharacter { Id = 1, TeamSlotId = 100, DiscordId = 11111, DiscordName = "", CharacterId = "cX", CharacterName = "Hero", Job = "Hero", Rounds = 1, IsManual = true }
+            }
+        };
+        var teamY = new TeamSlot
+        {
+            Id = 200,
+            BossId = bossId,
+            TemplateId = templateId,
+            SlotDateTime = slotDateTime,
+            Source = TeamSlotSource.Admin,
+            Characters = new List<TeamSlotCharacter>
+            {
+                new TeamSlotCharacter { Id = 2, TeamSlotId = 200, DiscordId = 22222, DiscordName = "", CharacterId = "cY", CharacterName = "Hero", Job = "Hero", Rounds = 1, IsManual = true }
+            }
+        };
+        _teamSlotRepositoryMock.Setup(r => r.GetTemporaryByPeriodIdAsync(period.Id))
+            .ReturnsAsync(new List<TeamSlot> { teamX, teamY });
+        _teamSlotRepositoryMock.Setup(r => r.GetByPeriodIdAsync(period.Id))
+            .ReturnsAsync(new List<TeamSlot>());
+
+        var registrations = new List<PlayerRegisterSchedule>
+        {
+            new PlayerRegisterSchedule
+            {
+                Id = 1, DiscordId = 11111, DiscordName = "PX", CharacterId = "cX", CharacterName = "Hero", Job = "Hero", AttackPower = 1000, Rounds = 1,
+                Availabilities = new List<PlayerAvailability> { new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) } }
+            },
+            new PlayerRegisterSchedule
+            {
+                Id = 2, DiscordId = 22222, DiscordName = "PY", CharacterId = "cY", CharacterName = "Hero", Job = "Hero", AttackPower = 1000, Rounds = 1,
+                Availabilities = new List<PlayerAvailability> { new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) } }
+            },
+            new PlayerRegisterSchedule
+            {
+                Id = 3, DiscordId = 33333, DiscordName = "PZ", CharacterId = "cZ", CharacterName = "Bishop", Job = "Bishop", AttackPower = 900, Rounds = 2,
+                Availabilities = new List<PlayerAvailability> { new PlayerAvailability { Weekday = 4, StartTime = new TimeOnly(20, 0), EndTime = new TimeOnly(22, 0) } }
+            }
+        };
+        _playerRegisterQueryMock.Setup(q => q.GetByNowPeriodIdAsync(bossId)).ReturnsAsync(registrations);
+
+        // Act
+        var result = (await _scheduleService.AutoScheduleWithTemplateAsync(bossId, templateId)).ToList();
+
+        // Assert：cZ 只能被補進 teamX 或 teamY 其中一隊，不能同時出現在兩隊
+        var resultTeamX = result.Single(t => t.Id == 100);
+        var resultTeamY = result.Single(t => t.Id == 200);
+        int czAppearances = resultTeamX.Characters.Count(c => c.CharacterId == "cZ") + resultTeamY.Characters.Count(c => c.CharacterId == "cZ");
+        Assert.Equal(1, czAppearances);
+    }
+
+    [Fact]
     public async Task AutoScheduleWithTemplateAsync_ShouldNotFormTeam_WhenInsufficientPlayers()
     {
         // Arrange

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-net/master/src/Stryker.Core/Stryker.Core/schema/stryker-config-schema.json",
+  "stryker-config": {
+    "test-projects": ["../Test/Test.csproj"],
+    "mutate": [
+      "Entities/TeamSlot.cs"
+    ],
+    "reporters": ["progress", "html", "json"],
+    "thresholds": { "high": 80, "low": 60, "break": 0 }
+  }
+}

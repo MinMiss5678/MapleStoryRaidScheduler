@@ -44,7 +44,12 @@ async function handleProxy(req: NextRequest, { params }: { params: Promise<{ pat
     // 簡化回應處理：直接轉發原始 ArrayBuffer
     const result = await response.arrayBuffer();
 
-    return new NextResponse(result, {
+    // 204/205/304 這類「null body status」依 Fetch 規格不可帶 body（連空的 ArrayBuffer 都不行），
+    // 否則建構 NextResponse 會直接丟 TypeError。204 No Content 的端點（如補位）才會踩到。
+    const nullBodyStatuses = [204, 205, 304];
+    const responseBody = nullBodyStatuses.includes(response.status) ? null : result;
+
+    return new NextResponse(responseBody, {
         status: response.status,
         headers: response.headers,
     });

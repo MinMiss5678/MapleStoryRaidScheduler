@@ -1,4 +1,5 @@
 ﻿using Application.DTOs;
+using Application.Exceptions;
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
@@ -127,25 +128,8 @@ public class TeamSlotService : ITeamSlotService
                 continue;
             }
 
-            // 序列化同一隊伍的併發編輯（容量檢查 + 清團連帶都靠這把鎖擋住 TOCTOU race）。
-            // lock_timeout 逾時（持鎖方異常卡住，非正常排隊）→ 當成這隊存檔失敗，落進統一衝突回報，
-            // 不中斷其他隊伍的處理、也不讓整個請求 500。
-            try
-            {
-                await _registrationLock.AcquireTeamSlotEditLockAsync(teamSlot.Id);
-            }
-            catch (AdvisoryLockTimeoutException)
-            {
-                conflicts.Add(teamSlot.Id);
-                continue;
-            }
-
-            var originalTeam = await _teamSlotRepository.GetByIdAsync(teamSlot.Id);
-            if (originalTeam == null)
-            {
-                conflicts.Add(teamSlot.Id);
-                continue;
-            }
+            var originalTeam = await AcquireAndLoadTeamSlotAsync(teamSlot.Id, conflicts);
+            if (originalTeam == null) continue;
 
             // 不變式需要 Capacity 才守得住（見 TeamSlot.HasRoom/AddMember）
             originalTeam.Capacity = bossesById.TryGetValue(originalTeam.BossId, out var boss) ? boss.RequireMembers : 6;
@@ -179,9 +163,7 @@ public class TeamSlotService : ITeamSlotService
                     var newChar = MapToEntity(member);
                     newChar.TeamSlotId = teamSlot.Id;
                     // IsManual 由來源端顯式決定（玩家補位/管理員微調=true，重排自動填=false），後端不強制。
-                    // 守隊伍不變式：擋重複加入、擋超額（含 admin，違反丟 DomainException → 400）。
-                    originalTeam.AddMember(newChar);
-                    await _teamSlotCharacterRepository.CreateAsync(newChar);
+                    await AddCharacterToTeamAsync(originalTeam, newChar);
                 }
                 else
                 {
@@ -193,7 +175,7 @@ public class TeamSlotService : ITeamSlotService
 
                         // 允許修改自己的角色，或是填補空位 (CharacterId == null)
                         if (originalCharacter.DiscordId != currentDiscordId &&
-                            originalCharacter.CharacterId != null && originalCharacter.DiscordId == 0)
+                            originalCharacter.CharacterId != null)
                             throw new UnauthorizedAccessException("不能修改他人的角色");
 
                         // 確保填補空位時，填入的是自己的角色
@@ -210,6 +192,80 @@ public class TeamSlotService : ITeamSlotService
         }
 
         return new TeamSlotUpdateResult { ConflictedTeamSlotIds = conflicts.Distinct().ToList() };
+    }
+
+    /// <summary>
+    /// 玩家補位：把自己的角色加進某個空位。跟 UpdateAsync 不同，payload 型別上放不進別人的資料
+    /// （DiscordId 一律用 currentDiscordId，不信任 client），不需要、也沒有擁有權檢查可寫錯。
+    /// </summary>
+    public async Task<TeamSlotDto> FillSlotAsync(TeamSlotFillRequest request, ulong currentDiscordId)
+    {
+        var conflicts = new List<int>();
+        var originalTeam = await AcquireAndLoadTeamSlotAsync(request.TeamSlotId, conflicts);
+        if (originalTeam == null)
+            throw new BusinessException("隊伍目前無法補位，請重新整理後再試");
+
+        var boss = await _bossRepository.GetByIdAsync(originalTeam.BossId);
+        originalTeam.Capacity = boss?.RequireMembers ?? 6;
+
+        var newChar = new TeamSlotCharacter
+        {
+            TeamSlotId = request.TeamSlotId,
+            DiscordId = currentDiscordId,
+            DiscordName = request.DiscordName ?? "",
+            CharacterId = request.CharacterId,
+            CharacterName = request.CharacterName,
+            Job = request.Job,
+            AttackPower = request.AttackPower,
+            Rounds = request.Rounds,
+            IsManual = true // 玩家補位＝人工調整，重排時受保護
+        };
+
+        await AddCharacterToTeamAsync(originalTeam, newChar);
+
+        // 重新查詢最新狀態（含新角色的真實 Id/Version）回給前端：跟 UpdateAsync controller 的既有慣例一致
+        // （寫入後重查、包進同一個回應），不是額外一支 API——CreateAsync 用的泛用 DapperRepository.InsertAsync
+        // 只回受影響列數、拿不到自動產生的 Id，用重新查詢換取正確性最省事、風險最低。
+        var teamSlots = await GetByBossIdAsync(originalTeam.BossId);
+        var updatedTeamSlot = teamSlots.FirstOrDefault(t => t.Id == request.TeamSlotId);
+        if (updatedTeamSlot == null)
+            throw new BusinessException("補位成功，但目前查無最新隊伍資料，請重新整理頁面");
+
+        return updatedTeamSlot;
+    }
+
+    /// <summary>
+    /// 取鎖＋撈隊伍，兩邊共用（UpdateAsync 批次處理 / FillSlotAsync 單一操作）。
+    /// 取不到鎖（lock_timeout）或隊伍已消失都記進 conflicts、回傳 null，呼叫端自行決定
+    /// 「跳過繼續處理其他隊伍」（批次）或「整個操作視為失敗」（單一）。
+    /// </summary>
+    private async Task<TeamSlot?> AcquireAndLoadTeamSlotAsync(int teamSlotId, List<int> conflicts)
+    {
+        try
+        {
+            await _registrationLock.AcquireTeamSlotEditLockAsync(teamSlotId);
+        }
+        catch (AdvisoryLockTimeoutException)
+        {
+            conflicts.Add(teamSlotId);
+            return null;
+        }
+
+        var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
+        if (team == null)
+            conflicts.Add(teamSlotId);
+
+        return team;
+    }
+
+    /// <summary>
+    /// 新增成員的核心邏輯，UpdateAsync／FillSlotAsync 共用：守隊伍不變式（擋重複加入、擋超額，
+    /// 違反丟 DomainException → 400），再寫入 DB。呼叫端已各自處理好授權判斷。
+    /// </summary>
+    private async Task AddCharacterToTeamAsync(TeamSlot team, TeamSlotCharacter newChar)
+    {
+        team.AddMember(newChar);
+        await _teamSlotCharacterRepository.CreateAsync(newChar);
     }
 
     private static TeamSlotCharacter MapToEntity(TeamSlotMemberDto dto) => new()

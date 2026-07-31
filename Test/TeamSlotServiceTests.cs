@@ -355,4 +355,70 @@ public class TeamSlotAutoAssignServiceTests
 
         Assert.Contains(existingTeamSlot.Characters, c => c.CharacterId == characterId);
     }
+
+    [Fact]
+    public async Task AutoAssignAsync_ShouldAcquireAutoAssignLock_ForRegisterPeriod()
+    {
+        // period 查不到就會提早 return，讓這個測試單純聚焦在「有沒有取鎖」，
+        // 不必把整條 auto-assign 流程都跑完。取鎖失敗（併發防護沒生效）過去沒有任何 unit test 抓得到，
+        // Stryker 把 AcquireAutoAssignLockAsync 那行整行刪掉時，測試套件竟然全過。
+        _periodQueryMock.Setup(p => p.GetByIdAsync(It.IsAny<int>())).ReturnsAsync((Period?)null);
+
+        var register = new Register { DiscordId = 1UL, PeriodId = 42 };
+
+        await _autoAssignService.AutoAssignAsync(register);
+
+        _registrationLockMock.Verify(l => l.AcquireAutoAssignLockAsync(42), Times.Once);
+    }
+
+    [Fact]
+    public async Task AutoAssignAsync_MultipleCharactersSameBoss_ShouldJoinSameNewlyCreatedTeam()
+    {
+        // 同一玩家一次報名兩隻角色排同一王、目前沒有現成隊伍：
+        // 第一隻角色建新隊後，這隊必須加回本輪迴圈用的本地 teamSlots 清單，
+        // 第二隻角色才找得到它、併進同一隊，而不是又開一隊。
+        // （對應 TeamSlotAutoAssignService.AutoAssignAsync 裡 `teamSlots.Add(newTeam)` 那行）
+        const int periodId = 10;
+        var period = new Period
+        {
+            Id = periodId,
+            StartDate = new DateTimeOffset(2026, 7, 28, 0, 0, 0, TimeSpan.Zero),
+            EndDate = new DateTimeOffset(2026, 8, 4, 0, 0, 0, TimeSpan.Zero)
+        };
+        var availability = new PlayerAvailability { Weekday = 2, StartTime = new TimeOnly(10, 0), EndTime = new TimeOnly(12, 0) };
+
+        var register = new Register
+        {
+            DiscordId = 111UL,
+            PeriodId = periodId,
+            CharacterRegisters = new List<CharacterRegister>
+            {
+                new CharacterRegister { CharacterId = "charA", BossId = 5, Rounds = 1 },
+                new CharacterRegister { CharacterId = "charB", BossId = 5, Rounds = 1 }
+            },
+            Availabilities = new List<PlayerAvailability> { availability }
+        };
+
+        _periodQueryMock.Setup(p => p.GetByIdAsync(periodId)).ReturnsAsync(period);
+        _teamSlotRepositoryMock.Setup(r => r.GetByPeriodIdAsync(periodId)).ReturnsAsync(new List<TeamSlot>());
+        _characterQueryMock.Setup(c => c.GetByDiscordIdAsync(111UL)).ReturnsAsync(new List<Character>
+        {
+            new Character { Id = "charA", DiscordId = 111UL, Name = "角色A", Job = "戰士", AttackPower = 100 },
+            new Character { Id = "charB", DiscordId = 111UL, Name = "角色B", Job = "法師", AttackPower = 100 }
+        });
+        _playerRepositoryMock.Setup(p => p.GetAsync(111UL)).ReturnsAsync(new Player { DiscordId = 111UL, DiscordName = "tester", Role = "user" });
+        _bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>
+        {
+            new Boss { Id = 5, Name = "測試王", RequireMembers = 6, RoundConsumption = 1 }
+        });
+        _teamSlotRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<TeamSlot>())).ReturnsAsync(777);
+
+        await _autoAssignService.AutoAssignAsync(register);
+
+        // 只建了一隊——若 newTeam 沒被加回本地清單，第二隻角色會找不到既有隊伍而再開一隊，CreateAsync 會被呼叫兩次
+        _teamSlotRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlot>()), Times.Once);
+        // 兩隻角色都落在同一隊（TeamSlotId = 777），不是各自散在不同隊
+        _teamSlotCharacterRepositoryMock.Verify(
+            r => r.CreateAsync(It.Is<TeamSlotCharacter>(c => c.TeamSlotId == 777)), Times.Exactly(2));
+    }
 }

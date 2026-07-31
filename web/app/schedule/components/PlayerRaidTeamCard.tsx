@@ -112,15 +112,22 @@ export default function PlayerRaidTeamCard({
         const isValid = validateAddCharacter(teamSlot, teamSlotCharacter, allTeamSlots, requireMembers);
         if (!isValid) return;
 
-        const updatedTeam = {
-            ...teamSlot,
-            characters: [...teamSlot.characters, teamSlotCharacter]
-        };
-
         setShowCharPicker(null);
 
         try {
-            await scheduleService.saveSchedule(bossId, [updatedTeam], []);
+            // 走獨立補位端點，不經 saveSchedule 那種整包重送的形狀：payload 型別上
+            // 放不進既有成員（可能屬於別人）的資料，後端也不用擁有權檢查去猜意圖。
+            // 回傳值是後端重新查詢的最新隊伍（含新角色真實 id/version）——用它更新畫面，
+            // 不要自己在前端拼一份本地樂觀更新的資料（少一組欄位跟後端對不上的風險）。
+            const updatedTeam = await scheduleService.fillSlot({
+                teamSlotId: teamSlot.id,
+                discordName: teamSlotCharacter.discordName,
+                characterId: character.id,
+                characterName: character.name,
+                job: character.job,
+                attackPower: character.attackPower,
+                rounds: character.rounds ?? 0
+            });
             onTeamSlotUpdate(updatedTeam);
             toast.success("補位成功！");
         } catch (error) {

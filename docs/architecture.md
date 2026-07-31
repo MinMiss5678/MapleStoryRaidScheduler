@@ -104,6 +104,8 @@ await next(context);
 await _unitOfWork.CommitAsync();
 ```
 
+**連線池 headroom**：目前 Npgsql `Maximum Pool Size`（預設 100）與 Postgres `max_connections`（預設 100）之間沒有預留 headroom。負載測試（`plans/2026-07-28-load-testing.md` Phase 1）確認：backend 自己的請求不會因此失敗——超過 pool 上限的請求在 client 端排隊等連線，只是變慢；真正會被拒絕的是**繞過這個 pool 的外部新連線**（`psql`、migration job 等直接連 Postgres 的操作），backend pool 佔滿 `max_connections` 額度時這些連線會直接收到 `FATAL: sorry, too many clients already`。連線閒置要等 `Connection Idle Lifetime`（預設 300 秒）才會被收回，短時間內連續操作容易疊加占用。正式環境部署前應為 Postgres `max_connections` 保留 headroom（backend pool + migrate + 其他服務 + 保留量 < max_connections），或明確設定 Npgsql `Maximum Pool Size` 上限／縮短 `Connection Idle Lifetime`。
+
 ### 4. 雙軌身分驗證
 
 **決策原因**：一般玩家與管理員的驗證需求不同——玩家走 Discord OAuth2 取得 JWT（無狀態），管理員需要更嚴格的 Session 控管（可強制登出）。
@@ -452,6 +454,12 @@ sequenceDiagram
 兩種情況（隊伍消失 / 版本衝突）**統一收進 `TeamSlotUpdateResult.ConflictedTeamSlotIds`**，不是分別丟不同例外——呼叫端（前端）只需要處理一份「這些隊被略過」的清單。管理員排團頁收到後，衝突的隊伍**原地標紅、不重新排序**，不假裝存檔成功。
 
 > 選型同自動分配鎖：本規模用 advisory lock + xmin 即可，不需要 SERIALIZABLE 重試迴圈或分散式鎖服務。
+
+### lock_timeout 安全邊際
+
+`RegistrationLock` 取鎖前對交易 `SET LOCAL lock_timeout`（`RegistrationLock.cs:47`），預設 5 秒，用來區分「正常排隊等一下」跟「持鎖方異常卡死」：逾時拋 `AdvisoryLockTimeoutException`，`TeamSlotService` 接住後歸類進 `ConflictedTeamSlotIds`（跟版本衝突同一份清單，UI 上不分辨）。
+
+負載測試（`plans/2026-07-28-load-testing.md` Phase 2）對同一 `teamSlotId` 灌到 500 併發編輯（遠超實際使用規模，一支隊正常 6-8 人）驗證：`lock_timeout` 從未誤觸發，即使總延遲飆到 17 秒。原因是 `SET LOCAL lock_timeout` 只計算已進入交易、卡在 `pg_advisory_xact_lock` 本身的等待時間；client 端觀察到的延遲大部分花在進交易之前（Kestrel 請求排隊、等 Npgsql 連線池釋出連線），不算進這個逾時。5 秒預設值在連線池被打爆之前有充足安全邊際；真正的瓶頸是連線池，不是這個 timeout 太短（見本文件「Unit of Work 模式」節的連線池 headroom）。
 
 ---
 
