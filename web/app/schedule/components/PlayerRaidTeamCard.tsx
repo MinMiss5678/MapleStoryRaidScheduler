@@ -120,7 +120,11 @@ export default function PlayerRaidTeamCard({
         setShowCharPicker(null);
 
         try {
-            await scheduleService.saveSchedule(bossId, [updatedTeam], []);
+            // 送給後端的只帶新增這一筆：補位語意上只是「加自己進空位」，
+            // 不該把既有成員（可能屬於別人）一起夾帶送出去——後端非管理員的擁有權檢查
+            // 會把「整包重送但沒真的要改」誤判成竄改他人角色。本地畫面仍用合併後的 updatedTeam。
+            const fillPayload = { ...teamSlot, characters: [teamSlotCharacter] };
+            await scheduleService.saveSchedule(bossId, [fillPayload], []);
             onTeamSlotUpdate(updatedTeam);
             toast.success("補位成功！");
         } catch (error) {
