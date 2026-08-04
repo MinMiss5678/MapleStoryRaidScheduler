@@ -104,3 +104,21 @@ jobs:
           kubectl rollout status deployment/backend  -n maple-raid --timeout=180s
           kubectl rollout status deployment/frontend -n maple-raid --timeout=180s
           kubectl rollout status deployment/bot      -n maple-raid --timeout=180s
+
+      # rollout status 只驗 pod 在叢集內部 ready（readiness probe 打得到，非外部視角）。
+      # 這步從 runner（叢集外部）打正式公開網址，驗 cloudflared tunnel + frontend 部署後真的對外可達。
+      # 打首頁而非 backend /health/ready：backend 沒有公開 Service，只能經 frontend 這條路對外驗證。
+      - name: 部署後對外健檢
+        run: |
+          url=https://maplestory.paralleluniversegame.uk
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+            if [ "$code" = "200" ]; then
+              echo "健檢通過：$url 回應 $code"
+              exit 0
+            fi
+            echo "第 $i 次嘗試：$url 回應 $code，6 秒後重試..."
+            sleep 6
+          done
+          echo "健檢失敗：$url 部署後仍無法正常對外回應"
+          exit 1
