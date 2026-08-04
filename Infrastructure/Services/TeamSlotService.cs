@@ -89,7 +89,7 @@ public class TeamSlotService : ITeamSlotService
         if (teamSlotUpdateRequest.DeleteTeamSlotIds.Any())
         {
             if (!isAdmin)
-                throw new UnauthorizedAccessException("只有管理員可以刪除隊伍。");
+                throw new ForbiddenException("只有管理員可以刪除隊伍。");
 
             foreach (var deleteId in teamSlotUpdateRequest.DeleteTeamSlotIds)
             {
@@ -107,7 +107,7 @@ public class TeamSlotService : ITeamSlotService
             if (teamSlot.Id <= 0)
             {
                 if (!isAdmin)
-                    throw new UnauthorizedAccessException("只有管理員可以建立新隊伍。");
+                    throw new ForbiddenException("只有管理員可以建立新隊伍。");
 
                 var entity = new TeamSlot
                 {
@@ -141,7 +141,7 @@ public class TeamSlotService : ITeamSlotService
                     // 一般玩家：只能刪除屬於自己的角色
                     var charToDelete = originalTeam.Characters.FirstOrDefault(c => c.Id == teamSlotCharacterId);
                     if (charToDelete != null && charToDelete.DiscordId != currentDiscordId)
-                        throw new UnauthorizedAccessException("您不能移除他人的角色。");
+                        throw new ForbiddenException("您不能移除他人的角色。");
                 }
 
                 await _teamSlotCharacterRepository.DeleteCharacterAsync(new TeamSlotCharacter
@@ -158,7 +158,7 @@ public class TeamSlotService : ITeamSlotService
                 if (member.Id == null)
                 {
                     if (!isAdmin && member.DiscordId != currentDiscordId)
-                        throw new UnauthorizedAccessException("不能替他人新增角色");
+                        throw new ForbiddenException("不能替他人新增角色");
 
                     var newChar = MapToEntity(member);
                     newChar.TeamSlotId = teamSlot.Id;
@@ -171,17 +171,17 @@ public class TeamSlotService : ITeamSlotService
                     if (!isAdmin)
                     {
                         if (originalCharacter == null)
-                            throw new UnauthorizedAccessException("找不到要修改的角色位");
+                            throw new NotFoundException("找不到要修改的角色位");
 
                         // 允許修改自己的角色，或是填補空位 (CharacterId == null)
                         if (originalCharacter.DiscordId != currentDiscordId &&
                             originalCharacter.CharacterId != null)
-                            throw new UnauthorizedAccessException("不能修改他人的角色");
+                            throw new ForbiddenException("不能修改他人的角色");
 
                         // 確保填補空位時，填入的是自己的角色
                         if (originalCharacter.CharacterId == null && member.DiscordId != currentDiscordId &&
                             member.DiscordId != 0)
-                            throw new UnauthorizedAccessException("填補空位時，必須填入自己的角色。");
+                            throw new ForbiddenException("填補空位時，必須填入自己的角色。");
                     }
 
                     var updated = await _teamSlotCharacterRepository.UpdateAsync(MapToEntity(member));

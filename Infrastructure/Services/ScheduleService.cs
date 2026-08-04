@@ -1,4 +1,5 @@
 ﻿using Application.Interface;
+using Application.Exceptions;
 using Application.Queries;
 using Domain.Entities;
 using Domain.Helpers;
@@ -31,7 +32,7 @@ public class ScheduleService : IScheduleService
     public async Task<IEnumerable<TeamSlot>> AutoScheduleWithTemplateAsync(int bossId, int templateId)
     {
         var template = await _bossRepository.GetTemplateByIdAsync(templateId);
-        if (template == null) throw new KeyNotFoundException($"Template {templateId} not found");
+        if (template == null) throw new NotFoundException($"Template {templateId} not found");
 
         var boss = await _bossRepository.GetByIdAsync(bossId);
         var roundConsumption = boss?.RoundConsumption ?? 1;
