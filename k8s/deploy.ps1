@@ -2,8 +2,11 @@
 # 使用前確認 secrets/ 目錄下各 txt 檔已填入正確值
 #
 # 應用（backend/frontend/bot）走 Kustomize、映像 pin 到當前 git SHA（與 CD 一致 → 無漂移）。
-# 前提：該 SHA 的映像已推上 Docker Hub（由 CD 或 rollout.ps1）。若是「還沒有任何映像」的
-# 全新 bootstrap，先用 rollout.ps1 各建一次、或先推 :latest。
+# 前提：backend/frontend/bot 的該 SHA 映像已推上 Docker Hub（由 CD 或 rollout.ps1）。
+# 若是「還沒有任何映像」的全新 bootstrap，先用 rollout.ps1 各建一次、或先推 :latest。
+#
+# migrate 映像則由本腳本自己 build+push（步驟 6）——它不在 rollout.ps1 涵蓋範圍內，
+# 過去 manual 部署會吃到過時的 minqq/migrate:latest 導致 schema 停在舊版，故內建重建。
 
 $ns = "maple-raid"
 $root = "$PSScriptRoot/.."
@@ -54,7 +57,19 @@ try {
     git -C $root checkout -- k8s/kustomization.yaml   # 還原佔位，保持 git 乾淨
 }
 
-# 6. 執行 migration
+# 6. build + push migrate 映像
+# migrations/ 目錄是 build 時烤進 image 的（見 db/Dockerfile.migrate），改了 migration 檔
+# 就必須重 build，否則 migrate.sh 會跑到過時的 minqq/migrate:latest（migrations 停在舊版）、
+# 回報「成功」卻沒真的更新 schema。對齊 CD（deploy.yml 每次都 build+push migrate）。
+Write-Host "==> build + push migrate 映像 ($sha)..."
+docker build -f "$root/db/Dockerfile.migrate" -t "minqq/migrate:$sha" -t "minqq/migrate:latest" "$root/db"
+Assert-Ok "build migrate 映像失敗"
+docker push "minqq/migrate:$sha"
+Assert-Ok "push migrate:$sha 失敗"
+docker push "minqq/migrate:latest"
+Assert-Ok "push migrate:latest 失敗"
+
+# 7. 執行 migration（migrate-job.yaml 用 :latest，imagePullPolicy 預設 Always → 拉到剛推的新版）
 Write-Host "==> 執行 migration..."
 bash "$PSScriptRoot/migrate.sh"
 Assert-Ok "migration 失敗"
