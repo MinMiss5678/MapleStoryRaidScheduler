@@ -14,6 +14,7 @@ public class RegisterQueryServiceTests
     private readonly Mock<IPlayerRegisterRepository> _playerRegisterRepositoryMock;
     private readonly Mock<IPlayerRegisterQuery> _playerRegisterQueryMock;
     private readonly Mock<IPlayerAvailabilityRepository> _playerAvailabilityRepositoryMock;
+    private readonly Mock<Application.Interface.ISystemConfigService> _systemConfigServiceMock;
     private readonly RegisterQueryService _queryService;
 
     public RegisterQueryServiceTests()
@@ -22,13 +23,43 @@ public class RegisterQueryServiceTests
         _playerRegisterRepositoryMock = new Mock<IPlayerRegisterRepository>();
         _playerRegisterQueryMock = new Mock<IPlayerRegisterQuery>();
         _playerAvailabilityRepositoryMock = new Mock<IPlayerAvailabilityRepository>();
+        _systemConfigServiceMock = new Mock<Application.Interface.ISystemConfigService>();
 
         _queryService = new RegisterQueryService(
             _periodQueryMock.Object,
             _playerRegisterRepositoryMock.Object,
             _playerRegisterQueryMock.Object,
-            _playerAvailabilityRepositoryMock.Object
+            _playerAvailabilityRepositoryMock.Object,
+            _systemConfigServiceMock.Object
         );
+    }
+
+    [Fact]
+    public async Task GetCurrentDeadlineAsync_ShouldReturnNull_WhenNoActivePeriod()
+    {
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync((Period?)null);
+
+        Assert.Null(await _queryService.GetCurrentDeadlineAsync());
+    }
+
+    [Fact]
+    public async Task GetCurrentDeadlineAsync_ShouldComputeDeadlineRelativeToActivePeriod()
+    {
+        // active period 起始日為週二 2026-08-11；截止設週一 → 該週期截止 = 08-10 23:59:59（週期相對，非日曆週）
+        var period = new Period { StartDate = new DateTimeOffset(2026, 8, 11, 0, 0, 0, TimeSpan.Zero) };
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
+        _systemConfigServiceMock.Setup(c => c.GetAsync()).ReturnsAsync(new SystemConfig
+        {
+            DeadlineDayOfWeek = DayOfWeek.Monday,
+            DeadlineTime = new TimeSpan(23, 59, 59),
+        });
+
+        var deadline = await _queryService.GetCurrentDeadlineAsync();
+
+        // 關鍵：截止落在 period 前的週一 08-10（週期相對），不是日曆週回推的 08-03。
+        // 斷言 wall-clock（GetDeadlineForPeriod 用 .Date 會帶本機時區 offset，故不比 offset 避免依賴機器時區）。
+        Assert.NotNull(deadline);
+        Assert.Equal(new DateTime(2026, 8, 10, 23, 59, 59), deadline.Value.DateTime);
     }
 
     [Fact]

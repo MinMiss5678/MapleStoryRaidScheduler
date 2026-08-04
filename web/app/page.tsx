@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { scheduleService } from "@/services/scheduleService";
 import { systemConfigService } from "@/services/systemConfigService";
+import { registerService } from "@/services/registerService";
 import { SystemConfig } from "@/types/system";
 import { TeamSlot } from "@/types/raid";
 import { useCharacters } from "@/hooks/queries/useCharacters";
@@ -15,17 +16,6 @@ import {
 } from "lucide-react";
 
 const DAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
-
-// 回傳本週截止時間（不跨週），若已過期 ms 為負數，formatCountdown 會顯示「已截止」
-function getThisWeekDeadline(config: SystemConfig): Date {
-    const now = new Date();
-    const [hours, minutes] = config.deadlineTime.split(":").map(Number);
-    const deadline = new Date(now);
-    const dayDiff = config.deadlineDayOfWeek - now.getDay(); // 可為負數（表示本週已過）
-    deadline.setDate(now.getDate() + dayDiff);
-    deadline.setHours(hours, minutes, 0, 0);
-    return deadline;
-}
 
 function formatCountdown(ms: number): string {
     if (ms <= 0) return "已截止";
@@ -73,6 +63,7 @@ function DashboardView() {
     const { data: myCharacters = [] } = useCharacters();
     const [allTeams, setAllTeams] = useState<TeamSlot[]>([]);
     const [config, setConfig] = useState<SystemConfig | null>(null);
+    const [deadline, setDeadline] = useState<string | null>(null);
     const [countdown, setCountdown] = useState<string>("");
     const [loading, setLoading] = useState(true);
 
@@ -84,12 +75,14 @@ function DashboardView() {
     useEffect(() => {
         async function load() {
             try {
-                const [teams, cfg] = await Promise.all([
+                const [teams, cfg, dl] = await Promise.all([
                     scheduleService.getByDiscordId(),
                     systemConfigService.getConfig(),
+                    registerService.getDeadline(),
                 ]);
                 setAllTeams(teams);
                 setConfig(cfg);
+                setDeadline(dl);
             } finally {
                 setLoading(false);
             }
@@ -97,17 +90,16 @@ function DashboardView() {
         load();
     }, []);
 
-    // 每分鐘更新倒數
+    // 每分鐘更新倒數。截止時間用後端算好的 deadline（權威、週期相對），前端不自行重算。
     useEffect(() => {
-        if (!config) return;
         const tick = () => {
-            const deadline = getThisWeekDeadline(config);
-            setCountdown(formatCountdown(deadline.getTime() - Date.now()));
+            if (!deadline) { setCountdown("—"); return; }  // 沒有 active period → 無截止可顯示
+            setCountdown(formatCountdown(new Date(deadline).getTime() - Date.now()));
         };
         tick();
         const id = setInterval(tick, 60_000);
         return () => clearInterval(id);
-    }, [config]);
+    }, [deadline]);
 
     const userQuickLinks = [
         { label: "排團結果", desc: "查看本週已排定的隊伍", href: "/scheduleResult", icon: CalendarDays, color: "blue" },
