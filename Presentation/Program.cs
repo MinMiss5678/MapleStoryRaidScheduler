@@ -17,6 +17,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Presentation.Infrastructure.Discord.Handlers;
+using Serilog;
 using StackExchange.Redis;
 
 namespace Presentation;
@@ -26,10 +27,18 @@ public class Program
     static async Task Main()
     {
         var host = Host.CreateDefaultBuilder()
-             .ConfigureLogging(logging =>
+             .UseSerilog((ctx, services, config) =>
              {
-                 logging.ClearProviders();
-                 logging.AddConsole();
+                 // 跟 backend（Presentation.WebApi/Program.cs）同一套設定：Outbox 派發失敗/放棄這類
+                 // 目前只印在 container console、進不了 Seq Alerting 的日誌，接上後才看得到、也才能被通知到。
+                 var seqUrl = ctx.Configuration["Seq:ServerUrl"];
+                 config
+                     .ReadFrom.Configuration(ctx.Configuration)
+                     .ReadFrom.Services(services)
+                     .Enrich.FromLogContext()
+                     .Enrich.WithProperty("Application", "MapleStoryRaidScheduler")
+                     .WriteTo.Console()
+                     .WriteTo.Seq(string.IsNullOrEmpty(seqUrl) ? "http://localhost:5341" : seqUrl);
              })
              .ConfigureServices((context, services) =>
              {

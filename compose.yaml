@@ -103,6 +103,8 @@ services:
       - MicrosoftMail__RefreshTokenFile=/run/secrets/microsoft_mail_refresh_token
       - MicrosoftMail__ToAddress=jeremywsm@gmail.com
       - MicrosoftMail__WebhookSecretFile=/run/secrets/microsoft_mail_webhook_secret
+      - Sentry__DsnFile=/run/secrets/sentry_dsn
+      - Sentry__DiscordIdHashKeyFile=/run/secrets/discord_hash_key
     secrets:
       - db_connection
       - discord_bot_token
@@ -110,6 +112,8 @@ services:
       - jwt_secret_key
       - microsoft_mail_refresh_token
       - microsoft_mail_webhook_secret
+      - sentry_dsn
+      - discord_hash_key
     expose:
       - "5230"
     networks:
@@ -142,11 +146,14 @@ services:
 #        condition: service_completed_successfully
       redis:
         condition: service_healthy
+      seq:
+        condition: service_started
     environment:
       - ConnectionStrings__DefaultConnectionFile=/run/secrets/db_connection
       - Discord:BotTokenFile=/run/secrets/discord_bot_token
       - App:AppUrl=https://maplestory.paralleluniversegame.uk
       - Redis__Configuration=redis:6379
+      - Seq:ServerUrl=http://seq:5341
     secrets:
       - db_connection
       - discord_bot_token
@@ -187,6 +194,12 @@ secrets:
     file: ./secrets/microsoft_mail_refresh_token.txt
   microsoft_mail_webhook_secret:
     file: ./secrets/microsoft_mail_webhook_secret.txt
+  sentry_dsn:
+    # sentry.io 建立 Project 後才會給值，拿到前是空檔案（見 Program.cs 的 Sentry:DsnFile 判斷）
+    file: ./secrets/sentry_dsn.txt
+  discord_hash_key:
+    # DiscordId 送 Sentry 前的 HMAC 密鑰（見 plans/2026-08-04-sentry-discordid-hmac.md）
+    file: ./secrets/discord_hash_key.txt
 
 networks:
   bridge:
