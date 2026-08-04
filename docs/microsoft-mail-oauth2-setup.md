@@ -28,6 +28,7 @@ Seq Alert（@Level = 'Error'）
 | `Presentation.WebApi/Controller/AlertMailController.cs` | 對外端點，共用密鑰保護 |
 | `Presentation.WebApi/Middleware/IdempotencyMiddleware.cs` | `/api/internal/` 路徑排除（Seq 呼叫沒有 `X-Idempotency-Key`） |
 | `secrets/microsoft_mail_refresh_token.txt` | 一次性登入拿到的 refresh token（gitignored） |
+| `secrets/microsoft_mail_webhook_secret.txt` | Seq → `AlertMailController` 的共用密鑰（HTTP header `X-Alert-Secret`），`openssl rand -hex 32` 產生（gitignored、選填） |
 
 ## 一次性設定步驟
 
