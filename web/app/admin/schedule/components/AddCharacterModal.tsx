@@ -4,10 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import {formatDateTime} from "@/utils/dateTimeUtil";
 import {TeamSlot, TeamSlotCharacter} from "@/types/raid";
 import {Search, UserPlus, CheckCircle2} from "lucide-react";
-import { jobCategoryService } from "@/services/bossService";
 import { registerService } from "@/services/registerService";
 import { Modal } from "@/components/ui/Modal";
 import { Button, Input, Select } from "@/components/ui/FormControls";
+import { JOBS } from "@/constants/jobs";
 
 export default function AddCharacterModal({bossId, isOpen, onClose, teamSlot, onAdd}: {
     bossId: number,
@@ -20,20 +20,9 @@ export default function AddCharacterModal({bossId, isOpen, onClose, teamSlot, on
     const [job, setJob] = useState("");
     const [results, setResults] = useState<TeamSlotCharacter[]>([]);
     const [loading, setLoading] = useState(false);
-    const [jobs, setJobs] = useState<string[]>([]);
-
-    useEffect(() => {
-        const fetchJobs = async () => {
-            if (!isOpen || jobs.length > 0) return;
-            try {
-                const jobMap = await jobCategoryService.getJobMap();
-                setJobs(Object.keys(jobMap));
-            } catch (error) {
-                console.error("Failed to fetch jobs:", error);
-            }
-        };
-        fetchJobs();
-    }, [isOpen, jobs.length]);
+    // 職業篩選清單用權威的 JOBS 常數（不再從 JobCategory 撈）——所有職業都可篩選，
+    // 不受「有沒有分組分類」影響。
+    const jobs = JOBS;
 
     const handleSearch = useCallback(async () => {
         if (!isOpen) return;

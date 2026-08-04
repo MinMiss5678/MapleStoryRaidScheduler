@@ -6,6 +6,7 @@ import { Plus, Trash2, Save, ChevronRight, Settings2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { bossService, jobCategoryService } from "@/services/bossService";
 import { useBosses } from "@/hooks/queries/useBosses";
+import { JOBS } from "@/constants/jobs";
 
 export default function TemplateAdminPage() {
     const { data: bosses = [] } = useBosses();
@@ -20,9 +21,11 @@ export default function TemplateAdminPage() {
         async function loadJobData() {
             try {
                 const jobMap = await jobCategoryService.getJobMap();
-                const jobList = Object.keys(jobMap);
+                // 個別職業選項用權威的 JOBS 常數（不是 JobCategory 的 key）——
+                // 這樣「沒有分組分類的職業」（如拳霸、夜使者）也選得到，不必為它們硬建分類。
+                // 分組分類則只從 JobCategory 撈（只有真的要分組的職業才有列）。
                 const categoryList = Array.from(new Set(Object.values(jobMap)));
-                setJobs(jobList);
+                setJobs([...JOBS]);
                 setJobCategories(categoryList);
             } catch {
                 toast.error("無法取得職業資料");
