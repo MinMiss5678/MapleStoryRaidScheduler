@@ -96,3 +96,15 @@ Clean Architecture with DDD — dependency flows inward: Presentation → Applic
 - Backend tests: `Test/` — one file per service (e.g., `RegisterServiceTests.cs`). Uses Moq to mock repositories and service dependencies.
 - Frontend tests: `web/__tests__/` — Vitest + React Testing Library.
 - New features should have accompanying unit tests.
+- **E2E already exists — use it, don't hand-roll browser automation.** `web/e2e/` (Playwright) covers the core flows end-to-end: `auth`, `register` (報名 → 自動排團), `fill` (補位), `admin-conflict` / `admin-rebuild`, `schedule`, `smoke`. Runs against `compose.e2e.yaml` (see `docs/e2e-testing-setup.md`); CI runs it on every PR. To validate a flow (or check a change doesn't regress), run these — do **not** reconstruct the flow by scripting a browser (CDP/Puppeteer) from scratch. They log in via the `/api/test/login` backdoor, which is **disabled when `ASPNETCORE_ENVIRONMENT=Production`**, so E2E runs locally/CI, not against prod.
+
+## Deploying & verifying (learned the hard way)
+
+- **A prod deploy verifies the *seams*, not the logic.** CI (unit / integration / E2E) already proves the business logic (auto-scheduling, fill, conflict handling) works — and logic is identical in every env, so do **not** re-test it manually on prod. A prod smoke test should only cover what differs from CI and what E2E can't reach:
+  1. rollout healthy — pods Ready, no crash loop;
+  2. **migrations actually applied** (check `schema_migrations`) **+ reference data seeded** (`DiscordRoleMapping`, `JobCategory` — no admin UI, not in migrations; unseeded ⇒ *nobody can log in*);
+  3. secrets / config wired (real DB conn, JWT, Discord client id/secret);
+  4. **real Discord OAuth** — test-login bypasses it entirely, so this is the one genuinely prod-only functional check; plus bot / mail / Sentry;
+  5. external reachability — public DNS → cloudflared tunnel → frontend → backend.
+- **Monitor CI with `gh run watch <run-id> --exit-status` (server-side blocking wait), never by polling `gh run list` in a loop.** Pair with `run_in_background: true` so it doesn't hold the turn; on red, `gh run view <id> --log-failed`.
+- Manual deploy = `k8s/deploy.ps1` (first time) / `k8s/rollout.ps1 <svc>` (update); full flow incl. the mandatory post-deploy seed is in `docs/deployment.md`.
