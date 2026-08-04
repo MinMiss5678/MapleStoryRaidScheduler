@@ -1,4 +1,5 @@
 ﻿using Application.DTOs;
+using Application.Exceptions;
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
@@ -52,7 +53,7 @@ public class RegisterService : IRegisterService
         await EnsureRegistrationOpen();
 
         if (await _playerRegisterRepository.ExistAsync(command.DiscordId, command.PeriodId))
-            throw new InvalidOperationException("您已完成本期報名，請勿重複提交。");
+            throw new BusinessException("您已完成本期報名，請勿重複提交。");
 
         // DTO → Entity mapping 在 Infrastructure 層完成
         var register = new Register
@@ -105,7 +106,7 @@ public class RegisterService : IRegisterService
         // 後面所有子資源都用這個 id，避免玩家傳別人的 registerId 竄改/刪除別人的資料（IDOR）
         var registerId = await _playerRegisterRepository.GetIdAsync(command.DiscordId, command.PeriodId);
         if (registerId == null)
-            throw new InvalidOperationException("找不到本期報名，無法更新。");
+            throw new BusinessException("找不到本期報名，無法更新。");
 
         // DTO → Entity mapping 在 Infrastructure 層完成
         var charRegisters = command.CharacterRegisters.Select(c => new CharacterRegister
@@ -174,7 +175,7 @@ public class RegisterService : IRegisterService
             var deadline = config.GetDeadlineForPeriod(latestPeriod.StartDate);
             if (DateTimeOffset.UtcNow > deadline)
             {
-                throw new InvalidOperationException("目前已超過報名截止時間。");
+                throw new BusinessException("目前已超過報名截止時間。");
             }
         }
     }

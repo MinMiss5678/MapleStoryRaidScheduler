@@ -63,7 +63,7 @@ public class RegisterServiceTests
         };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => _registerService.CreateAsync(command));
+        var exception = await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _registerService.CreateAsync(command));
         Assert.Equal("目前已超過報名截止時間。", exception.Message);
     }
 
@@ -130,7 +130,7 @@ public class RegisterServiceTests
             .ReturnsAsync(true);
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(
             () => _registerService.CreateAsync(command));
         Assert.Equal("您已完成本期報名，請勿重複提交。", exception.Message);
         _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<Register>()), Times.Never);
@@ -196,7 +196,7 @@ public class RegisterServiceTests
         var command = new RegisterUpdateCommand { Id = 999, DiscordId = 1UL, PeriodId = 1 };
 
         // Act & Assert
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _registerService.UpdateAsync(command));
+        var ex = await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _registerService.UpdateAsync(command));
         Assert.Equal("找不到本期報名，無法更新。", ex.Message);
         _playerAvailabilityRepositoryMock.Verify(r => r.DeleteByPlayerRegisterIdAsync(It.IsAny<int>()), Times.Never);
     }
