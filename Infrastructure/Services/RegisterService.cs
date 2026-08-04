@@ -16,6 +16,7 @@ public class RegisterService : IRegisterService
     private readonly ITeamSlotAutoAssignService _autoAssignService;
     private readonly ITeamSlotCharacterRepository _teamSlotCharacterRepository;
     private readonly ISystemConfigService _systemConfigService;
+    private readonly IBossRepository _bossRepository;
 
     public RegisterService(
         IPeriodQuery periodQuery,
@@ -24,7 +25,8 @@ public class RegisterService : IRegisterService
         IPlayerAvailabilityRepository playerAvailabilityRepository,
         ITeamSlotCharacterRepository teamSlotCharacterRepository,
         ITeamSlotAutoAssignService autoAssignService,
-        ISystemConfigService systemConfigService)
+        ISystemConfigService systemConfigService,
+        IBossRepository bossRepository)
     {
         _periodQuery = periodQuery;
         _playerRegisterRepository = playerRegisterRepository;
@@ -33,6 +35,16 @@ public class RegisterService : IRegisterService
         _autoAssignService = autoAssignService;
         _teamSlotCharacterRepository = teamSlotCharacterRepository;
         _systemConfigService = systemConfigService;
+        _bossRepository = bossRepository;
+    }
+
+    // 載入各 Boss 的 RoundConsumption 注入 domain，讓 Register 聚合自己守「每週場次預算」不變式
+    // （domain 純粹、不碰 repository；與 TeamSlot.Capacity 由 service 注入同一模式）。
+    private async Task ValidateRoundsBudgetAsync(Register register)
+    {
+        var consumptionByBossId = (await _bossRepository.GetAllAsync())
+            .ToDictionary(b => b.Id, b => b.RoundConsumption);
+        register.EnsureRoundsWithinBudget(consumptionByBossId);
     }
 
     public async Task CreateAsync(RegisterCreateCommand command)
@@ -60,6 +72,8 @@ public class RegisterService : IRegisterService
                 EndTime = a.EndTime
             }).ToList()
         };
+
+        await ValidateRoundsBudgetAsync(register);
 
         var playRegisterId = await _playerRegisterRepository.CreateAsync(register);
 
@@ -116,6 +130,8 @@ public class RegisterService : IRegisterService
                 EndTime = a.EndTime
             }).ToList()
         };
+
+        await ValidateRoundsBudgetAsync(register);
 
         await _playerRegisterRepository.UpdateAsync(register);
 

@@ -27,6 +27,8 @@ public class RegisterServiceTests
         _playerAvailabilityRepositoryMock = new Mock<IPlayerAvailabilityRepository>();
         _autoAssignServiceMock = new Mock<ITeamSlotAutoAssignService>();
         _systemConfigServiceMock = new Mock<ISystemConfigService>();
+        var bossRepositoryMock = new Mock<IBossRepository>();
+        bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>());
 
         _registerService = new RegisterService(
             _periodQueryMock.Object,
@@ -35,7 +37,8 @@ public class RegisterServiceTests
             _playerAvailabilityRepositoryMock.Object,
             new Mock<ITeamSlotCharacterRepository>().Object,
             _autoAssignServiceMock.Object,
-            _systemConfigServiceMock.Object
+            _systemConfigServiceMock.Object,
+            bossRepositoryMock.Object
         );
     }
 

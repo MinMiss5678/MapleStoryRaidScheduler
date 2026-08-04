@@ -30,6 +30,8 @@ public class RegisterServiceUpdateDeleteTests
         _teamSlotCharacterRepositoryMock = new Mock<ITeamSlotCharacterRepository>();
         _autoAssignServiceMock = new Mock<ITeamSlotAutoAssignService>();
         _systemConfigServiceMock = new Mock<ISystemConfigService>();
+        var bossRepositoryMock = new Mock<IBossRepository>();
+        bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>());
 
         _registerService = new RegisterService(
             _periodQueryMock.Object,
@@ -38,7 +40,8 @@ public class RegisterServiceUpdateDeleteTests
             _playerAvailabilityRepositoryMock.Object,
             _teamSlotCharacterRepositoryMock.Object,
             _autoAssignServiceMock.Object,
-            _systemConfigServiceMock.Object
+            _systemConfigServiceMock.Object,
+            bossRepositoryMock.Object
         );
     }
 
