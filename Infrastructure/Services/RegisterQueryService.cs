@@ -12,17 +12,30 @@ public class RegisterQueryService : IRegisterQueryService
     private readonly IPlayerRegisterRepository _playerRegisterRepository;
     private readonly IPlayerRegisterQuery _playerRegisterQuery;
     private readonly IPlayerAvailabilityRepository _playerAvailabilityRepository;
+    private readonly ISystemConfigService _systemConfigService;
 
     public RegisterQueryService(
         IPeriodQuery periodQuery,
         IPlayerRegisterRepository playerRegisterRepository,
         IPlayerRegisterQuery playerRegisterQuery,
-        IPlayerAvailabilityRepository playerAvailabilityRepository)
+        IPlayerAvailabilityRepository playerAvailabilityRepository,
+        ISystemConfigService systemConfigService)
     {
         _periodQuery = periodQuery;
         _playerRegisterRepository = playerRegisterRepository;
         _playerRegisterQuery = playerRegisterQuery;
         _playerAvailabilityRepository = playerAvailabilityRepository;
+        _systemConfigService = systemConfigService;
+    }
+
+    public async Task<DateTimeOffset?> GetCurrentDeadlineAsync()
+    {
+        // 與 RegisterService.EnsureRegistrationOpen 同一套權威邏輯：對「目前 active period」
+        // 的起始日回推截止（週期相對，非日曆週相對）。沒有 active period 就沒有截止可算。
+        var activePeriod = await _periodQuery.GetActivePeriodAsync();
+        if (activePeriod == null) return null;
+        var config = await _systemConfigService.GetAsync();
+        return config.GetDeadlineForPeriod(activePeriod.StartDate);
     }
 
     public async Task<RegisterDto> GetAsync(ulong discordId)

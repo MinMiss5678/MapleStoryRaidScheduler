@@ -42,6 +42,13 @@ public class RegisterController : ControllerBase
         return Ok(await _registerQueryService.GetByQueryAsync(request));
     }
 
+    // 目前開放報名週期的截止時間（權威值，與後端擋報名同一套）。前端 banner 顯示用，不含使用者資料。
+    [HttpGet("Deadline")]
+    public async Task<IActionResult> GetDeadlineAsync()
+    {
+        return Ok(new { deadline = await _registerQueryService.GetCurrentDeadlineAsync() });
+    }
+
     [HttpPost]
     public async Task<IActionResult> CreateAsync([FromBody] RegisterCreateCommand command)
     {
