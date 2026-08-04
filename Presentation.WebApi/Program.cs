@@ -1,4 +1,7 @@
 ﻿using System.Data;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using Application.Interface;
 using Application.Options;
@@ -16,6 +19,7 @@ using Presentation.WebApi.HealthChecks;
 using Presentation.WebApi.Middleware;
 using Presentation.WebApi.RateLimiting;
 using Serilog;
+using Serilog.Events;
 
 // 最早初始化 Serilog，讓 startup 期間的錯誤也能被記錄
 Log.Logger = new LoggerConfiguration()
@@ -34,7 +38,100 @@ builder.Host.UseSerilog((ctx, services, config) =>
         .Enrich.WithProperty("Application", "MapleStoryRaidScheduler")
         .WriteTo.Console()
         .WriteTo.Seq(string.IsNullOrEmpty(seqUrl) ? "http://localhost:5341" : seqUrl);
+
+    // sentry.io（免費版，見 plans/2026-08-03-bugsink-integration.md）：
+    // 只補 Seq 沒有的 stack-trace 去重 + resolved/unresolved，職責不重疊，兩個 sink 並存。
+    // 沒設 Dsn（本機開發預設）就不掛這個 sink，不會因為缺設定噴例外。
+    var sentryDsnFile = ctx.Configuration["Sentry:DsnFile"];
+    var sentryDsn = !string.IsNullOrEmpty(sentryDsnFile) && File.Exists(sentryDsnFile)
+        ? File.ReadAllText(sentryDsnFile).Trim()
+        : ctx.Configuration["Sentry:Dsn"];
+    if (!string.IsNullOrEmpty(sentryDsn) && ctx.HostingEnvironment.IsProduction())
+    {
+        // DiscordId 雜湊密鑰：沒設就不送 DiscordId tag（寧可少一個可搜尋欄位，不送明碼 ID 出去）。
+        var discordIdHashKeyFile = ctx.Configuration["Sentry:DiscordIdHashKeyFile"];
+        var discordIdHashKey = !string.IsNullOrEmpty(discordIdHashKeyFile) && File.Exists(discordIdHashKeyFile)
+            ? File.ReadAllText(discordIdHashKeyFile).Trim()
+            : ctx.Configuration["Sentry:DiscordIdHashKey"];
+
+        config.WriteTo.Sentry(o =>
+        {
+            o.Dsn = sentryDsn;
+            o.MinimumEventLevel = LogEventLevel.Error;
+            o.MinimumBreadcrumbLevel = LogEventLevel.Warning;
+            o.TracesSampleRate = 0; // 不需要 performance tracing（YAGNI）
+            o.SetBeforeSend(sentryEvent =>
+            {
+                // DiscordId 是間接識別個人的資料，不能明碼送到第三方——用 HMAC-SHA256 雜湊過再轉 tag。
+                // 帶密鑰是關鍵：Discord snowflake ID 是結構化數字（時間戳+worker+序號），範圍可列舉，
+                // 沒有密鑰的雜湊（純 SHA256）等於沒雜湊；HMAC 沒密鑰就連候選值都算不出來。
+                if (sentryEvent.Extra.TryGetValue("DiscordId", out var discordId) && discordId is not null)
+                {
+                    if (!string.IsNullOrEmpty(discordIdHashKey))
+                    {
+                        var hash = Convert.ToHexString(HMACSHA256.HashData(
+                            Encoding.UTF8.GetBytes(discordIdHashKey), Encoding.UTF8.GetBytes(discordId.ToString()!)));
+                        sentryEvent.SetTag("discord_id_hash", hash);
+                    }
+                    // 不管有沒有雜湊成功（例如密鑰沒設），Extra 裡的明碼都要清掉——
+                    // SetTag 只是「多加」一個 tag，原本的 Extra["DiscordId"] 明碼不會自動消失。
+                    sentryEvent.SetExtra("DiscordId", "[Filtered]");
+                }
+
+                // 部分例外（如 Npgsql 連線失敗）會把連線字串/token 明碼塞進 Message，送出前擋掉
+                foreach (var sentryException in sentryEvent.SentryExceptions ?? [])
+                    sentryException.Value = ScrubSensitive(sentryException.Value, discordIdHashKey);
+
+                // sentryEvent.Message 是「log 訊息本身」渲染後的結果（例如 LogError(ex, "user {DiscordId}", id)
+                // 裡的 "user {DiscordId}" 部分），跟上面 SentryExceptions[].Value（.NET Exception.Message）
+                // 是完全分開的欄位——只掃 SentryExceptions 掃不到這裡，DiscordId/IP/token 一樣可能夾在這段文字裡。
+                if (sentryEvent.Message is { } message)
+                {
+                    message.Formatted = ScrubSensitive(message.Formatted, discordIdHashKey);
+                    // Params 是渲染前的原始參數（例如上面那個 DiscordId 的原始 ulong），
+                    // Formatted 掃過了字串，但 Sentry 網頁的「JSON」原始檢視還是讀得到 Params 裡的明碼——兩邊都要清。
+                    message.Params = null;
+                }
+
+                return sentryEvent;
+            });
+            // Warning 等級的 log（業務例外、限流 fail-open 等）會變成 breadcrumb 夾帶送出，
+            // 跟主要例外訊息是分開的管線,BeforeSend 掃不到,要用專屬的 BeforeBreadcrumb hook。
+            // 這條路徑才是 DiscordId 實際外洩的地方：codebase 裡帶 {DiscordId} 的 log 呼叫全部是
+            // LogWarning（RedisSessionCache/RedisFixedWindowRateLimiter/限流觸發),沒有 LogError,
+            // 上面 BeforeSend 那段雜湊只作用在 Extra（Error 等級才有),保護不到這裡——
+            // 一定要在 ScrubSensitive 裡也雜湊裸露的 Discord ID,不能只靠 BeforeSend。
+            // Breadcrumb.Message 對外是唯讀,只能整個重建一個新的回傳。
+            o.SetBeforeBreadcrumb(breadcrumb => new Breadcrumb(
+                message: ScrubSensitive(breadcrumb.Message, discordIdHashKey) ?? "",
+                type: breadcrumb.Type ?? "default",
+                data: breadcrumb.Data,
+                category: breadcrumb.Category,
+                level: breadcrumb.Level));
+        });
+    }
 });
+
+static string? ScrubSensitive(string? message, string? discordIdHashKey)
+{
+    if (string.IsNullOrEmpty(message)) return message;
+    message = Regex.Replace(message, "(?i)(password|pwd)\\s*=\\s*[^;]+", "$1=[Filtered]");
+    message = Regex.Replace(message, @"\beyJ[\w-]+\.[\w-]+\.[\w-]+\b", "[Filtered JWT]");
+    // JSON 格式的 token 欄位（OAuth 回應解析失敗時，例外訊息可能夾帶原始內容片段）——
+    // Discord/MS 的 token 不是 JWT 格式，上面那條正則抓不到，這裡照 key 名稱單獨擋。
+    message = Regex.Replace(message, "(?i)\"(access_token|refresh_token|token|bot_token|api_key)\"\\s*:\\s*\"[^\"]*\"", "\"$1\":\"[Filtered]\"");
+    // IPv4 位址（例如限流觸發時記錄的真實 client IP）
+    message = Regex.Replace(message, @"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[Filtered IP]");
+    // Discord snowflake ID（17-19 位數字，例如 discordId=836636705498595340）——
+    // 跟 BeforeSend 那段 Extra["DiscordId"] 走同一把 HMAC key 雜湊，不是單純 [Filtered]，
+    // 沒密鑰就退化成 [Filtered]，跟 tag 那段的「沒密鑰不送明碼」邏輯一致。
+    message = Regex.Replace(message, @"\b\d{17,19}\b", m =>
+        string.IsNullOrEmpty(discordIdHashKey)
+            ? "[Filtered]"
+            : Convert.ToHexString(HMACSHA256.HashData(
+                Encoding.UTF8.GetBytes(discordIdHashKey), Encoding.UTF8.GetBytes(m.Value))));
+    return message;
+}
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -158,6 +255,25 @@ builder.Services.AddOptions<DiscordOptions>()
         else
         {
             options.ClientSecret = options.ClientSecret;
+        }
+    });
+
+builder.Services.AddOptions<MicrosoftMailOptions>()
+    .Bind(builder.Configuration.GetSection("MicrosoftMail"))
+    .PostConfigure(options =>
+    {
+        if (!string.IsNullOrEmpty(options.RefreshTokenFile) &&
+            File.Exists(options.RefreshTokenFile))
+        {
+            options.RefreshToken =
+                File.ReadAllText(options.RefreshTokenFile).Trim();
+        }
+
+        if (!string.IsNullOrEmpty(options.WebhookSecretFile) &&
+            File.Exists(options.WebhookSecretFile))
+        {
+            options.WebhookSecret =
+                File.ReadAllText(options.WebhookSecretFile).Trim();
         }
     });
 

@@ -34,3 +34,5 @@ spec:
               value: "840590742270771223"
             - name: App__AppUrl
               value: https://maplestory.paralleluniversegame.uk
+            - name: Seq__ServerUrl
+              value: http://seq:5341

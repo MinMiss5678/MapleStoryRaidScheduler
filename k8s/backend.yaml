@@ -75,6 +75,22 @@ spec:
                   name: maple-secrets
                   key: microsoft_mail_webhook_secret
                   optional: true
+            # sentry.io 錯誤追蹤（見 plans/2026-08-03-bugsink-integration.md）：optional——
+            # 沒設定就不掛 Sentry sink（見 Program.cs 的 Sentry:Dsn 判斷），不該讓 pod 啟動失敗。
+            - name: Sentry__Dsn
+              valueFrom:
+                secretKeyRef:
+                  name: maple-secrets
+                  key: sentry_dsn
+                  optional: true
+            # DiscordId 送 Sentry 前的 HMAC 密鑰（見 plans/2026-08-04-sentry-discordid-hmac.md）：
+            # optional——沒設就不送 DiscordId tag（BeforeSend 判斷），不該讓 pod 啟動失敗。
+            - name: Sentry__DiscordIdHashKey
+              valueFrom:
+                secretKeyRef:
+                  name: maple-secrets
+                  key: discord_hash_key
+                  optional: true
           ports:
             - containerPort: 5230
           # liveness：只看 app 活著（不查 DB）→ DB 掛不會誤殺 pod

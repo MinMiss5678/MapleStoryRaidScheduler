@@ -39,6 +39,20 @@ if (Test-Path "$dir/microsoft_mail_webhook_secret.txt") {
   Write-Host "==> 跳過 microsoft_mail_webhook_secret（檔案不存在，錯誤通知信功能選填）"
 }
 
+# sentry.io DSN 選填（k8s/backend.yaml 標記 optional: true），沒設就不掛 Sentry sink（見 Program.cs）
+if (Test-Path "$dir/sentry_dsn.txt") {
+  $fromFileArgs += "--from-file=sentry_dsn=$dir/sentry_dsn.txt"
+} else {
+  Write-Host "==> 跳過 sentry_dsn（檔案不存在，錯誤追蹤功能選填）"
+}
+
+# DiscordId 送 Sentry 前的 HMAC 密鑰，選填（見 plans/2026-08-04-sentry-discordid-hmac.md）
+if (Test-Path "$dir/discord_hash_key.txt") {
+  $fromFileArgs += "--from-file=discord_hash_key=$dir/discord_hash_key.txt"
+} else {
+  Write-Host "==> 跳過 discord_hash_key（檔案不存在，不會送 DiscordId tag）"
+}
+
 # 建立新 Secret
 kubectl create secret generic $secretName -n $ns @fromFileArgs
 
