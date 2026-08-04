@@ -6,3 +6,9 @@ appsettings.json
 TestResults/
 Test/TestResults*/
 secrets/
+
+# 本機產生的暫存/報告產物（reportgenerator 合併覆蓋率、k6 壓測輸出、工具暫存檔）
+*.tmp
+coverage-merged/
+coverage-report/
+loadtest-results*.log
