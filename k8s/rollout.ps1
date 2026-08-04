@@ -16,6 +16,9 @@ param(
 $ns = "maple-raid"
 $root = "$PSScriptRoot/.."
 
+# 部署前安全檢查（main 分支、無未提交變更、與遠端同步）
+. "$PSScriptRoot/assert-deploy-safety.ps1"
+
 $config = @{
     backend  = @{ repo = "minqq/presentation.webapi"; dockerfile = "Presentation.WebApi/Dockerfile"; context = "." }
     frontend = @{ repo = "minqq/frontend";            dockerfile = "web/Dockerfile";                 context = "web" }

@@ -8,13 +8,16 @@
 $ns = "maple-raid"
 $root = "$PSScriptRoot/.."
 
-# 1. 建立 Secret（真值由 secrets/ 的 txt 產生，不走 kustomize）
-Write-Host "==> 建立 Secret..."
-& "$PSScriptRoot/setup-secrets.ps1"
+# 0. 部署前安全檢查（main 分支、無未提交變更、與遠端同步）
+. "$PSScriptRoot/assert-deploy-safety.ps1"
 
-# 2. 建立 namespace
+# 1. 建立 namespace（要先於 Secret，setup-secrets.ps1 的 kubectl create 需要 namespace 已存在）
 Write-Host "==> 建立 namespace..."
 kubectl apply -f "$PSScriptRoot/namespace.yaml"
+
+# 2. 建立 Secret（真值由 secrets/ 的 txt 產生，不走 kustomize）
+Write-Host "==> 建立 Secret..."
+& "$PSScriptRoot/setup-secrets.ps1"
 
 # 3. 基礎服務（database / seq / redis / cloudflared）
 Write-Host "==> 部署基礎服務..."
