@@ -42,6 +42,19 @@ spec:
               memory: 256Mi
             limits:
               memory: 512Mi
+          # 官方 /health endpoint 只在 UI port(80)上有回應，打 5341（ingest port）打不到
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 15
           volumeMounts:
             - name: seq-data
               mountPath: /data
