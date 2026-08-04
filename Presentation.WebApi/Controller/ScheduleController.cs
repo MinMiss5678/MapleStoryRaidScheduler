@@ -1,4 +1,5 @@
-﻿using Application.DTOs;
+﻿using System.ComponentModel.DataAnnotations;
+using Application.DTOs;
 using Application.Interface;
 using Microsoft.AspNetCore.Mvc;
 using Presentation.WebApi.Attributes;
@@ -26,6 +27,9 @@ public class ScheduleController : ControllerBase
 
 public class AutoScheduleWithTemplateRequest
 {
+    [Range(1, int.MaxValue)]
     public int BossId { get; set; }
+
+    [Range(1, int.MaxValue)]
     public int TemplateId { get; set; }
 }

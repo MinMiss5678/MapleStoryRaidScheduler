@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Application.DTOs;
 
 /// <summary>
@@ -6,11 +8,21 @@ namespace Application.DTOs;
 /// </summary>
 public class TeamSlotFillRequest
 {
+    [Range(1, int.MaxValue)]
     public int TeamSlotId { get; set; }
+
     public string? DiscordName { get; set; }
+
+    [Required]
     public required string CharacterId { get; set; }
+
     public string? CharacterName { get; set; }
+
+    [Required]
     public required string Job { get; set; }
+
     public int AttackPower { get; set; }
+
+    [Range(0, int.MaxValue)]
     public int Rounds { get; set; }
 }
