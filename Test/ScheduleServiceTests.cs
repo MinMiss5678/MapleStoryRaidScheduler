@@ -88,7 +88,7 @@ public class ScheduleServiceTests
         _bossRepositoryMock.Setup(r => r.GetTemplateByIdAsync(99)).ReturnsAsync((BossTemplate?)null);
 
         // Act & Assert
-        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() =>
             _scheduleService.AutoScheduleWithTemplateAsync(1, 99));
     }
 

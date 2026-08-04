@@ -70,7 +70,7 @@ public class TeamSlotServiceUpdateTests
         };
 
         // Act & Assert
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() =>
             _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: 12345));
     }
 
@@ -127,7 +127,7 @@ public class TeamSlotServiceUpdateTests
         };
 
         // Act & Assert
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() =>
             _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: 12345));
     }
 
@@ -223,7 +223,7 @@ public class TeamSlotServiceUpdateTests
         };
 
         // Act & Assert
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() =>
             _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: currentDiscordId));
     }
 
@@ -262,7 +262,7 @@ public class TeamSlotServiceUpdateTests
         };
 
         // Act & Assert
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() =>
             _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: currentDiscordId));
     }
 
@@ -296,7 +296,7 @@ public class TeamSlotServiceUpdateTests
             }
         };
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() =>
             _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: currentDiscordId));
         _teamSlotCharacterRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
     }
@@ -546,7 +546,7 @@ public class TeamSlotServiceUpdateTests
             }
         };
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() =>
             _teamSlotService.UpdateAsync(request, isAdmin: false, currentDiscordId: currentDiscordId));
     }
 }
