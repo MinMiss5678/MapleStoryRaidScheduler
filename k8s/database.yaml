@@ -44,6 +44,18 @@ spec:
               memory: 128Mi
             limits:
               memory: 256Mi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "presentationdb"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          # exit 1（拒絕連線中，如剛啟動/smart shutdown）也算活著，只有 exit 2/3（真的連不上）才判死重啟——
+          # k8s exec probe 只認 exit 0 為成功，故用 shell 包一層放寬判斷
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres -d presentationdb; ec=$?; [ \"$ec\" -eq 0 ] || [ \"$ec\" -eq 1 ]"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
           volumeMounts:
             - name: db-data
               mountPath: /var/lib/postgresql

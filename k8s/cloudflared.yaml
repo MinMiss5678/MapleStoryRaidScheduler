@@ -16,7 +16,8 @@ spec:
       containers:
         - name: cloudflared
           image: cloudflare/cloudflared:latest
-          args: [tunnel, --no-autoupdate, run]
+          # --metrics 開啟後才有 /ready endpoint（cloudflared 官方 k8s 部署建議做法）
+          args: [tunnel, --no-autoupdate, --metrics, "0.0.0.0:2000", run]
           env:
             - name: TUNNEL_TOKEN
               valueFrom:
@@ -28,3 +29,18 @@ spec:
               memory: 16Mi
             limits:
               memory: 64Mi
+          # /ready 回 200 代表已跟 Cloudflare edge 建立連線；readiness 拿掉流量、liveness 判死重啟
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
