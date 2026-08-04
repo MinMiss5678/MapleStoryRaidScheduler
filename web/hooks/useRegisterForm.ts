@@ -29,6 +29,14 @@ export function useRegisterForm() {
         deleteCharacterRegisterIds: []
     });
 
+    // 報名截止時間（後端權威值）。前端據此在過截止時擋送出，讓玩家不用填完才撞後端錯誤。
+    // 判斷與後端 EnsureRegistrationOpen 一致：沒有 deadline（無 active period）或尚未過 → 開放。
+    const [deadline, setDeadline] = useState<string | null>(null);
+    useEffect(() => {
+        registerService.getDeadline().then(setDeadline).catch(() => setDeadline(null));
+    }, []);
+    const isRegistrationOpen = !deadline || new Date(deadline).getTime() > Date.now();
+
     const updateForm = useCallback(<K extends keyof RegisterFormState>(key: K, value: RegisterFormState[K]) => {
         setForm(prev => ({ ...prev, [key]: value }));
     }, []);
@@ -64,6 +72,12 @@ export function useRegisterForm() {
     const bossAssignment = useBossAssignment({ form, updateForm, setForm, bosses, characters });
 
     const onSubmit = async () => {
+        // 前端防線：過截止就不送出（送出鈕也會 disabled，這裡是 belt-and-suspenders）。
+        // 後端仍會擋（BusinessException → 400），此處只是省一趟壞送出、給即時回饋。
+        if (!isRegistrationOpen) {
+            toast.error("目前已超過報名截止時間。");
+            return;
+        }
         setLoading(true);
         try {
             if (form.id) {
@@ -105,6 +119,7 @@ export function useRegisterForm() {
         bosses,
         period,
         isRegisterLoading,
+        isRegistrationOpen,
         updateForm,
         ...timeSelection,
         ...bossAssignment,
