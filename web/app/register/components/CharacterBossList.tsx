@@ -17,6 +17,7 @@ interface CharacterBossListProps {
     onRoundsChange: (index: number, rounds: number) => void;
     onUpsertCharacterRegister: (characterId: string, bossId: number, rounds: number) => void;
     onSubmit: () => void;
+    submitDisabled?: boolean;
     getTotalRounds: (characterId: string | undefined) => number;
     getAvailableRounds: (characterId: string | undefined, currentRounds?: number, currentBossId?: number) => number;
     quickFillBoss: (bossId: number, rounds: number) => void;
@@ -35,6 +36,7 @@ export const CharacterBossList: React.FC<CharacterBossListProps> = ({
     onRoundsChange,
     onUpsertCharacterRegister,
     onSubmit,
+    submitDisabled = false,
     getTotalRounds,
     getAvailableRounds,
     quickFillBoss
@@ -258,7 +260,8 @@ export const CharacterBossList: React.FC<CharacterBossListProps> = ({
                 <button
                     type="button"
                     onClick={onSubmit}
-                    className="px-4 py-2 rounded-lg font-semibold shadow-md bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white transition-colors duration-200"
+                    disabled={submitDisabled}
+                    className="px-4 py-2 rounded-lg font-semibold shadow-md bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-green-600"
                 >
                     送出報名
                 </button>

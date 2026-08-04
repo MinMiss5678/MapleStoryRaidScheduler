@@ -12,6 +12,7 @@ export default function Register() {
         bosses,
         form,
         isRegisterLoading,
+        isRegistrationOpen,
         quickFill,
         copyDay,
         toggleAvailability,
@@ -56,6 +57,12 @@ export default function Register() {
                     </div>
                 )}
 
+                {!isRegistrationOpen && (
+                    <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300">
+                        本期報名已截止，無法新增或修改報名。
+                    </div>
+                )}
+
                 {step === 1 && (
                     <TimePicker
                         form={form}
@@ -84,6 +91,7 @@ export default function Register() {
                         onRoundsChange={handleRoundsChange}
                         onUpsertCharacterRegister={upsertCharacterRegister}
                         onSubmit={onSubmit}
+                        submitDisabled={!isRegistrationOpen}
                         getTotalRounds={getTotalRounds}
                         getAvailableRounds={getAvailableRounds}
                         quickFillBoss={quickFillBoss}
