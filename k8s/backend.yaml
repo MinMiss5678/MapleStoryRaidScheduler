@@ -55,6 +55,26 @@ spec:
               value: https://maplestory.paralleluniversegame.uk
             - name: Seq__ServerUrl
               value: http://seq:5341
+            # Seq Alert 錯誤通知信（見 plans/2026-07-31-error-alerting.md、docs/microsoft-mail-oauth2-setup.md）。
+            # optional: true——這是錦上添花的通知功能，secret 還沒設定時不該讓 pod 啟動失敗。
+            - name: MicrosoftMail__TenantId
+              value: consumers
+            - name: MicrosoftMail__ClientId
+              value: 8dd473dc-86d4-441b-8e66-99ee810c74b3
+            - name: MicrosoftMail__RefreshToken
+              valueFrom:
+                secretKeyRef:
+                  name: maple-secrets
+                  key: microsoft_mail_refresh_token
+                  optional: true
+            - name: MicrosoftMail__ToAddress
+              value: jeremywsm@gmail.com
+            - name: MicrosoftMail__WebhookSecret
+              valueFrom:
+                secretKeyRef:
+                  name: maple-secrets
+                  key: microsoft_mail_webhook_secret
+                  optional: true
           ports:
             - containerPort: 5230
           # liveness：只看 app 活著（不查 DB）→ DB 掛不會誤殺 pod

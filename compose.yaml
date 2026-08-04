@@ -98,11 +98,18 @@ services:
       - Jwt-Audience=https://maplestory.paralleluniversegame.uk
       - Seq:ServerUrl=http://seq:5341
       - Redis__Configuration=redis:6379
+      - MicrosoftMail__TenantId=consumers
+      - MicrosoftMail__ClientId=8dd473dc-86d4-441b-8e66-99ee810c74b3
+      - MicrosoftMail__RefreshTokenFile=/run/secrets/microsoft_mail_refresh_token
+      - MicrosoftMail__ToAddress=jeremywsm@gmail.com
+      - MicrosoftMail__WebhookSecretFile=/run/secrets/microsoft_mail_webhook_secret
     secrets:
       - db_connection
       - discord_bot_token
       - discord_client_secret
       - jwt_secret_key
+      - microsoft_mail_refresh_token
+      - microsoft_mail_webhook_secret
     expose:
       - "5230"
     networks:
@@ -176,6 +183,10 @@ secrets:
     file: ./secrets/jwt_secret_key.txt
   cloudflared_token:
     file: ./secrets/cloudflared_token.txt
+  microsoft_mail_refresh_token:
+    file: ./secrets/microsoft_mail_refresh_token.txt
+  microsoft_mail_webhook_secret:
+    file: ./secrets/microsoft_mail_webhook_secret.txt
 
 networks:
   bridge:

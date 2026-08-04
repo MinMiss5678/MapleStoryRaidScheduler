@@ -105,4 +105,19 @@ public class IdempotencyMiddlewareTests
         Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
         Assert.Equal(0, nextCalls());
     }
+
+    [Fact]
+    public async Task api_internal_路徑_即使缺_key_也直接放行()
+    {
+        // 呼叫方是內部服務（Seq.App.HttpRequest），沒有前端 apiClient 那套 crypto.randomUUID() 機制。
+        var store = StoreReturning(true);
+        var (middleware, nextCalls) = BuildMiddleware(store.Object);
+        var context = BuildContext("POST"); // 故意不帶 X-Idempotency-Key
+        context.Request.Path = "/api/internal/alert-mail";
+
+        await middleware.Invoke(context);
+
+        Assert.Equal(1, nextCalls());
+        store.Verify(s => s.TryMarkAsync(It.IsAny<string>(), It.IsAny<TimeSpan>()), Times.Never);
+    }
 }
