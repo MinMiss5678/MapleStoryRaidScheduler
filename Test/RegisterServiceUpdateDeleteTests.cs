@@ -109,7 +109,7 @@ public class RegisterServiceUpdateDeleteTests
         _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() =>
             _registerService.UpdateAsync(new RegisterUpdateCommand()));
     }
 
