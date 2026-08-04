@@ -22,6 +22,8 @@ spec:
           ports:
             - containerPort: 6379
           resources:
+            requests:
+              memory: 32Mi
             limits:
               memory: 128Mi
           readinessProbe:

@@ -36,3 +36,8 @@ spec:
               value: https://maplestory.paralleluniversegame.uk
             - name: Seq__ServerUrl
               value: http://seq:5341
+          resources:
+            requests:
+              memory: 64Mi
+            limits:
+              memory: 128Mi

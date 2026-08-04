@@ -93,6 +93,11 @@ spec:
                   optional: true
           ports:
             - containerPort: 5230
+          resources:
+            requests:
+              memory: 128Mi
+            limits:
+              memory: 256Mi
           # liveness：只看 app 活著（不查 DB）→ DB 掛不會誤殺 pod
           livenessProbe:
             httpGet:
