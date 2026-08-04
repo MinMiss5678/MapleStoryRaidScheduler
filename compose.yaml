@@ -89,14 +89,14 @@ services:
       - TZ=Asia/Taipei
       - ASPNETCORE_URLS=http://+:5230
       - ConnectionStrings__DefaultConnectionFile=/run/secrets/db_connection
-      - Discord:BotTokenFile=/run/secrets/discord_bot_token
-      - Discord:ClientId=836636705498595340
-      - Discord:ClientSecretFile=/run/secrets/discord_client_secret
-      - Discord:RedirectUri=https://maplestory.paralleluniversegame.uk/callback
-      - Jwt:SecretKeyFile=/run/secrets/jwt_secret_key
-      - Jwt-Issuer=https://maplestory.paralleluniversegame.uk
-      - Jwt-Audience=https://maplestory.paralleluniversegame.uk
-      - Seq:ServerUrl=http://seq:5341
+      - Discord__BotTokenFile=/run/secrets/discord_bot_token
+      - Discord__ClientId=836636705498595340
+      - Discord__ClientSecretFile=/run/secrets/discord_client_secret
+      - Discord__RedirectUri=https://maplestory.paralleluniversegame.uk/callback
+      - Jwt__SecretKeyFile=/run/secrets/jwt_secret_key
+      - Jwt__Issuer=https://maplestory.paralleluniversegame.uk
+      - Jwt__Audience=https://maplestory.paralleluniversegame.uk
+      - Seq__ServerUrl=http://seq:5341
       - Redis__Configuration=redis:6379
       - MicrosoftMail__TenantId=consumers
       - MicrosoftMail__ClientId=8dd473dc-86d4-441b-8e66-99ee810c74b3
@@ -150,10 +150,10 @@ services:
         condition: service_started
     environment:
       - ConnectionStrings__DefaultConnectionFile=/run/secrets/db_connection
-      - Discord:BotTokenFile=/run/secrets/discord_bot_token
-      - App:AppUrl=https://maplestory.paralleluniversegame.uk
+      - Discord__BotTokenFile=/run/secrets/discord_bot_token
+      - App__AppUrl=https://maplestory.paralleluniversegame.uk
       - Redis__Configuration=redis:6379
-      - Seq:ServerUrl=http://seq:5341
+      - Seq__ServerUrl=http://seq:5341
     secrets:
       - db_connection
       - discord_bot_token

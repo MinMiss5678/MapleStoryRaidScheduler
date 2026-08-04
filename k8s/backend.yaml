@@ -49,9 +49,9 @@ spec:
                 secretKeyRef:
                   name: maple-secrets
                   key: jwt_secret_key
-            - name: Jwt-Issuer
+            - name: Jwt__Issuer
               value: https://maplestory.paralleluniversegame.uk
-            - name: Jwt-Audience
+            - name: Jwt__Audience
               value: https://maplestory.paralleluniversegame.uk
             - name: Seq__ServerUrl
               value: http://seq:5341
