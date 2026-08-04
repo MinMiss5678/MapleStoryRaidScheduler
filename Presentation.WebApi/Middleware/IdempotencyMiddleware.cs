@@ -16,7 +16,10 @@ public class IdempotencyMiddleware(RequestDelegate next, IIdempotencyStore store
 
     public async Task Invoke(HttpContext context)
     {
-        if (!_methods.Contains(context.Request.Method))
+        // /api/internal/ 路徑一律放行：呼叫方是內部服務（如 Seq 的 Seq.App.HttpRequest），
+        // 不是前端 apiClient，沒有 crypto.randomUUID() 產生 idempotency key 的機制。
+        if (!_methods.Contains(context.Request.Method) ||
+            context.Request.Path.StartsWithSegments("/api/internal"))
         {
             await next(context);
             return;

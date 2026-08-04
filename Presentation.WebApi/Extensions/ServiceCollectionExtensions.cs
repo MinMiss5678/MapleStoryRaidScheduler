@@ -43,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITeamSlotAutoAssignService, TeamSlotAutoAssignService>();
         services.AddScoped<ITeamSlotMergeService, TeamSlotMergeService>();
         services.AddScoped<ITeamSlotCharacterService, TeamSlotCharacterService>();
+        services.AddScoped<IMicrosoftMailService, MicrosoftMailService>();
         return services;
     }
 
