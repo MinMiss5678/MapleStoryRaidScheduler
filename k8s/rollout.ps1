@@ -1,4 +1,4 @@
-# k8s/rollout.ps1 — 重新 build + push（SHA + latest 雙標籤）+ set image 到該 SHA
+﻿# k8s/rollout.ps1 — 重新 build + push（SHA + latest 雙標籤）+ set image 到該 SHA
 #
 # 與 CD（.gitlab-ci.yml deploy job）一致：映像用不可變的 git short SHA 打 tag，
 # 用 kubectl set image 換版 → rollout undo 能真的退回上一個 SHA，線上版本可追溯。
@@ -15,6 +15,11 @@ param(
 
 $ns = "maple-raid"
 $root = "$PSScriptRoot/.."
+
+# 任何一步失敗就整個中止，避免 docker/kubectl 出錯了還繼續跑、最後謊報更新完成
+function Assert-Ok($msg) {
+    if ($LASTEXITCODE -ne 0) { throw $msg }
+}
 
 # 部署前安全檢查（main 分支、無未提交變更、與遠端同步）
 . "$PSScriptRoot/assert-deploy-safety.ps1"
@@ -33,13 +38,18 @@ $img = "$($svc.repo):$sha"
 
 Write-Host "==> Building $Service ($sha)..."
 docker build -f "$root/$($svc.dockerfile)" -t $img -t "$($svc.repo):latest" "$root/$($svc.context)"
+Assert-Ok "Build $Service 失敗"
 
 Write-Host "==> Pushing $img (+ latest)..."
 docker push $img
+Assert-Ok "Push $img 失敗"
 docker push "$($svc.repo):latest"
+Assert-Ok "Push $($svc.repo):latest 失敗"
 
 Write-Host "==> Setting image -> $img ..."
 kubectl set image deployment/$Service "$Service=$img" -n $ns
+Assert-Ok "set image 失敗"
 kubectl rollout status deployment/$Service -n $ns --timeout=120s
+Assert-Ok "$Service rollout 未能就緒"
 
 Write-Host "OK $Service 更新完成 ($sha)"

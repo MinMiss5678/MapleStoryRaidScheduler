@@ -1,4 +1,4 @@
-# k8s/assert-deploy-safety.ps1 — 部署前安全檢查
+﻿# k8s/assert-deploy-safety.ps1 — 部署前安全檢查
 # 供 deploy.ps1 / rollout.ps1 用 dot-source 呼叫（. "$PSScriptRoot/assert-deploy-safety.ps1"）
 #
 # 確保：
