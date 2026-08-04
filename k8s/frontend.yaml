@@ -23,6 +23,11 @@ spec:
               value: http://backend:5230
             - name: NEXT_PUBLIC_DISCORD_CLIENT_ID
               value: "836636705498595340"
+          resources:
+            requests:
+              memory: 128Mi
+            limits:
+              memory: 256Mi
           ports:
             - containerPort: 3000
 ---

@@ -25,3 +25,8 @@ spec:
                 secretKeyRef:
                   name: maple-secrets
                   key: db_connection_url
+          resources:
+            requests:
+              memory: 32Mi
+            limits:
+              memory: 128Mi

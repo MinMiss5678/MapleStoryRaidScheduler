@@ -35,6 +35,13 @@ spec:
           ports:
             - containerPort: 80   # Web UI
             - containerPort: 5341 # Ingest
+          # Seq 官方建議至少 1-2GB，這裡受限於 2GB 主機總預算，先給偏保守的上限——
+          # 是目前所有服務裡最容易吃緊記憶體的一個，之後如果常態性頂到 512Mi 要考慮升級主機規格。
+          resources:
+            requests:
+              memory: 256Mi
+            limits:
+              memory: 512Mi
           volumeMounts:
             - name: seq-data
               mountPath: /data

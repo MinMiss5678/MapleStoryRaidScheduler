@@ -39,6 +39,11 @@ spec:
                   key: postgres_password
           ports:
             - containerPort: 5432
+          resources:
+            requests:
+              memory: 128Mi
+            limits:
+              memory: 256Mi
           volumeMounts:
             - name: db-data
               mountPath: /var/lib/postgresql
