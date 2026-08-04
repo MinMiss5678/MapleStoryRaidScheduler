@@ -82,7 +82,8 @@ public class RegisterAutoAssignConcurrentIntegrationTests
                     playerAvailabilityRepository,
                     teamSlotCharacterRepository,
                     autoAssignService,
-                    new SystemConfigService(dbContext, new Outbox(dbContext)));
+                    new SystemConfigService(dbContext, new Outbox(dbContext)),
+                    bossRepository);
 
                 await registerService.CreateAsync(command);
                 await dbContext.CommitAsync();
