@@ -273,6 +273,23 @@ sequenceDiagram
 
 ---
 
+### 8. 可觀測性（日誌 + 錯誤追蹤 + 送第三方前的隱私保護）
+
+日誌走 **Serilog**，兩個 sink 並存、職責分開（`Presentation.WebApi/Program.cs` 的 `UseSerilog`；bot 端 `Presentation/Program.cs` 同套）：
+
+- **Seq（內部結構化日誌）**：`.WriteTo.Seq(Seq:ServerUrl)`，收全部 log，內部除錯用，明碼保留（Seq 是內網服務）。
+- **Sentry（錯誤追蹤）**：`.WriteTo.Sentry(...)`，**只在 `Sentry:Dsn` 有設定且 `IsProduction()` 時才掛**（本機開發/沒設 DSN 就不掛，缺設定不噴例外）。
+
+**送到第三方（Sentry）前的隱私保護**——因為 Sentry 是外部服務，`SetBeforeSend` 統一在單一關卡把敏感資料擋掉，不必逐一改每個 log 呼叫點：
+
+- **DiscordId → HMAC-SHA256**：DiscordId 是間接識別個人的資料，不明碼送出。有設 `Sentry:DiscordIdHashKey` 就雜湊成 `discord_id_hash` tag（HMAC 而非純 SHA256——snowflake 非高熵，純 SHA256 可列舉反推，HMAC 沒密鑰連候選值都算不出）；沒設密鑰就不送這個 tag。無論如何原本的 `Extra["DiscordId"]` 明碼一律換成 `[Filtered]`。
+- **`ScrubSensitive` 掃三個獨立欄位**：例外訊息（`SentryExceptions[].Value`，如 Npgsql 連線失敗會夾連線字串）、渲染後的 log 訊息（`Message.Formatted`）、breadcrumb 訊息——三者是分開的欄位，只掃一個會漏。pattern 見 `Program.cs` 的 `ScrubSensitive`（密碼、JWT、OAuth token 等）。
+- **breadcrumb 門檻**：`MinimumBreadcrumbLevel = Warning`。
+
+> 相關 secret（皆選填，`optional: true`）：`sentry_dsn`（沒設就不掛 Sentry）、`discord_hash_key`（沒設就不送 DiscordId 雜湊 tag）。設計沿革見 `plans/2026-08-03-bugsink-integration.md`、`plans/2026-08-04-sentry-discordid-hmac.md`。
+
+---
+
 ## Middleware 管線
 
 請求進入後依序經過：
@@ -789,7 +806,8 @@ frontend → cloudflared
 `k8s/` 目錄包含各服務的 Deployment / Service / PVC，以及：
 - `k8s/migrate-job.yaml`：批次 Job，執行 migration 後完成
 - `k8s/secrets.yaml`：Secret template（真實值不入 git）
-- backend 掛 **liveness (`/health/live`) / readiness (`/health/ready`)** 探針：DB 掛時停止導流量但不重啟 pod；滾動更新時 readiness 沒綠的新 pod 不會接到流量
+- backend 掛 **liveness (`/health/live`) / readiness (`/health/ready`)** 探針：DB 掛時停止導流量但不重啟 pod；滾動更新時 readiness 沒綠的新 pod 不會接到流量。**其餘服務也各有探針**：database（`pg_isready`，liveness 容忍 exit 1）、redis（`redis-cli ping` / tcpSocket）、seq / frontend（HTTP `/health`）、cloudflared（`--metrics` 的 `/ready`）——分離 readiness/liveness 的通則同上（依賴掛掉時停導流量、不誤殺 pod）
+- 所有服務都設 **resource requests/limits**（受限於單機 ~2GB 主機預算，數值偏保守）
 
 Secrets 以 volume mount 方式掛載至 `/run/secrets/`，與 Docker secrets 路徑一致，應用程式設定無需因部署平台而異。
 
