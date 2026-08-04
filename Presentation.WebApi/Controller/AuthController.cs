@@ -1,4 +1,5 @@
-﻿using Application.Interface;
+﻿using System.ComponentModel.DataAnnotations;
+using Application.Interface;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,6 +18,7 @@ public class AuthController : ControllerBase
 
     public class CallbackRequest
     {
+        [Required]
         public string Code { get; set; } = default!;
     }
 

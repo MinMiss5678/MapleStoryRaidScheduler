@@ -1,10 +1,10 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿namespace Domain.Entities;
 
-namespace Domain.Entities;
-
+// SystemConfig 同時是 admin POST 綁定型別；但 [Key] 是 EF 映射提示、對 Dapper 無作用，故移除。
+// DeadlineDayOfWeek 是 DayOfWeek enum（型別本身已約束 0-6）+ GetDeadlineForPeriod 取模能吸收，
+// 不另加 range 驗證。
 public class SystemConfig
 {
-    [Key]
     public int Id { get; set; }
 
     /// <summary>
