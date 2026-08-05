@@ -16,12 +16,14 @@ public class TeamSlotService : ITeamSlotService
     private readonly IPeriodQuery _periodQuery;
     private readonly IBossRepository _bossRepository;
     private readonly IRegistrationLock _registrationLock;
+    private readonly ICharacterQuery _characterQuery;
 
     public TeamSlotService(ITeamSlotRepository teamSlotRepository, ITeamSlotQuery teamSlotQuery,
         ITeamSlotCharacterRepository teamSlotCharacterRepository,
         IPeriodQuery periodQuery,
         IBossRepository bossRepository,
-        IRegistrationLock registrationLock)
+        IRegistrationLock registrationLock,
+        ICharacterQuery characterQuery)
     {
         _teamSlotRepository = teamSlotRepository;
         _teamSlotQuery = teamSlotQuery;
@@ -29,6 +31,7 @@ public class TeamSlotService : ITeamSlotService
         _periodQuery = periodQuery;
         _bossRepository = bossRepository;
         _registrationLock = registrationLock;
+        _characterQuery = characterQuery;
     }
 
     public async Task<IEnumerable<TeamSlotDto>> GetByBossIdAsync(int bossId)
@@ -207,6 +210,13 @@ public class TeamSlotService : ITeamSlotService
 
         var boss = await _bossRepository.GetByIdAsync(originalTeam.BossId);
         originalTeam.Capacity = boss?.RequireMembers ?? 6;
+
+        // 補位角色必須屬於補位者本人：擋冒用他人角色 id + Character FK 後防（不存在）→ 404。
+        // 見 plans/2026-08-06-validation-layering.md §2；DiscordId 已強制用 currentDiscordId，故只需驗角色歸屬。
+        var ownsCharacter = (await _characterQuery.GetByDiscordIdAsync(currentDiscordId))
+            .Any(c => c.Id == request.CharacterId);
+        if (!ownsCharacter)
+            throw new NotFoundException($"Character {request.CharacterId} not found");
 
         var newChar = new TeamSlotCharacter
         {

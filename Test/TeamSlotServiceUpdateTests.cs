@@ -36,7 +36,8 @@ public class TeamSlotServiceUpdateTests
             _teamSlotCharacterRepositoryMock.Object,
             _periodQueryMock.Object,
             _bossRepositoryMock.Object,
-            _registrationLockMock.Object);
+            _registrationLockMock.Object,
+            new Mock<ICharacterQuery>().Object);
     }
 
     [Fact]

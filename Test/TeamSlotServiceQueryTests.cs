@@ -34,7 +34,8 @@ public class TeamSlotServiceQueryTests
             _teamSlotCharacterRepositoryMock.Object,
             _periodQueryMock.Object,
             _bossRepositoryMock.Object,
-            _registrationLockMock.Object);
+            _registrationLockMock.Object,
+            new Mock<ICharacterQuery>().Object);
     }
 
     private Period CreatePeriod() => new Period

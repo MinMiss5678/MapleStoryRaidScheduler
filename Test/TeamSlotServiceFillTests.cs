@@ -18,6 +18,7 @@ public class TeamSlotServiceFillTests
     private readonly Mock<IPeriodQuery> _periodQueryMock;
     private readonly Mock<IBossRepository> _bossRepositoryMock;
     private readonly Mock<IRegistrationLock> _registrationLockMock;
+    private readonly Mock<ICharacterQuery> _characterQueryMock;
     private readonly TeamSlotService _teamSlotService;
 
     public TeamSlotServiceFillTests()
@@ -28,6 +29,16 @@ public class TeamSlotServiceFillTests
         _periodQueryMock = new Mock<IPeriodQuery>();
         _bossRepositoryMock = new Mock<IBossRepository>();
         _registrationLockMock = new Mock<IRegistrationLock>();
+        _characterQueryMock = new Mock<ICharacterQuery>();
+        // 預設：補位者名下擁有這些角色 id，讓補位主流程與其他錯誤路徑的測試通過擁有權前線檢查；
+        // 「非本人角色 → 404」單獨用一個測試覆寫成空清單。
+        _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(It.IsAny<ulong>()))
+            .ReturnsAsync(new List<Character>
+            {
+                new Character { Id = "c1", Name = "", Job = "" },
+                new Character { Id = "c2", Name = "", Job = "" },
+                new Character { Id = "c3001", Name = "", Job = "" }
+            });
 
         _teamSlotService = new TeamSlotService(
             _teamSlotRepositoryMock.Object,
@@ -35,7 +46,8 @@ public class TeamSlotServiceFillTests
             _teamSlotCharacterRepositoryMock.Object,
             _periodQueryMock.Object,
             _bossRepositoryMock.Object,
-            _registrationLockMock.Object);
+            _registrationLockMock.Object,
+            _characterQueryMock.Object);
     }
 
     // FillSlotAsync 寫入後會重新查詢最新狀態（跟 UpdateAsync controller 同一套慣例，見
@@ -122,6 +134,25 @@ public class TeamSlotServiceFillTests
         await _teamSlotService.FillSlotAsync(request, currentDiscordId: 111);
 
         _registrationLockMock.Verify(l => l.AcquireTeamSlotEditLockAsync(teamSlotId), Times.Once);
+    }
+
+    [Fact]
+    public async Task FillSlotAsync_ShouldThrowNotFound_WhenCharacterNotOwnedByCaller()
+    {
+        // 補位角色不在補位者名下（不存在或冒用他人 id）→ FK 前線檢查轉 404，不落到 DB FK 500，且不寫入。
+        int teamSlotId = 1;
+        int bossId = 9;
+        var existingTeam = new TeamSlot { Id = teamSlotId, BossId = bossId, Characters = new List<TeamSlotCharacter>() };
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeam);
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(bossId)).ReturnsAsync(new Boss { Id = bossId, Name = "", RequireMembers = 6 });
+        _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(It.IsAny<ulong>())).ReturnsAsync(new List<Character>());
+
+        var request = new TeamSlotFillRequest { TeamSlotId = teamSlotId, CharacterId = "not-mine", Job = "Hero" };
+
+        var ex = await Assert.ThrowsAsync<NotFoundException>(() =>
+            _teamSlotService.FillSlotAsync(request, currentDiscordId: 111));
+        Assert.Contains("not-mine", ex.Message);
+        _teamSlotCharacterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
     }
 
     [Fact]

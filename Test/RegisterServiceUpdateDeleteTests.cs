@@ -19,6 +19,8 @@ public class RegisterServiceUpdateDeleteTests
     private readonly Mock<ITeamSlotCharacterRepository> _teamSlotCharacterRepositoryMock;
     private readonly Mock<ITeamSlotAutoAssignService> _autoAssignServiceMock;
     private readonly Mock<ISystemConfigService> _systemConfigServiceMock;
+    private readonly Mock<IBossRepository> _bossRepositoryMock;
+    private readonly Mock<ICharacterQuery> _characterQueryMock;
     private readonly RegisterService _registerService;
 
     public RegisterServiceUpdateDeleteTests()
@@ -30,8 +32,11 @@ public class RegisterServiceUpdateDeleteTests
         _teamSlotCharacterRepositoryMock = new Mock<ITeamSlotCharacterRepository>();
         _autoAssignServiceMock = new Mock<ITeamSlotAutoAssignService>();
         _systemConfigServiceMock = new Mock<ISystemConfigService>();
-        var bossRepositoryMock = new Mock<IBossRepository>();
-        bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>());
+        _bossRepositoryMock = new Mock<IBossRepository>();
+        _bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>());
+        _characterQueryMock = new Mock<ICharacterQuery>();
+        _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(It.IsAny<ulong>()))
+            .ReturnsAsync(new List<Character>());
 
         _registerService = new RegisterService(
             _periodQueryMock.Object,
@@ -41,7 +46,8 @@ public class RegisterServiceUpdateDeleteTests
             _teamSlotCharacterRepositoryMock.Object,
             _autoAssignServiceMock.Object,
             _systemConfigServiceMock.Object,
-            bossRepositoryMock.Object
+            _bossRepositoryMock.Object,
+            _characterQueryMock.Object
         );
     }
 
@@ -64,6 +70,18 @@ public class RegisterServiceUpdateDeleteTests
         SetupDeadlineNotPassed();
         // 伺服器由 (discordId, periodId) 查出的 registerId（本測試用與 command.Id 相同的值，維持原斷言）
         _playerRegisterRepositoryMock.Setup(r => r.GetIdAsync(It.IsAny<ulong>(), It.IsAny<int>())).ReturnsAsync(10);
+        // char1/char2 屬本人、boss 1/2 存在，讓 FK 前線檢查通過
+        _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(It.IsAny<ulong>()))
+            .ReturnsAsync(new List<Character>
+            {
+                new Character { Id = "char1", Name = "", Job = "" },
+                new Character { Id = "char2", Name = "", Job = "" }
+            });
+        _bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>
+        {
+            new Boss { Id = 1, Name = "", RequireMembers = 6, RoundConsumption = 1 },
+            new Boss { Id = 2, Name = "", RequireMembers = 6, RoundConsumption = 1 }
+        });
         var command = new RegisterUpdateCommand
         {
             Id = 10,

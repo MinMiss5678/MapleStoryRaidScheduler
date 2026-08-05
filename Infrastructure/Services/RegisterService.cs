@@ -18,6 +18,7 @@ public class RegisterService : IRegisterService
     private readonly ITeamSlotCharacterRepository _teamSlotCharacterRepository;
     private readonly ISystemConfigService _systemConfigService;
     private readonly IBossRepository _bossRepository;
+    private readonly ICharacterQuery _characterQuery;
 
     public RegisterService(
         IPeriodQuery periodQuery,
@@ -27,7 +28,8 @@ public class RegisterService : IRegisterService
         ITeamSlotCharacterRepository teamSlotCharacterRepository,
         ITeamSlotAutoAssignService autoAssignService,
         ISystemConfigService systemConfigService,
-        IBossRepository bossRepository)
+        IBossRepository bossRepository,
+        ICharacterQuery characterQuery)
     {
         _periodQuery = periodQuery;
         _playerRegisterRepository = playerRegisterRepository;
@@ -37,15 +39,37 @@ public class RegisterService : IRegisterService
         _teamSlotCharacterRepository = teamSlotCharacterRepository;
         _systemConfigService = systemConfigService;
         _bossRepository = bossRepository;
+        _characterQuery = characterQuery;
+    }
+
+    // CharacterRegister.CharacterId 的 FK（+擁有權）前線檢查：報名的角色必須是呼叫者本人的角色，
+    // 否則轉 404——同時擋「角色不存在」（FK 後防的預期壞輸入）與「冒用他人角色 id」（IDOR）。
+    // 見 plans/2026-08-06-validation-layering.md §2（FK → app 存在性檢查 → 404，DB FK 只當後防）。
+    private async Task EnsureCharactersOwnedAsync(Register register)
+    {
+        if (register.CharacterRegisters.Count == 0) return;
+
+        var ownedIds = (await _characterQuery.GetByDiscordIdAsync(register.DiscordId))
+            .Select(c => c.Id).ToHashSet();
+
+        var alien = register.CharacterRegisters.FirstOrDefault(c => !ownedIds.Contains(c.CharacterId));
+        if (alien != null)
+            throw new NotFoundException($"Character {alien.CharacterId} not found");
     }
 
     // 載入各 Boss 的 RoundConsumption 注入 domain，讓 Register 聚合自己守「每週場次預算」不變式
     // （domain 純粹、不碰 repository；與 TeamSlot.Capacity 由 service 注入同一模式）。
-    private async Task ValidateRoundsBudgetAsync(Register register)
+    // 同一份 Boss 清單順便當 CharacterRegister.BossId 的存在性檢查來源：預期內的壞 BossId 轉 404，
+    // DB 的 FK 只當後防（打到 FK＝有路徑漏驗＝bug）。
+    private async Task ValidateBossesAndBudgetAsync(Register register)
     {
-        var consumptionByBossId = (await _bossRepository.GetAllAsync())
-            .ToDictionary(b => b.Id, b => b.RoundConsumption);
-        register.EnsureRoundsWithinBudget(consumptionByBossId);
+        var bosses = (await _bossRepository.GetAllAsync()).ToDictionary(b => b.Id);
+
+        var unknownBoss = register.CharacterRegisters.FirstOrDefault(c => !bosses.ContainsKey(c.BossId));
+        if (unknownBoss != null)
+            throw new NotFoundException($"Boss {unknownBoss.BossId} not found");
+
+        register.EnsureRoundsWithinBudget(bosses.ToDictionary(kv => kv.Key, kv => kv.Value.RoundConsumption));
     }
 
     public async Task CreateAsync(RegisterCreateCommand command)
@@ -78,7 +102,8 @@ public class RegisterService : IRegisterService
             }).ToList()
         };
 
-        await ValidateRoundsBudgetAsync(register);
+        await EnsureCharactersOwnedAsync(register);
+        await ValidateBossesAndBudgetAsync(register);
 
         var playRegisterId = await _playerRegisterRepository.CreateAsync(register);
 
@@ -136,7 +161,8 @@ public class RegisterService : IRegisterService
             }).ToList()
         };
 
-        await ValidateRoundsBudgetAsync(register);
+        await EnsureCharactersOwnedAsync(register);
+        await ValidateBossesAndBudgetAsync(register);
 
         await _playerRegisterRepository.UpdateAsync(register);
 
