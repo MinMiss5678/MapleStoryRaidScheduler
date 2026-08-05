@@ -54,7 +54,8 @@
    - `CharacterRegister.BossId`（Boss 存在→404，`RegisterService.ValidateBossesAndBudgetAsync`，與場次預算共用同一份 Boss 清單）
    - `TeamSlotCharacter.CharacterId`（補位須屬本人→404，`TeamSlotService.FillSlotAsync`）
    - `BossTemplate.BossId`（Boss 存在→404，`BossService.CreateTemplateAsync`，commit `c63de85`）
-   - `TeamSlot.BossId/PeriodId/TemplateId`（admin 建隊，`TeamSlotService.UpdateAsync` 的 `Id<=0` 分支）：Boss/Period/範本存在→404（`BossId` 重用既載入的 `bossesById`；`TemplateId` 為 null 時略過）。**動機＝修掉假告警**：admin 從既有清單挑，壞 id 多為 race（範本剛被刪）或 API 誤用，不該誤觸 §4「23503＝app 漏驗」的告警。
+   - `TeamSlot.BossId/TemplateId`（admin 建隊，`TeamSlotService.UpdateAsync` 的 `Id<=0` 分支）：Boss/範本存在→404（`BossId` 重用既載入的 `bossesById`；`TemplateId` 為 null 時略過）。**動機＝修掉假告警**：admin 壞 id 多為 race（範本剛被刪）或 API 誤用，不該誤觸 §4「23503＝app 漏驗」的告警。
+     - ⚠️ **勘誤**：`TeamSlot` **沒有 Period 外鍵**——期別靠 `SlotDateTime` 落區間判定（見 `TeamSlotRepository`），故**不驗 PeriodId**（手動建隊 `PeriodId` 預設 0 屬正常，驗它會誤擋合法建隊、且中止批次的部分成功語義 → 曾打爆 `admin-conflict` e2e，commit 已修）。先前把 `TeamSlot.PeriodId` 當 FK 是驗收時未讀 schema 的誤判。
    - **N/A**：`BossTemplateRequirement.BossTemplateId` — 隨父範本一起建、id 由 server 產生（非 client 傳入），無 FK 缺口。
    - **未做（較低優先）**：admin 經 `UpdateAsync` 加成員時的 `TeamSlotCharacter.CharacterId`（建隊 `Id<=0` 分支與既有隊 `Id>0` 的 add-member 兩處）仍無存在性檢查、壞 id 落 500。admin 可代放他人角色→是「存在性」非「擁有權」，需新增 by-id 角色存在查詢（`ICharacterQuery/Repository` 目前只有 by-DiscordId）；殘留假告警面較小，暫緩。
 3. ✅ **多寫入者規則**：新增的存在性檢查全放在**共用 Application service**（非 DTO），bot 若走同一 service 亦覆蓋；`DiscordName` guard 已在 `AuthAppService`（commit `9326628`）。
