@@ -52,6 +52,10 @@ public class RegisterService : IRegisterService
     {
         await EnsureRegistrationOpen();
 
+        // 先驗 Period 存在，否則 PeriodId 不存在時 INSERT PlayerRegister 會 FK 違反 → 500（回乾淨 404）
+        if (await _periodQuery.GetByIdAsync(command.PeriodId) == null)
+            throw new NotFoundException($"Period {command.PeriodId} not found");
+
         if (await _playerRegisterRepository.ExistAsync(command.DiscordId, command.PeriodId))
             throw new BusinessException("您已完成本期報名，請勿重複提交。");
 

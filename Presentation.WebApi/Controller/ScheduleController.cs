@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
-using Application.DTOs;
-using Application.Interface;
+﻿using Application.Interface;
 using Microsoft.AspNetCore.Mvc;
 using Presentation.WebApi.Attributes;
 
@@ -27,9 +25,7 @@ public class ScheduleController : ControllerBase
 
 public class AutoScheduleWithTemplateRequest
 {
-    [Range(1, int.MaxValue)]
+    // BossId/TemplateId 的存在性由 ScheduleService 驗（TemplateId 不存在回 404、BossId null-safe）
     public int BossId { get; set; }
-
-    [Range(1, int.MaxValue)]
     public int TemplateId { get; set; }
 }

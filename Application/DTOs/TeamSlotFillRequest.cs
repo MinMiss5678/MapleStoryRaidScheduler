@@ -8,8 +8,7 @@ namespace Application.DTOs;
 /// </summary>
 public class TeamSlotFillRequest
 {
-    [Range(1, int.MaxValue)]
-    public int TeamSlotId { get; set; }
+    public int TeamSlotId { get; set; } // 查無由 FillSlotAsync 擋成 400
 
     public string? DiscordName { get; set; }
 

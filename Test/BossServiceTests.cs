@@ -71,6 +71,7 @@ public class BossServiceTests
     {
         // Arrange
         var request = new BossTemplateRequest { BossId = 1, Name = "Template" };
+        _bossRepositoryMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "B" });
         _bossRepositoryMock.Setup(r => r.CreateTemplateAsync(It.IsAny<BossTemplate>())).ReturnsAsync(123);
 
         // Act

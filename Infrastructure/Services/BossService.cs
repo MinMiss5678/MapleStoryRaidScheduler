@@ -34,6 +34,10 @@ public class BossService : IBossService
 
     public async Task<int> CreateTemplateAsync(BossTemplateRequest request)
     {
+        // 先驗 Boss 存在，否則 BossId 不存在時 INSERT 會 FK 違反 → 500（回乾淨 404）
+        if (await _bossRepository.GetByIdAsync(request.BossId) == null)
+            throw new NotFoundException($"Boss {request.BossId} not found");
+
         var template = new BossTemplate
         {
             BossId = request.BossId,
