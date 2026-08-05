@@ -112,4 +112,22 @@ public class AuthAppServiceTests
         _authServiceMock.Verify(x => x.CreateSessionAsync(It.IsAny<ulong>()), Times.Never);
         _authServiceMock.Verify(x => x.CreateJwt(It.IsAny<DiscordUser>(), It.IsAny<string>()), Times.Never);
     }
+
+    [Fact]
+    public async Task LoginAsync_WhenDiscordNameTooLong_ReturnsFailureAndDoesNotWritePlayer()
+    {
+        // Arrange：bot/共用登入路徑不經 WebApi DTO 驗證；異常超長名稱應在 choke point 擋下、不落 DB
+        var code = "test-code";
+        var user = new DiscordUser { Id = 12345, Name = new string('a', 101) };
+        _authServiceMock.Setup(x => x.ExchangeCodeAsync(code)).ReturnsAsync(user);
+
+        // Act
+        var result = await _authAppService.LoginAsync(code);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        _playerServiceMock.Verify(x => x.CreateAsync(It.IsAny<Player>()), Times.Never);
+        _authServiceMock.Verify(x => x.CreateSessionAsync(It.IsAny<ulong>()), Times.Never);
+        _authServiceMock.Verify(x => x.CreateJwt(It.IsAny<DiscordUser>(), It.IsAny<string>()), Times.Never);
+    }
 }
