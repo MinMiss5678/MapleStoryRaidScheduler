@@ -117,6 +117,17 @@
     - **重複申請/邀請 → DB unique**（同玩家同隊一筆有效 `Applied`/`Invited`）。
     - **1001（auto-assign per period）退場**（報名不再開隊）；其保護的「跨隊去重」需求改由上面 DB 約束承接。
 13. ✅ **`IsManual` 廢除**：它唯一的邏輯消費者是「批次重排/合併保護」（`ScheduleService` 保留隊 + `TeamSlot.ReschedulableMembers()`）。新模型下補位沒了、報名 auto-assign 沒了、重排降 B（加法補漏、不改現有隊）、**自動合併 `TeamSlotMergeService` 退場**（本掛在 `AutoAssignAsync` 尾巴，報名不再產隊）→ 保護對象全消失，所有 `Confirmed` 皆隊長所置。**Phase 3 清掉 `IsManual` 欄 + `ReschedulableMembers` + 自動合併**。殘留需求「重跑 auto-fill 別蓋掉隊長手挑的人」由 `Status=Confirmed`／空位占用處理。
+20. ✅ **滿員邀請：不失效、顯示候補，過期才終結**。因超額邀請是刻意允許的（#4/§10「邀8補6」）＋邀請不占容量（只 `Confirmed` 占），「已被 `Invited` 但隊已滿」是**預期正常狀態**、非異常。且**「滿員」是暫時的**（`Confirmed` 成員退出→空位重開→該邀請又可接受），故：
+    - **不在滿員時自動拒絕/銷毀邀請**（那會誤殺仍可能生效的 standing offer）。
+    - 站內「我的邀請」**照顯示**，但查詢帶出隊伍當前 `Confirmed`/`RequireMembers`，前端在滿員時把「接受」弱化成**「隊伍已滿・候補中」**——顯示誠實、真正把關交給 accept 的 **1002 鎖**（race 中按下也擋回「已滿」）。
+    - **不加新 `Status`**：「滿員」是**推導**（`Confirmed ≥ RequireMembers`），非狀態；`{Applied,Invited,Confirmed,Rejected}` 不變。
+    - **真正終結邀請的是「打王時間已過／週期結束」**（不可逆過期）→ 清理成 `Rejected`（或 expired），與「暫時滿員」分開；屬 Phase 2 polish。
+21. ✅ **玩家側邀請可見範圍：組成看能力、身分等承諾**（§9.11/§9.12 隱私原則的玩家側鏡像）。玩家收到邀請時——
+    - **看得到**：王 + `SlotDateTime`、這隊條件 + 自己被邀補的位（職業/攻擊下限/通關門檻）、目前組成的**能力輪廓**（`Confirmed` 成員的職業/攻擊/本王通關數/楓葉祝福 + 剩餘空位）→ 供知情決定（#1 玩家掌握跨隊行程、判斷隊夠不夠強）。
+    - **看不到**：其他成員的 Discord 身分（`discordId`/`discordName`）——**接受（→`Confirmed`）後**才彼此揭露（§9.11「已成隊隊員彼此可見」）；與 §9.12「按能力非身分」對稱（玩家可能 decline 去別隊，不該先看光隊員身分）。
+    - **例外**：邀請的**隊長名字顯示**（開隊/發邀＝已自我承諾曝光，§9.11）。
+    - 影響：**邀請/候選查詢 DTO 形狀**（1b `TeamCandidateQuery` +「我的邀請」查詢回能力欄、不回隊員 discord 身分）；**不影響 1a migration**。
+    - **取捨（日後可改）**：嚴格隱私（藏隊員身分到接受，**本案採用**）vs 社交友善（先給看 `Confirmed` 隊員名字助信任）。
 
 ## 10. 並發控制（新模型對照，實作參考）
 
