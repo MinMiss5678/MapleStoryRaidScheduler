@@ -81,10 +81,9 @@ public class TeamSlotServiceUpdateTests
         // Arrange
         int newTeamSlotId = 55;
         _teamSlotRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<TeamSlot>())).ReturnsAsync(newTeamSlotId);
-        // 建隊 FK 前線檢查需要 Boss/Period 存在
+        // 建隊 FK 前線檢查需要 Boss 存在（TeamSlot 無 Period FK，不驗 PeriodId）
         _bossRepositoryMock.Setup(r => r.GetAllAsync())
             .ReturnsAsync(new List<Boss> { new Boss { Id = 1, Name = "", RequireMembers = 6 } });
-        _periodQueryMock.Setup(p => p.GetByIdAsync(1)).ReturnsAsync(new Period { Id = 1 });
 
         var character = new TeamSlotMemberDto { CharacterId = "c1", DiscordId = 12345 };
         var request = new TeamSlotUpdateRequest
