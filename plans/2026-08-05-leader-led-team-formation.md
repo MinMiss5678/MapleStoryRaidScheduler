@@ -27,8 +27,8 @@
 
 | 實體 | 改動 |
 |---|---|
-| `TeamSlot` | + `LeaderDiscordId`（隊長歸屬；現只有 `Source` 無 owner）。**`Source` 收斂成 `{ leader, admin }`、砍掉 `auto`**（新模型無 `auto` 產生者：報名不建隊、隊長自動排填的是 `leader` 隊、admin 草稿剩餘池是 `admin`）。「草稿 vs 已認領」**不進 `Source`**，用 `LeaderDiscordId is null`（未認領草稿）表達。遷移：CHECK → `IN ('leader','admin')` + 舊 `auto` 資料轉掉。 |
-| `TeamSlotCharacter`（成員） | + `Status`（`Applied`〔Push 申請中〕/ `Invited`〔Pull 邀請中〕/ `Confirmed` / `Rejected`〔任一方拒絕/取消的終態〕）。**只有 `Confirmed` 占容量；`Applied`/`Invited` 皆不占**。**移除 `IsManual`**（見 §9.9）；不加 `Origin`（YAGNI，靠 `Status` + `TeamSlot.Source` 表達即可）。 |
+| `TeamSlot` | + `LeaderDiscordId`（隊長歸屬；現只有 `Source` 無 owner）。**`Source` 收斂成 `{ leader, admin }`、砍掉 `auto`**（新模型無 `auto` 產生者：報名不建隊、隊長自動排填的是 `leader` 隊、admin 草稿剩餘池是 `admin`）。「草稿 vs 已認領」**不進 `Source`**，用 `LeaderDiscordId is null`（未認領草稿）表達。遷移：CHECK → `IN ('leader','admin')` + 舊 `auto` 資料轉掉。<br>**+ `PeriodId` FK（`REFERENCES "Period" ON DELETE CASCADE`，NOT NULL）**：`SlotDateTime`＝打王時刻、`Period`＝這隊屬哪個週期，是**兩個不同概念**——`Period` 為**權威歸屬**、不從 `SlotDateTime` 反推（現況「entity 有 `PeriodId`、DB 無、靠時間 range 推導」是半套 phantom，一併轉正）。硬綁不變式：**`SlotDateTime` 必須落在所綁 `Period` 的 `[StartDate, EndDate]`**（app/domain 守；一隊只能排在自己那週、改時間不得跨週）。好處：刪 period 原子 cascade 帶走隊（推導版會留查不到的孤兒）＋`WHERE PeriodId=` 取代 range join。**Phase 1a migration 落地**（加欄 + FK + 回填既有隊的 PeriodId by SlotDateTime range），同步移除 domain/DTO 的 phantom 欄改讀真欄。 |
+| `TeamSlotCharacter`（成員） | + `Status`（`Applied`〔Push 申請中〕/ `Invited`〔Pull 邀請中〕/ `Confirmed` / `Rejected`〔任一方拒絕/取消的終態〕）。**只有 `Confirmed` 占容量；`Applied`/`Invited` 皆不占**。**移除 `IsManual`**（見 §9.9）；不加 `Origin`（YAGNI，靠 `Status` + `TeamSlot.Source` 表達即可）。<br>**成員屬性＝承諾快照（明確設計，非快取）**：`AttackPower`、`CharacterName`、`Job`（＋`DiscordName`）存的是**凍結於 `Confirmed` 那刻**的值，**之後不隨 `Character`/`Player` 變動同步**。理由：(1) `AttackPower` 是自填可變、又是挑人門檻依據——roster 要記「以攻擊 X 被選/承諾」，像訂單品項凍結成交價，玩家事後改攻擊不得回溯改歷史；(2) `CharacterId REFERENCES Character ON DELETE SET NULL` + 另存 `CharacterName` → 角色被刪，roster 仍顯示「誰曾在此」（snapshot-survives-deletion，現況已有此設計）。狀態語意：`Applied`/`Invited` 期間顯示可即時值；一旦 `Confirmed` 就寫入快照定格。`DiscordName` 一併快照（KISS，roster＝當初談定的樣子）。**這是把現況「存了副本但沒講清是快照還是快取」的語意不清拍板成『凍結快照』**，並文件化「不同步、刪除存活」。<br>**空位不再是列、廢除哨兵**：現況「空位＝一列 `CharacterId=null` 佔位」＋ `DiscordId DEFAULT 0`／`DiscordName DEFAULT ''` 哨兵（見 `TeamSlotMemberDto`「null 表示空位」、merge／補位／`ScheduleService` 補空位）在新模型全退場——leader-led 無 auto-assign／merge／補位，隊形由 `TeamSlotRequirement` 定義。**每列 `TeamSlotCharacter` 都是真實成員**（`Applied`/`Invited`/`Confirmed`），`DiscordId` **NOT NULL**（無 0 哨兵）。**空位＝Σ需求 `Count` − 符合的 `Confirmed` 數**（推導，非佔位列）。`CharacterId` 維持 nullable **僅為 `ON DELETE SET NULL` 存活**、建列時不得為 null。`TeamSlot.FilledCount`/`HasRoom` 改由 `Confirmed` 計數（非 `CharacterId!=null`）。 |
 | **隊伍條件（Level 2）** | 掛 **`TeamSlot` 實例**（非範本）。每個需求列 = **一組可接受職業（各帶自己的攻擊下限）** + `Count` + **`MinClearCount`**（本王通關數門檻，見下）。表：`TeamSlotRequirement`(`TeamSlotId`, `Count`, `MinClearCount`) + 子表 `TeamSlotRequirementJob`(`RequirementId`, `Job`, **`MinAttackPower`**) —— **攻擊下限下放到職業層級**（同攻擊下不同職業傷害期望不同）。**分類只是 UI「一鍵展開成職業」的方便鈕，儲存時展開成具體職業（快照）**——之後 admin 改分類不會回頭改到既有隊條件。「箭神(≥900) or 槍神(≥1000) 1位」= 列 `Count=1` + 職業 `{(箭神,900),(槍神,1000)}`。 |
 | **通關次數（自填, Opt 1）** | 新表 `CharacterBossClear(CharacterId, BossId, ClearCount)`，玩家在角色頁自維護（同 `AttackPower` 信任模型、後端不查證）。派生**單一數字＝「本王總通關次數」**＝`Σ ClearCount WHERE BossId=本隊王 AND 屬該玩家的角色`（**同一隻王、跨該玩家不同角色相加**）。此數**兼作**：篩選 `MinClearCount`（「找打過的」=`≥1`）＋候選列顯示（老手參考）。反向「找沒打過的 carry」= 同欄位加 `MaxClearCount`，YAGNI 先不做。 |
 | `Character.MapleBlessingLevel`（新增） | 楓葉祝福等級（自填 int，0=無；同攻擊信任模型）。**破例結構化**——楓葉祝福是隊員提供的隊伍 buff、**幾乎每隊必備**（見 #18 判準）。**顯示於候選列**（隊長挑 buffer 用），**不做 per-candidate 硬篩**（「有人開 20」是整隊只需 1 個的需求，硬篩會誤濾掉不帶 buff 的 DPS）；頂多隊層級軟提示「尚無達標 provider」。若楓葉祝福為帳號共通，日後可移 `Player`。 |
@@ -79,9 +79,17 @@
 
 ## 8. 分期
 
-- **Phase 1（MVP）**：領域改動 + 隊長開隊 + 條件 + 候選查詢 + **Pull 挑人**。**移除 register→自動排團**（改單元測試 + `register.spec`）。
-- **Phase 2**：**Push 申請 + 審核狀態機** + 通知（Discord/mail 沿用 outbox）。
-- **Phase 3**：**以 `ScheduleService.FillTeamFromPool` 為底做隊長「依本隊條件一鍵自動排」**（職業分類→Level 2 集合、MinAttribute→MinAttackPower）+ **admin 全期重排降級成「草稿剩餘池」**（只湊未進 confirmed 隊的人、不覆蓋隊長隊）+ **清除 `IsManual` 欄／`ReschedulableMembers`／自動合併 `TeamSlotMergeService`**（見 §9.9）+ 前端整併 + 範本預設載入。動到 `admin-rebuild`/`admin-conflict` E2E + `ScheduleServiceAutoScheduleTests` + `TeamSlotMergeServiceMergeTests` + `TeamSlotAggregateTests`。
+> 順序原則：每階段對玩家有可見價值、能單獨 PR + 驗透；**先加新路徑、確認站穩後才拆舊碼**。Phase 1／3 顆粒過粗（big-bang），各再切三刀——尤其 migration 要能單獨落地驗（呼應 [[stop-revise-plan-when-problems-pile-up]]：上次 TeamSlot 充血一次做太多撞一堆坑）。**Phase 2 依賴 `23505→409`（validation-layering，已合併）**，故 Phase 2 前置已就緒。
+
+- **Phase 1（MVP＝Pull 最小閉環）**——拆三刀：
+  - **1a 資料層先落地（不改行為）**：migration（`TeamSlot.LeaderDiscordId`、`Source` 收斂 `{leader,admin}` + 轉舊 `auto`、`TeamSlotCharacter.Status`、`TeamSlotRequirement(+Job)`、`CharacterBossClear`、`Character.MapleBlessingLevel`、`TeamSlot.Description`）+ 領域實體 + repository。舊 `AutoAssignAsync` **暫留**、新欄先不接 UI。驗：migration 可逆測試 + repo 整合測試，風險隔離。
+  - **1b 讀路徑**：隊長開隊 + 設條件（Level 2）+ 候選查詢 `TeamCandidateQuery`（時段+職業+攻擊+通關數；DTO 不回 discord 身分）。隊長能開隊、看候選，**尚不能入隊**——純讀、無併發、好驗。
+  - **1c 寫路徑 + 破壞性收尾**：Pull 邀請/接受（`Invited`→`Confirmed`）+ confirm 併發（1002 鎖/xmin + 跨隊重疊 exclusion + 重複邀請 unique，見 §10）+ **這時才**移除 register→自動排團（改 `RegisterService` 單元測試 + `register.spec`）。併發與破壞性變更集中一階段一次驗透。
+- **Phase 2**：**Push 申請 + 審核狀態機**（`Applied`→`Confirmed`）+ 通知（Discord/mail 沿用 outbox）。重複申請去重靠 `23505→409`（已就緒）。
+- **Phase 3（升級挑人 + 拆舊）**——拆三刀，**3c 必須等 3a/3b 站穩才做**：
+  - **3a 加 auto-fill 引擎**：以 `ScheduleService.FillTeamFromPool` 為底做隊長「依本隊條件一鍵自動排」（職業分類→Level 2 集合、`MinAttribute`→`MinAttackPower`；產出 `Invited` 仍需玩家接受）。純加功能。
+  - **3b 降 admin 全期重排**：`AutoScheduleWithTemplateAsync` → 「草稿剩餘池」（只湊未進 `Confirmed` 的人、不覆蓋隊長隊、需人認領才落地）。改既有 admin 行為 → 動 `admin-rebuild`/`admin-conflict` E2E + `ScheduleServiceAutoScheduleTests`。
+  - **3c 清死碼（最後、有退路才刪）**：`IsManual` 欄／`TeamSlot.ReschedulableMembers`／自動合併 `TeamSlotMergeService`（見 §9.9）+ 前端整併 + 範本預設載入。動 `TeamSlotMergeServiceMergeTests` + `TeamSlotAggregateTests`。順帶接手 **validation-layering §5.2 延後的 `TeamSlotService.UpdateAsync` god-method 重構**（見 §4「接手技術債」）。
 - **Phase 4**：`JobCategory` 補 **admin CRUD**（取代手動 SQL；**不新增幹部/團長角色、不開放玩家**，維持 admin 集中）+ 好友同組 hint（Q4，**保留**：報名選填 group key，候選排序優先同 key）。範本仍為 admin 全域預設、隊長載入覆寫成自己那隊條件（非 admin 職責、屬隊長正常操作）。
 
 ## 9. 決策（2026-08-05 確認）
