@@ -47,11 +47,16 @@
 
 ## 5. 行動項
 
-1. **`ExceptionHandlerMiddleware` 補 `PostgresException` 分支**：`23505 → 409`；其餘 DB 約束違反**維持 500 + 告警**（明確列 SqlState、預設仍 500）。
-2. **審 FK 寫入路徑**：每個「INSERT 帶 FK」都要有 app 層存在性檢查→404（Boss/Period 已做；查其餘：`CharacterRegister.CharacterId/BossId`、`TeamSlotCharacter.CharacterId` 等）。
-3. **多寫入者規則**：確認需覆蓋 bot 的驗證放在共用 service/domain，不是只在 DTO。
-4. **保留 DB 完整性約束**（NOT NULL/FK/UNIQUE/CHECK）當後防；**長度留 app**。
-5. **文件化這份約定**（本檔）供後續 feature 對照。
+1. ✅ **`ExceptionHandlerMiddleware` 補 `PostgresException` 分支**：`23505 → 409`；其餘 DB 約束違反**維持 500 + 告警**（明確列 SqlState、預設仍 500）。（commit `7d7702e`）
+2. ✅ **審 FK 寫入路徑**（player-facing）：每個「INSERT 帶 FK」都有 app 層存在性檢查→404。
+   - `PlayerRegister.PeriodId`（Period 存在→404，`RegisterService.CreateAsync`）
+   - `CharacterRegister.CharacterId`（**須屬本人**→404，`RegisterService.EnsureCharactersOwnedAsync`；同時擋不存在與冒用他人 id）
+   - `CharacterRegister.BossId`（Boss 存在→404，`RegisterService.ValidateBossesAndBudgetAsync`，與場次預算共用同一份 Boss 清單）
+   - `TeamSlotCharacter.CharacterId`（補位須屬本人→404，`TeamSlotService.FillSlotAsync`）
+   - **未做（admin-facing，較低優先）**：`TeamSlot.BossId/TemplateId`、`BossTemplate.BossId`、`BossTemplateRequirement.BossTemplateId` 的 FK。admin 傳壞 id 較屬操作者錯誤，暫維持 500 後防；有需要再補存在性檢查。
+3. ✅ **多寫入者規則**：新增的存在性檢查全放在**共用 Application service**（非 DTO），bot 若走同一 service 亦覆蓋；`DiscordName` guard 已在 `AuthAppService`（commit `9326628`）。
+4. ✅ **保留 DB 完整性約束**（NOT NULL/FK/UNIQUE/CHECK）當後防；**長度留 app**（000008 revert + DTO `[MaxLength]`，2026-08-06 重新評估確認前提仍成立：DTO 覆蓋齊、這 5 個欄位無第二寫入者）。
+5. ✅ **文件化這份約定**（本檔）供後續 feature 對照。
 
 ## 6. 與 leader-led 重規劃的關聯
 
