@@ -1,0 +1,142 @@
+# 隊長主導組隊 — 業務邏輯重規劃
+
+> 狀態：**定稿**（§9 十九項決策全鎖定，2026-08-05）。分支起點：`fix/character-input-validation-on-dto`。
+
+## 1. 為何轉向
+
+**社群現實**：Discord 揪團是「隊長喊人 → 限定職業/攻擊 → 篩選後挑人」——重心在**隊長控制權、職業組成、人工篩選**。
+
+**現況（grounded on code）**：
+- **兩條不同的自動排團**：(1) 玩家報名觸發的 `TeamSlotAutoAssignService`——依 `同王 + 隊沒滿 + 時段重疊` 成隊，**完全不看職業/攻擊**；(2) admin 批次 `ScheduleService.AutoScheduleWithTemplateAsync`——**確實吃範本+職業分類**（職業分類 + 數量 + 優先級 + MinLevel/MinAttribute + IsOptional 嚴格湊隊）。
+- 所以精確地說：**「照職業組成排團」今天唯一活著的地方是 admin 批次排團**，玩家/隊長端看不到；`BossTemplate`/`JobCategory` 對玩家報名路徑只剩前端補位提示。
+- 無隊長歸屬、無入團審核——正是真實流程最核心的兩根柱子。
+
+**結論**：自動排團不是有 bug，而是**站錯 C 位**。改為 **隊長制為主體、自動排團降級成「選用的初稿助手」**。
+
+## 2. 目標流程（Pull + Push 都要）
+
+1. **成員報名（不變）**：角色（職業/攻擊）+ 能打的時段。
+2. **隊長開隊 = 數位化喊團**：選王 + 時段 + 限定條件（要哪些職業/分類、攻擊下限、各需幾人）。
+3. **系統自動篩候選**：對報名池套 `時段重疊 + 職業符合 + 攻擊 ≥ 下限`。
+4. 入隊兩路徑（**都需雙方同意**）：
+   - **A. Pull（隊長邀）**：隊長看候選清單 → **邀請** → **玩家接受**才入隊。
+   - **B. Push（玩家申請）**：玩家看自己夠格的隊 → 申請 → **隊長放行**才入隊。
+5. **玩家決定自己的跨隊行程**（哪幾隊、時間連貫、不衝突）——這是只有玩家看得到的全域屬性，隊長只決定單一隊。故兩路徑都要玩家同意（見 §9.1）；系統於 `Confirmed` 時以 DB 約束擋時段重疊（見 §9.19）。
+
+## 3. 領域模型改動
+
+| 實體 | 改動 |
+|---|---|
+| `TeamSlot` | + `LeaderDiscordId`（隊長歸屬；現只有 `Source` 無 owner）。**`Source` 收斂成 `{ leader, admin }`、砍掉 `auto`**（新模型無 `auto` 產生者：報名不建隊、隊長自動排填的是 `leader` 隊、admin 草稿剩餘池是 `admin`）。「草稿 vs 已認領」**不進 `Source`**，用 `LeaderDiscordId is null`（未認領草稿）表達。遷移：CHECK → `IN ('leader','admin')` + 舊 `auto` 資料轉掉。 |
+| `TeamSlotCharacter`（成員） | + `Status`（`Applied`〔Push 申請中〕/ `Invited`〔Pull 邀請中〕/ `Confirmed` / `Rejected`〔任一方拒絕/取消的終態〕）。**只有 `Confirmed` 占容量；`Applied`/`Invited` 皆不占**。**移除 `IsManual`**（見 §9.9）；不加 `Origin`（YAGNI，靠 `Status` + `TeamSlot.Source` 表達即可）。 |
+| **隊伍條件（Level 2）** | 掛 **`TeamSlot` 實例**（非範本）。每個需求列 = **一組可接受職業（各帶自己的攻擊下限）** + `Count` + **`MinClearCount`**（本王通關數門檻，見下）。表：`TeamSlotRequirement`(`TeamSlotId`, `Count`, `MinClearCount`) + 子表 `TeamSlotRequirementJob`(`RequirementId`, `Job`, **`MinAttackPower`**) —— **攻擊下限下放到職業層級**（同攻擊下不同職業傷害期望不同）。**分類只是 UI「一鍵展開成職業」的方便鈕，儲存時展開成具體職業（快照）**——之後 admin 改分類不會回頭改到既有隊條件。「箭神(≥900) or 槍神(≥1000) 1位」= 列 `Count=1` + 職業 `{(箭神,900),(槍神,1000)}`。 |
+| **通關次數（自填, Opt 1）** | 新表 `CharacterBossClear(CharacterId, BossId, ClearCount)`，玩家在角色頁自維護（同 `AttackPower` 信任模型、後端不查證）。派生**單一數字＝「本王總通關次數」**＝`Σ ClearCount WHERE BossId=本隊王 AND 屬該玩家的角色`（**同一隻王、跨該玩家不同角色相加**）。此數**兼作**：篩選 `MinClearCount`（「找打過的」=`≥1`）＋候選列顯示（老手參考）。反向「找沒打過的 carry」= 同欄位加 `MaxClearCount`，YAGNI 先不做。 |
+| `Character.MapleBlessingLevel`（新增） | 楓葉祝福等級（自填 int，0=無；同攻擊信任模型）。**破例結構化**——楓葉祝福是隊員提供的隊伍 buff、**幾乎每隊必備**（見 #18 判準）。**顯示於候選列**（隊長挑 buffer 用），**不做 per-candidate 硬篩**（「有人開 20」是整隊只需 1 個的需求，硬篩會誤濾掉不帶 buff 的 DPS）；頂多隊層級軟提示「尚無達標 provider」。若楓葉祝福為帳號共通，日後可移 `Player`。 |
+| `TeamSlot.Description`（新增） | nullable 自由文字「隊伍說明/公告」，吸收**所有非結構化招募需求**（buff 設定、楓葉祝福9/20、特殊要求…）。**不為個別 buff/技能開欄**（長尾無限、不可比）。界線＝「跨候選能否客觀比較」：能比→結構化篩選（職業＋base攻擊＋通關數）；不能比→丟這欄，靠人讀＋聊天協調。 |
+| `Character.AttackPower` | **定義成「無BUFF（裸裝面板）攻擊」**（單一數，前端標清楚）。**不存有BUFF值**——有BUFF＝`base × 隊伍當下 buff 設定`（楓葉祝福9/20、活動道具…）的函數、非角色屬性、跨隊不可比。所有 `MinAttackPower` 門檻皆以 base 計；隊長心中的「buffed 門檻」自行換算成 base（base 是 buffed 的單調代理，把關效果相同且跨候選可比）。不加欄。 |
+| `BossTemplate` | 保留為 **admin 全域「預設範本」**，隊長開隊時可**載入成自己那隊的條件再覆寫** → 「玩家自訂範本」的歸屬問題自然解決（改的是自己那隊，不是全域）。 |
+
+**抉擇（KISS）**：入團申請用 `TeamSlotCharacter` 加 `Status` 表達，不另開 `JoinRequest` 表（少一張表、少一次 join）。
+
+## 4. 應用 / 服務層
+
+- **`TeamCandidateQuery`**：給定 `teamSlot(boss + time + requirements)` → 回符合的報名者（時段重疊 ＋ **`∃ job ∈ 集合: Character.Job = job 且 Character.AttackPower ≥ 該 job 的 MinAttackPower`** ＋ **本王通關數 ≥ 該列 `MinClearCount`**）。**重用 `SlotDateCalculator.IsTimeInAvailability`**。分類已在存檔時展開成職業，查詢不需再查 `JobCategory`。回傳的候選 DTO：角色名/職業/攻擊/時段 ＋ **本王總通關次數（＝篩選同一數字，跨該玩家角色加總；老手參考）** ＋ **楓葉祝福等級（挑 buffer 用，見 #18）**，**不含** discord 身分（見 §9.12）。
+- **`TeamLeaderService`**：
+  - `CreateTeamAsync(leader, boss, time, requirements)`
+  - `InviteMemberAsync`（Pull：隊長邀 → `Invited`）＋ `AcceptInviteAsync` / `DeclineInviteAsync`（**玩家**接受→`Confirmed`／拒絕）
+  - `AutoFillAsync(teamSlot)`（**依本隊條件對候選池一鍵自動排**；引擎＝`ScheduleService.FillTeamFromPool`〔見 §7〕，吃職業/攻擊；**產出的是一批邀請 `Invited`，仍需玩家接受**）
+  - `ApplyAsync`（玩家申請 → `Applied`，Push）
+  - `ApproveAsync` / `RejectAsync`（隊長審核，Push；approve→`Confirmed`）
+- **權限/狀態機**：只有隊長能審核/挑人、只有本人能申請/退出；狀態轉移守 `HasRoom`（不超 `RequireMembers`）不變式，沿用聚合守法。
+
+## 5. API（演化現有 `TeamSlotController`）
+
+| Method | Path | 用途 |
+|---|---|---|
+| POST | `/TeamSlot` | 隊長開隊 + 條件 |
+| GET | `/TeamSlot/{id}/Candidates` | Pull：符合的玩家清單 |
+| POST | `/TeamSlot/{id}/Invitations` | Pull：隊長邀請候選（→`Invited`） |
+| POST | `/TeamSlot/{id}/AutoFill` | 一鍵自動排＝批次邀請（→`Invited`，仍需玩家接受） |
+| PUT | `/TeamSlot/{id}/Invitations/{memberId}` | **玩家** accept→`Confirmed` / decline |
+| GET | `/TeamSlot/Open` | Push：玩家看自己夠格的開放隊 |
+| POST | `/TeamSlot/{id}/Applications` | Push：玩家申請（→`Applied`） |
+| PUT | `/TeamSlot/{id}/Applications/{memberId}` | Push：隊長 approve→`Confirmed` / reject |
+| GET | `/Me/Invitations`、`/Me/Teams` | 玩家看自己的邀請/已入隊——**排自己跨隊行程**用（§9.19） |
+
+## 6. 前端
+
+- **隊長**：開隊頁（設條件＝每個需求列**勾一組可接受職業、各自填攻擊下限**〔選分類＝一鍵勾滿該群職業、也能單勾特定職業〕＋數量＋通關數門檻；可載入預設範本當起點）、候選清單挑人、申請審核佇列、成員管理。
+- **玩家**：可申請的隊列表（依「我報名的角色」過濾夠格的）、申請/退出、狀態顯示。
+- 現有補位頁（`PlayerRaidTeamCard` / `getMissingSlots`）演化成上述。
+
+## 7. 自動排團的新定位（搬到「挑人時」）
+
+- **報名不觸發自動排團**：`RegisterService.CreateAsync` **不再呼叫 `AutoAssignAsync`**；報名 = 只把角色+時段放進**候選池**。
+- **自動排團搬家成隊長挑人時的「依條件一鍵自動排」動作**：隊長在自己那隊按「自動排」→ 系統對**本隊候選池**（已依 `時段重疊 + 職業 + 攻擊` 篩過）自動湊一份 roster → 隊長**微調/放行**才定案。
+- **引擎來源＝admin 那支的 `ScheduleService.FillTeamFromPool`**（不是報名版 `AutoAssignAsync`）：它已會「依需求從池子把一隊補滿、湊不齊留空」，比報名版成熟。改動：`職業分類比對` → Level 2 的 `Job ∈ 集合`、`MinAttribute` → `MinAttackPower`。核心媒合（`SlotDateCalculator.IsTimeInAvailability`）留用。
+- 影響：**register 單元測試 + `register.spec` E2E 要改**（報名不再產隊）。
+
+## 8. 分期
+
+- **Phase 1（MVP）**：領域改動 + 隊長開隊 + 條件 + 候選查詢 + **Pull 挑人**。**移除 register→自動排團**（改單元測試 + `register.spec`）。
+- **Phase 2**：**Push 申請 + 審核狀態機** + 通知（Discord/mail 沿用 outbox）。
+- **Phase 3**：**以 `ScheduleService.FillTeamFromPool` 為底做隊長「依本隊條件一鍵自動排」**（職業分類→Level 2 集合、MinAttribute→MinAttackPower）+ **admin 全期重排降級成「草稿剩餘池」**（只湊未進 confirmed 隊的人、不覆蓋隊長隊）+ **清除 `IsManual` 欄／`ReschedulableMembers`／自動合併 `TeamSlotMergeService`**（見 §9.9）+ 前端整併 + 範本預設載入。動到 `admin-rebuild`/`admin-conflict` E2E + `ScheduleServiceAutoScheduleTests` + `TeamSlotMergeServiceMergeTests` + `TeamSlotAggregateTests`。
+- **Phase 4**：`JobCategory` 補 **admin CRUD**（取代手動 SQL；**不新增幹部/團長角色、不開放玩家**，維持 admin 集中）+ 好友同組 hint（Q4，**保留**：報名選填 group key，候選排序優先同 key）。範本仍為 admin 全域預設、隊長載入覆寫成自己那隊條件（非 admin 職責、屬隊長正常操作）。
+
+## 9. 決策（2026-08-05 確認）
+
+1. ✅ **兩路徑都要雙方同意**（**修正**：原「Pull 直接加」已推翻，見 §9.19）：Pull＝**隊長邀→玩家接受**（`Invited`→`Confirmed`）；Push＝玩家申請→隊長放行（`Applied`→`Confirmed`）。理由：玩家要能掌握自己跨隊行程，就必須對「加入」有決定權；直接加會讓手最快的隊長鎖住玩家、玩家無法自排。
+2. ✅ **條件軟篩選 + 隊長可 override**（避免「湊不滿排不進」老問題）。
+3. ✅ **自動排團搬到「挑人時」**：報名**不**觸發自動排團；`AutoAssignAsync` 演化成隊長按「依本隊條件一鍵自動排」的動作（對候選池、吃職業/攻擊），隊長再微調。保留媒合能力、換位置＋升級。
+4. ✅ **入團用 `TeamSlotCharacter` 加 `Status`**（不另開表）：`Applied`〔Push 申請中〕/ `Invited`〔Pull 邀請中〕/ `Confirmed` / `Rejected`。**只有 `Confirmed` 占容量；`Applied`/`Invited` 皆不占**。（`Invited` 因 #1 改回邀請制而加回。）
+5. ✅ **不分權**：不新增幹部/團長角色，`JobCategory`/範本維持 **admin 集中**（頂多補 admin CRUD）。
+6. ✅ **好友同組保留**（Q4）：報名選填 group key，候選排序優先同 key。
+7. ✅ **條件用 Level 2（隊長自訂 OR 組合）**：每個需求列＝一組可接受職業（分類一鍵展開成職業快照 ＋ 可單勾特定職業）＋數量＋攻擊下限。篩選＝`Job ∈ 集合`。
+8. ✅ **admin 全期重排降級 → 草稿「建議名單」（B）**：`AutoScheduleWithTemplateAsync` 的全期權威重排 → 降成選用的「**草稿剩餘池**」，只對還沒進任何 `Confirmed` 隊的人**產「建議分組」（不是已存在的隊）**、**絕不覆蓋隊長隊**。底層 `FillTeamFromPool` 引擎**留用**作隊長 per-team auto-fill（見 §7）。
+9. ✅ **不變式：存在的隊一定有召集人**。草稿是「建議名單」，需**有人自願認領、當召集人**才落地成真隊（`Source=leader`、補上 `LeaderDiscordId`）；**沒人認領就不落地**（沒團長＝沒團，符合現實）。→ 不存在無主隊；`admin` + `LeaderDiscordId=null` 僅是「未認領建議」的過渡表示。
+10. ✅ **`TeamSlot.Source` 收斂成 `{ leader, admin }`、砍 `auto`**：新模型無 `auto` 產生者。「未認領建議 vs 已成隊」用 `LeaderDiscordId is null` 表達，不進 `Source`。遷移改 CHECK ＋轉舊 `auto` 資料。
+11. ✅ **隱私：PII 最小化、承諾才揭露**。`discordId`／`discordName` 屬敏感（與 `sentry-discordid-hmac` 立場一致）。**未認領建議**只顯示組成（職業/攻擊/時段/角色名），**藏聯絡身分**；**認領後**才把 roster 的 `discordId`/`name` 給召集人；已成隊隊員彼此可見。前提：**認領＝真承諾（掛名負責）**，否則變免費去匿名按鈕。Pull 候選清單同原則（`discordName` 顯示與否見待定 §12）。
+12. ✅ **Pull 候選清單走「更嚴」**：**藏 `discordId` + `discordName`**，只顯示角色名/職業/攻擊/時段——隊長按**能力**挑，不按 Discord 身分挑（擋看身分挑人/盜揪）；身分於 **pick（＝承諾）後**才對召集人顯示。→ 候選查詢的 DTO **不回傳** discord 身分欄位。
+14. ✅ **通關次數（Opt 1 自填）**：新表 `CharacterBossClear(CharacterId, BossId, ClearCount)`，玩家自維護（同 `AttackPower` 信任模型）。派生**單一數字「本王總通關次數」＝同一隻王、跨該玩家不同角色相加**，**兼作**篩選 `MinClearCount`（「找打過的」=`≥1`）＋候選列顯示（老手參考，非身分故可顯示）。反向 `MaxClearCount`（找沒打過的 carry）YAGNI 先不做。系統暫不追蹤實際通關（Opt 2 日後可疊加使其權威）。
+15. ✅ **攻擊下限下放到職業層級**：`MinAttackPower` 從 `TeamSlotRequirement`（列）搬到 `TeamSlotRequirementJob`（每個可接受職業各一個下限）——同攻擊下不同職業傷害期望不同。篩選＝`∃ job∈集合: 候選.Job=job 且 攻擊≥該 job 下限`。`MinClearCount` 維持列層級（通關是本王經驗、與職業無關）。
+17. ✅ **長尾需求走自由文字、不逐項開欄**：`TeamSlot` 加 nullable `Description`（隊伍說明）吸收特殊要求／其他 party buff…；**不為個別 buff/技能開欄**。界線（**修正**）：**結構化 = 可客觀比較 AND 近乎必備/高價值**；只可比但非必備（聖靈、各種 link…）→ 說明欄＋聊天。
+18. ✅ **楓葉祝福破例結構化**：因**幾乎每隊必備**（過門檻）。`Character.MapleBlessingLevel`（自填），**候選列顯示**供隊長挑 buffer；**不做 per-candidate 硬篩**（整隊只需 1 provider，硬篩會誤濾 DPS）→ 顯示 ＋ 隊長手挑 ＋ 隊層級軟提示「尚無達標 provider」。base 彈性仍靠隊長 override、系統不算 buff 補償。帳號共通則日後可移 `Player`。
+16. ✅ **攻擊採單一「無BUFF base」、不建模 buffed**：三輪追問（有/無BUFF→活動道具→楓葉祝福9 vs 20）證明「有BUFF攻擊」是 `base × 隊 buff 設定` 的函數、非角色屬性、跨隊不可比 → **不存**。只存 `Character.AttackPower`＝無BUFF base（唯一穩定客觀可比）；所有 `MinAttackPower` 以 base 計，限定 buffed 的隊長自行換算成 base 門檻。**推翻先前「雙值＋隊層級 basis」構想**（不加欄、無 `AttackBasis`）。**base floor 內含隊長對自身隊伍 buff（如楓葉祝福9/20）的判斷、由隊長自行下調**（強 buff 隊設低、弱 buff 隊設高）；系統只比 `候選base ≥ floor`、**不算 buff 補償**（否則要存 buff 等級＋換算公式，回到被拒的兔子洞）。楓葉祝福等級寫 `Description`（#17）給人看。
+19. ✅ **玩家擁有跨隊行程＋併發/重疊防護**：跨隊行程（哪幾隊、連貫、不衝突）是只有玩家看得到的全域屬性 → **玩家決定**（故 #1 兩路徑皆需玩家同意）；隊長只決定單一隊。防護分層：
+    - **跨隊時段重疊（硬規則）→ DB 約束**（同 `DiscordId`/角色 + 同 `SlotDateTime` 的 `Confirmed` 只能一筆；unique/exclusion constraint，原子擋，per-team 鎖管不到跨隊）。
+    - **同隊容量（confirm/退出）→ 沿用 1002 `AcquireTeamSlotEditLockAsync`**（取鎖→重讀 `Confirmed` 數→檢查）；擋隊長雙送/退出-vs-approve race。
+    - **重複申請/邀請 → DB unique**（同玩家同隊一筆有效 `Applied`/`Invited`）。
+    - **1001（auto-assign per period）退場**（報名不再開隊）；其保護的「跨隊去重」需求改由上面 DB 約束承接。
+13. ✅ **`IsManual` 廢除**：它唯一的邏輯消費者是「批次重排/合併保護」（`ScheduleService` 保留隊 + `TeamSlot.ReschedulableMembers()`）。新模型下補位沒了、報名 auto-assign 沒了、重排降 B（加法補漏、不改現有隊）、**自動合併 `TeamSlotMergeService` 退場**（本掛在 `AutoAssignAsync` 尾巴，報名不再產隊）→ 保護對象全消失，所有 `Confirmed` 皆隊長所置。**Phase 3 清掉 `IsManual` 欄 + `ReschedulableMembers` + 自動合併**。殘留需求「重跑 auto-fill 別蓋掉隊長手挑的人」由 `Status=Confirmed`／空位占用處理。
+
+## 10. 並發控制（新模型對照，實作參考）
+
+三種機制各守不同不變式，互補：**悲觀鎖＝同隊容量、樂觀鎖＝單列狀態轉移、DB 約束＝跨隊重疊與去重**。
+
+### 悲觀鎖 — advisory 1002（per `teamSlotId`，`AcquireTeamSlotEditLockAsync`）
+守「同隊容量」不變式（`Confirmed ≤ RequireMembers`）。只用在**會動容量的操作**：
+
+**根因**：`Confirmed` 計數是**多方併發共享**的——approve（隊長）＋ accept（任一/多個被邀玩家）都能 +1，還可能雙送。任一 confirm 都得序列化，否則兩個併發 confirm 各讀到「還有空位」舊值 → 超編。**鎖是 per-team、守容量計數，不是 per-actor。**
+
+| 操作 | Status 轉移 | 為何要鎖 |
+|---|---|---|
+| 玩家接受邀請 | `Invited`→`Confirmed` | +1 容量；與其他 accept／approve 併發搶最後空位（隊長還可能邀8補6超額邀） |
+| 隊長放行申請 | `Applied`→`Confirmed` | +1 容量；**與 accept 併發**（隊長 approve A 的同時玩家 B accept）→ 各讀到有空位 → 超編。**非** approve-vs-approve |
+| 成員退出 | `Confirmed`→移除 | −1 容量；退出-vs-接受撞滿員要序列化 |
+| auto-fill 批次邀請（選用） | →`Invited` | 邀請不占容量、輕量，防重複邀 |
+
+作法：取鎖 → 重讀 `Confirmed` 數 → 檢查 `< RequireMembers` → 寫。**邀請/申請本身不占容量 → 不需這把鎖**。（替代方案：`TeamSlot` 加版本欄做樂觀 CAS，效果同；現有 code 用 advisory 鎖故沿用。）
+
+### 樂觀鎖 — xmin（per `TeamSlotCharacter` 列，`WhereRaw xmin = @version::xid`）
+守「單列狀態轉移」不被雙邊或 stale 蓋掉：
+- **approve vs decline 撞同一列**：隊長放行同時玩家取消同一筆 → 只有一個轉移生效，輸方拿「已被處理」。
+- **stale client**：隊長載入清單後隔一陣才動作、期間該列已變 → 擋 lost update。
+- 玩家取消**自己**那筆不必搶整隊 1002 鎖，用 xmin 就夠。
+
+### DB 約束（宣告式，鎖的盲區）
+- **跨隊時段重疊** → unique/exclusion（同 `DiscordId`/角色 + 同 `SlotDateTime` 的 `Confirmed` 唯一）。per-team 鎖管不到跨隊，這是唯一可靠解。
+- **重複申請/邀請** → unique（同玩家同隊一筆有效 `Applied`/`Invited`）。
+
+### 退場 / 平移
+- **1001（auto-assign per period）退場**：報名不再開隊；其「跨隊去重」責任交給 DB 重疊約束。
+- 呼叫端平移：**1002/xmin 從 `FillSlotAsync`／`UpdateAsync` 換成 accept／approve／leave**；補位（Fill）與 admin 全期重排（`UpdateAsync`）皆退場（見 §7、§9.8）。
