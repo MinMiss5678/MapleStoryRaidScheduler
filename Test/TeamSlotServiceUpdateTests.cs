@@ -81,6 +81,10 @@ public class TeamSlotServiceUpdateTests
         // Arrange
         int newTeamSlotId = 55;
         _teamSlotRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<TeamSlot>())).ReturnsAsync(newTeamSlotId);
+        // 建隊 FK 前線檢查需要 Boss/Period 存在
+        _bossRepositoryMock.Setup(r => r.GetAllAsync())
+            .ReturnsAsync(new List<Boss> { new Boss { Id = 1, Name = "", RequireMembers = 6 } });
+        _periodQueryMock.Setup(p => p.GetByIdAsync(1)).ReturnsAsync(new Period { Id = 1 });
 
         var character = new TeamSlotMemberDto { CharacterId = "c1", DiscordId = 12345 };
         var request = new TeamSlotUpdateRequest
@@ -107,6 +111,34 @@ public class TeamSlotServiceUpdateTests
         _teamSlotRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlot>()), Times.Once);
         _teamSlotCharacterRepositoryMock.Verify(r => r.CreateAsync(It.Is<TeamSlotCharacter>(c =>
             c.TeamSlotId == newTeamSlotId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Admin_ShouldThrowNotFound_WhenCreatingTeamWithUnknownBoss()
+    {
+        // 建隊帶不存在的 BossId → app 前線轉 404，不落 DB FK 500（避免誤觸 §4「漏驗」告警），且不寫入。
+        _bossRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Boss>()); // 沒有任何 Boss
+
+        var request = new TeamSlotUpdateRequest
+        {
+            DeleteTeamSlotIds = new List<int>(),
+            TeamSlots = new List<TeamSlotUpdateCommand>
+            {
+                new TeamSlotUpdateCommand
+                {
+                    BossId = 999,
+                    PeriodId = 1,
+                    Source = TeamSlotSource.Admin,
+                    Characters = new List<TeamSlotMemberDto>(),
+                    DeleteTeamSlotCharacterIds = new List<int>()
+                }
+            }
+        };
+
+        var ex = await Assert.ThrowsAsync<NotFoundException>(() =>
+            _teamSlotService.UpdateAsync(request, isAdmin: true, currentDiscordId: 0));
+        Assert.Contains("999", ex.Message);
+        _teamSlotRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlot>()), Times.Never);
     }
 
     [Fact]

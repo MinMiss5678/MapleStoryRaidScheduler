@@ -112,6 +112,17 @@ public class TeamSlotService : ITeamSlotService
                 if (!isAdmin)
                     throw new ForbiddenException("只有管理員可以建立新隊伍。");
 
+                // 建隊 FK 前線檢查：把不存在的 BossId/PeriodId/TemplateId 轉 404，不落 DB FK → 500。
+                // admin 通常從既有清單挑，壞 id 多為 race（如範本剛被刪）或 API 誤用——不該誤觸
+                // §4「23503＝app 漏驗」的告警。見 plans/2026-08-06-validation-layering.md §2。
+                if (!bossesById.ContainsKey(teamSlot.BossId))
+                    throw new NotFoundException($"Boss {teamSlot.BossId} not found");
+                if (await _periodQuery.GetByIdAsync(teamSlot.PeriodId) == null)
+                    throw new NotFoundException($"Period {teamSlot.PeriodId} not found");
+                if (teamSlot.TemplateId is int templateId &&
+                    await _bossRepository.GetTemplateByIdAsync(templateId) == null)
+                    throw new NotFoundException($"BossTemplate {templateId} not found");
+
                 var entity = new TeamSlot
                 {
                     BossId = teamSlot.BossId,
