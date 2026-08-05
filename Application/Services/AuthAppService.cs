@@ -7,6 +7,9 @@ namespace Application.Services;
 
 public class AuthAppService : IAuthAppService
 {
+    // Discord 使用者名稱長度遠低於此（≤32）；取寬鬆上限只擋真正異常/惡意的超長值。
+    private const int MaxDiscordNameLength = 100;
+
     private readonly IAuthService _authService;
     private readonly IDiscordOAuthClient _discordOAuthClient;
     private readonly IPlayerService _playerService;
@@ -24,6 +27,13 @@ public class AuthAppService : IAuthAppService
     public async Task<LoginResult> LoginAsync(string code)
     {
         var user = await _authService.ExchangeCodeAsync(code);
+
+        // user.Name 來自 Discord（IdP，長度本就受限），但此登入用例被 WebApi 與 bot 共用，
+        // 而 bot 那條路徑不經 WebApi 的 DTO 驗證 → 在此共用 choke point 做防禦性檢查，
+        // 確保任何寫入者都不會把空/異常長的名稱落 DB（沿用「登入無法安全進行 → 回失敗」既有模式）。
+        if (string.IsNullOrWhiteSpace(user.Name) || user.Name.Length > MaxDiscordNameLength)
+            return new LoginResult { IsSuccess = false };
+
         var existingPlayer = await _playerService.GetAsync(user.Id);
         var roles = await _discordOAuthClient.GetUserRolesAsync(user.Id);
 
