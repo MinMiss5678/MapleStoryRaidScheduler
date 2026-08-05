@@ -79,6 +79,7 @@ public class RegisterServiceTests
         };
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
         _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetByIdAsync(It.IsAny<int>())).ReturnsAsync(period);
 
         var command = new RegisterCreateCommand
         {
@@ -116,6 +117,7 @@ public class RegisterServiceTests
         };
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
         _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetByIdAsync(It.IsAny<int>())).ReturnsAsync(period);
 
         var command = new RegisterCreateCommand
         {

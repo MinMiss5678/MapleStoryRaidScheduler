@@ -4,8 +4,7 @@ namespace Application.DTOs;
 
 public class BossTemplateRequest
 {
-    [Range(1, int.MaxValue)]
-    public int BossId { get; set; }
+    public int BossId { get; set; } // 存在性由 BossService.CreateTemplateAsync 驗（不存在回 404）
 
     [Required]
     [MaxLength(50)]
