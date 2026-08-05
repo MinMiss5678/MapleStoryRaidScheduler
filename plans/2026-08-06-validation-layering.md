@@ -48,12 +48,15 @@
 ## 5. 行動項
 
 1. ✅ **`ExceptionHandlerMiddleware` 補 `PostgresException` 分支**：`23505 → 409`；其餘 DB 約束違反**維持 500 + 告警**（明確列 SqlState、預設仍 500）。（commit `7d7702e`）
-2. ✅ **審 FK 寫入路徑**（player-facing）：每個「INSERT 帶 FK」都有 app 層存在性檢查→404。
+2. ✅ **審 FK 寫入路徑**：player-facing / admin-create-template 每個「INSERT 帶 FK」都有 app 層存在性檢查→404。
    - `PlayerRegister.PeriodId`（Period 存在→404，`RegisterService.CreateAsync`）
    - `CharacterRegister.CharacterId`（**須屬本人**→404，`RegisterService.EnsureCharactersOwnedAsync`；同時擋不存在與冒用他人 id）
    - `CharacterRegister.BossId`（Boss 存在→404，`RegisterService.ValidateBossesAndBudgetAsync`，與場次預算共用同一份 Boss 清單）
    - `TeamSlotCharacter.CharacterId`（補位須屬本人→404，`TeamSlotService.FillSlotAsync`）
-   - **未做（admin-facing，較低優先）**：`TeamSlot.BossId/TemplateId`、`BossTemplate.BossId`、`BossTemplateRequirement.BossTemplateId` 的 FK。admin 傳壞 id 較屬操作者錯誤，暫維持 500 後防；有需要再補存在性檢查。
+   - `BossTemplate.BossId`（Boss 存在→404，`BossService.CreateTemplateAsync`，commit `c63de85`）
+   - `TeamSlot.BossId/PeriodId/TemplateId`（admin 建隊，`TeamSlotService.UpdateAsync` 的 `Id<=0` 分支）：Boss/Period/範本存在→404（`BossId` 重用既載入的 `bossesById`；`TemplateId` 為 null 時略過）。**動機＝修掉假告警**：admin 從既有清單挑，壞 id 多為 race（範本剛被刪）或 API 誤用，不該誤觸 §4「23503＝app 漏驗」的告警。
+   - **N/A**：`BossTemplateRequirement.BossTemplateId` — 隨父範本一起建、id 由 server 產生（非 client 傳入），無 FK 缺口。
+   - **未做（較低優先）**：admin 經 `UpdateAsync` 加成員時的 `TeamSlotCharacter.CharacterId`（建隊 `Id<=0` 分支與既有隊 `Id>0` 的 add-member 兩處）仍無存在性檢查、壞 id 落 500。admin 可代放他人角色→是「存在性」非「擁有權」，需新增 by-id 角色存在查詢（`ICharacterQuery/Repository` 目前只有 by-DiscordId）；殘留假告警面較小，暫緩。
 3. ✅ **多寫入者規則**：新增的存在性檢查全放在**共用 Application service**（非 DTO），bot 若走同一 service 亦覆蓋；`DiscordName` guard 已在 `AuthAppService`（commit `9326628`）。
 4. ✅ **保留 DB 完整性約束**（NOT NULL/FK/UNIQUE/CHECK）當後防；**長度留 app**（000008 revert + DTO `[MaxLength]`，2026-08-06 重新評估確認前提仍成立：DTO 覆蓋齊、這 5 個欄位無第二寫入者）。
 5. ✅ **文件化這份約定**（本檔）供後續 feature 對照。
