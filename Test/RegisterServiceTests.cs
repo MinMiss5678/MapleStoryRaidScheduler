@@ -17,6 +17,8 @@ public class RegisterServiceTests
     private readonly Mock<IPlayerAvailabilityRepository> _playerAvailabilityRepositoryMock;
     private readonly Mock<ITeamSlotAutoAssignService> _autoAssignServiceMock;
     private readonly Mock<ISystemConfigService> _systemConfigServiceMock;
+    private readonly Mock<IBossRepository> _bossRepositoryMock;
+    private readonly Mock<ICharacterQuery> _characterQueryMock;
     private readonly RegisterService _registerService;
 
     public RegisterServiceTests()
@@ -27,8 +29,11 @@ public class RegisterServiceTests
         _playerAvailabilityRepositoryMock = new Mock<IPlayerAvailabilityRepository>();
         _autoAssignServiceMock = new Mock<ITeamSlotAutoAssignService>();
         _systemConfigServiceMock = new Mock<ISystemConfigService>();
-        var bossRepositoryMock = new Mock<IBossRepository>();
-        bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>());
+        _bossRepositoryMock = new Mock<IBossRepository>();
+        _bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>());
+        _characterQueryMock = new Mock<ICharacterQuery>();
+        _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(It.IsAny<ulong>()))
+            .ReturnsAsync(new List<Character>());
 
         _registerService = new RegisterService(
             _periodQueryMock.Object,
@@ -38,7 +43,8 @@ public class RegisterServiceTests
             new Mock<ITeamSlotCharacterRepository>().Object,
             _autoAssignServiceMock.Object,
             _systemConfigServiceMock.Object,
-            bossRepositoryMock.Object
+            _bossRepositoryMock.Object,
+            _characterQueryMock.Object
         );
     }
 
@@ -80,6 +86,11 @@ public class RegisterServiceTests
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(config);
         _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
         _periodQueryMock.Setup(p => p.GetByIdAsync(It.IsAny<int>())).ReturnsAsync(period);
+        // char1 屬本人、boss 1 存在——讓 FK 前線檢查通過
+        _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(It.IsAny<ulong>()))
+            .ReturnsAsync(new List<Character> { new Character { Id = "char1", Name = "角色", Job = "戰士" } });
+        _bossRepositoryMock.Setup(b => b.GetAllAsync())
+            .ReturnsAsync(new List<Boss> { new Boss { Id = 1, Name = "王", RequireMembers = 6, RoundConsumption = 1 } });
 
         var command = new RegisterCreateCommand
         {
@@ -201,6 +212,73 @@ public class RegisterServiceTests
         var ex = await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _registerService.UpdateAsync(command));
         Assert.Equal("找不到本期報名，無法更新。", ex.Message);
         _playerAvailabilityRepositoryMock.Verify(r => r.DeleteByPlayerRegisterIdAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldThrowNotFound_WhenCharacterNotOwnedByCaller()
+    {
+        // Arrange：報名開放、Period 存在，但報的 CharacterId 不在本人角色清單（不存在或冒用他人）
+        _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(new SystemConfig
+        {
+            DeadlineDayOfWeek = DayOfWeek.Wednesday,
+            DeadlineTime = new TimeSpan(23, 59, 59)
+        });
+        var period = new Period { StartDate = DateTimeOffset.Now.AddDays(10) };
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetByIdAsync(It.IsAny<int>())).ReturnsAsync(period);
+        _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(It.IsAny<ulong>()))
+            .ReturnsAsync(new List<Character>()); // 名下沒有任何角色
+
+        var command = new RegisterCreateCommand
+        {
+            DiscordId = 1UL,
+            PeriodId = 1,
+            Availabilities = new List<PlayerAvailabilityDto>(),
+            CharacterRegisters = new List<CharacterRegisterDto>
+            {
+                new CharacterRegisterDto { CharacterId = "someone-else", BossId = 1, Rounds = 1 }
+            }
+        };
+
+        // Act & Assert：FK 前線檢查把預期壞 id 轉 404，不落到 DB FK 500
+        var ex = await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(
+            () => _registerService.CreateAsync(command));
+        Assert.Contains("someone-else", ex.Message);
+        _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<Register>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldThrowNotFound_WhenBossDoesNotExist()
+    {
+        // Arrange：角色屬本人，但 BossId 不存在 → 應轉 404，不落到 DB FK 500
+        _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(new SystemConfig
+        {
+            DeadlineDayOfWeek = DayOfWeek.Wednesday,
+            DeadlineTime = new TimeSpan(23, 59, 59)
+        });
+        var period = new Period { StartDate = DateTimeOffset.Now.AddDays(10) };
+        _periodQueryMock.Setup(p => p.GetActivePeriodAsync()).ReturnsAsync(period);
+        _periodQueryMock.Setup(p => p.GetByIdAsync(It.IsAny<int>())).ReturnsAsync(period);
+        _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(It.IsAny<ulong>()))
+            .ReturnsAsync(new List<Character> { new Character { Id = "char1", Name = "角色", Job = "戰士" } });
+        _bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>()); // 沒有任何 Boss
+
+        var command = new RegisterCreateCommand
+        {
+            DiscordId = 1UL,
+            PeriodId = 1,
+            Availabilities = new List<PlayerAvailabilityDto>(),
+            CharacterRegisters = new List<CharacterRegisterDto>
+            {
+                new CharacterRegisterDto { CharacterId = "char1", BossId = 999, Rounds = 1 }
+            }
+        };
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(
+            () => _registerService.CreateAsync(command));
+        Assert.Contains("999", ex.Message);
+        _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<Register>()), Times.Never);
     }
 
 }

@@ -83,7 +83,8 @@ public class RegisterAutoAssignConcurrentIntegrationTests
                     teamSlotCharacterRepository,
                     autoAssignService,
                     new SystemConfigService(dbContext, new Outbox(dbContext)),
-                    bossRepository);
+                    bossRepository,
+                    new CharacterQuery(dbContext, periodQuery));
 
                 await registerService.CreateAsync(command);
                 await dbContext.CommitAsync();

@@ -32,7 +32,8 @@ public class TeamSlotConcurrentEditIntegrationTests
             new TeamSlotCharacterRepository(dbContext),
             new PeriodQuery(dbContext),
             new BossRepository(dbContext),
-            new RegistrationLock(dbContext));
+            new RegistrationLock(dbContext),
+            new CharacterQuery(dbContext, new PeriodQuery(dbContext)));
     }
 
     [Fact]
@@ -156,7 +157,8 @@ public class TeamSlotConcurrentEditIntegrationTests
                     new TeamSlotCharacterRepository(dbContext),
                     new PeriodQuery(dbContext),
                     new BossRepository(dbContext),
-                    new RegistrationLock(dbContext));
+                    new RegistrationLock(dbContext),
+                    new CharacterQuery(dbContext, new PeriodQuery(dbContext)));
                 await service.UpdateAsync(BuildAddRequest(characterId, discordId), isAdmin: true, currentDiscordId: 0);
                 await dbContext.CommitAsync();
                 return null;
