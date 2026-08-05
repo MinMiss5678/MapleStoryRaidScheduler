@@ -3,7 +3,7 @@
 // 跟 RegistrationLock 的 lock_timeout 預設 5s 比較（會不會誤把「排隊久」當「持鎖方卡死」）。
 //
 // 前置：db/seed-load-teamslot.sql 已跑過（N 個空位在同一支隊，discordId 9100001..9100000+N，
-// characterId edit1..editN；TRUNCATE...RESTART IDENTITY 之後 periodId/bossId/teamSlotId 固定是 1）。
+// characterId e1..eN；TRUNCATE...RESTART IDENTITY 之後 periodId/bossId/teamSlotId 固定是 1）。
 //
 // 跑法：
 //   docker run --rm -v "$(pwd)/k6:/scripts" -e BASE_URL=http://host.docker.internal:5230 \
@@ -45,7 +45,7 @@ function uuidv4() {
 export default function () {
   const idx = __VU; // per-vu-iterations：__VU 是 1..VUS
   const discordId = 9100000 + idx;
-  const characterId = 'edit' + idx;
+  const characterId = 'e' + idx;
 
   // 1) test-login
   const loginRes = http.post(

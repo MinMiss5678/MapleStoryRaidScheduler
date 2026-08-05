@@ -52,14 +52,14 @@ BEGIN
     VALUES (v_template_id, '輸出', 6, 1);
     INSERT INTO "JobCategory"("JobName","CategoryName") VALUES ('Hero', '輸出');
 
-    -- N 個玩家 + 各一支角色，discordId = 9000001..9000000+N，characterId = 'load1'..'loadN'
+    -- N 個玩家 + 各一支角色，discordId = 9000001..9000000+N，characterId = 'l1'..'lN'（Id 上限 5，前綴縮成 1 字）
     -- 全部「未報名」——報名這個動作留給 k6 去做，才是真的在測併發寫入路徑。
     FOR i IN 1..v_n LOOP
         v_discord_id := 9000000 + i;
         INSERT INTO "Player"("DiscordId","DiscordName","Role")
         VALUES (v_discord_id, 'Load' || i, 'user');
         INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower")
-        VALUES ('load' || i, v_discord_id, 'CLoad' || i, 'Hero', 900 + i);
+        VALUES ('l' || i, v_discord_id, 'CLoad' || i, 'Hero', 900 + i);
     END LOOP;
 
     RAISE NOTICE 'Load seed 就緒 → periodId=%, bossId=%, weekday=%, players=1..%（discordId 9000001..%)',

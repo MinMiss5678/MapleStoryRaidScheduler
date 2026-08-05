@@ -26,11 +26,11 @@ public class CharacterQueryIntegrationTests
             new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 4, 8, 0, 0, 0, TimeSpan.Zero));
         await Seed.PlayerAsync(cs, 1002, "P1");
-        await Seed.CharacterAsync(cs, "ch1002", 1002, "C1", "Hero", 990);
+        await Seed.CharacterAsync(cs, "c1002", 1002, "C1", "Hero", 990);
         // 同角色當期報兩隻王：3 + 2 場
         var reg = await Seed.PlayerRegisterAsync(cs, 1002, periodId);
-        await Seed.CharacterRegisterAsync(cs, reg, "ch1002", boss1, 3);
-        await Seed.CharacterRegisterAsync(cs, reg, "ch1002", boss2, 2);
+        await Seed.CharacterRegisterAsync(cs, reg, "c1002", boss1, 3);
+        await Seed.CharacterRegisterAsync(cs, reg, "c1002", boss2, 2);
 
         var ctx = _fx.CreateDbContext();
         var query = new CharacterQuery(ctx, new PeriodQuery(ctx));
@@ -39,7 +39,7 @@ public class CharacterQueryIntegrationTests
         var all = (await query.GetWithDiscordNameAsync(1002)).ToList();
         Assert.Single(all);
         var c = all[0];
-        Assert.Equal("ch1002", c.Id);
+        Assert.Equal("c1002", c.Id);
         Assert.Equal("P1", c.DiscordName);              // Player LEFT JOIN
         Assert.Equal(5, c.Rounds);                       // CTE SUM 聚合
         Assert.Contains(periodId, c.RegisteredPeriodIds); // ARRAY_AGG DISTINCT

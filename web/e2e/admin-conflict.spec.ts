@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { loginAs } from './helpers/auth';
 
 // Phase C：管理員存檔時，隊伍已被別的流程異動或消失（TeamSlot 併發控制計畫）。
-// 前置：seed-e2e 的 E2E王4 只有 P-Dummy2(ch4002) 一人在自動隊裡（最後一人）。
+// 前置：seed-e2e 的 E2E王4 只有 P-Dummy2(c4002) 一人在自動隊裡（最後一人）。
 // 用獨立王/隊（E2E王4），不可跟補位測試共用的 E2E王2 混用——這裡會把隊的最後一人
 // 移除觸發連帶砍團，若跟 fill.spec.ts 共用同一隊，平行測試會互踩（見 seed-e2e.sql 註解）。
 // 情境：admin 頁面載入後（本地快取還顯示 P-Dummy2 在隊），直接用 API 把 P-Dummy2 移除

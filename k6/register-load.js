@@ -2,7 +2,7 @@
 // 真正對 TeamSlotAutoAssignService 的 classId 1001 advisory lock 製造併發。
 //
 // 前置：db/seed-load.sql 已跑過（N 個未報名玩家，discordId 9000001..9000000+N，
-// characterId load1..loadN；TRUNCATE...RESTART IDENTITY 之後 periodId/bossId 固定是 1）。
+// characterId l1..lN；TRUNCATE...RESTART IDENTITY 之後 periodId/bossId 固定是 1）。
 //
 // 跑法：
 //   docker run --rm -v "$(pwd)/k6:/scripts" -e BASE_URL=http://host.docker.internal:5230 \
@@ -49,7 +49,7 @@ function uuidv4() {
 export default function () {
   const idx = OFFSET + __VU; // per-vu-iterations：__VU 是 1..VUS，+OFFSET 對應一個已 seed 好的玩家
   const discordId = 9000000 + idx;
-  const characterId = 'load' + idx;
+  const characterId = 'l' + idx;
 
   // 1) test-login：非 Production 專用後門，直接鑄該玩家的 jwtToken cookie。
   // IdempotencyMiddleware 對所有 POST 生效（不分業務端點），login 也要帶合法 UUID key。

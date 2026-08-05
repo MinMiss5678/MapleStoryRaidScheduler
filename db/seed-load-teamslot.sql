@@ -44,13 +44,13 @@ BEGIN
         INSERT INTO "TeamSlotCharacter"("TeamSlotId","Job") VALUES (v_team_id, '-');
     END LOOP;
 
-    -- N 個玩家 + 各一支角色，discordId = 9100001..9100000+N，characterId = 'edit1'..'editN'
+    -- N 個玩家 + 各一支角色，discordId = 9100001..9100000+N，characterId = 'e1'..'eN'（Id 上限 5，前綴縮成 1 字）
     FOR i IN 1..v_n LOOP
         v_discord_id := 9100000 + i;
         INSERT INTO "Player"("DiscordId","DiscordName","Role")
         VALUES (v_discord_id, 'Edit' || i, 'user');
         INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower")
-        VALUES ('edit' || i, v_discord_id, 'CEdit' || i, 'Hero', 900 + i);
+        VALUES ('e' || i, v_discord_id, 'CEdit' || i, 'Hero', 900 + i);
     END LOOP;
 
     RAISE NOTICE 'Load-teamslot seed 就緒 → periodId=%, bossId=%, teamSlotId=%, 空位=1..%（discordId 9100001..%)',
