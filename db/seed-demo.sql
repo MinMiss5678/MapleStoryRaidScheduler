@@ -62,7 +62,7 @@ BEGIN
     -- 12 個池玩家：角色 + 報名 + 可用時段（明天 20:00-22:00、各 1 場）
     FOR i IN 1..12 LOOP
         v_did := 1001 + i;              -- 1002..1013
-        v_cid := 'ch' || v_did;
+        v_cid := 'c' || v_did;          -- c1002..c1013（Id 上限 5）
         INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (v_did, 'P' || i, 'user');
         INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower")
         VALUES (v_cid, v_did, 'C' || i, jobs[i], 1000 - i * 10);
@@ -81,8 +81,8 @@ BEGIN
     INSERT INTO "TeamSlotCharacter"
         ("TeamSlotId","DiscordId","DiscordName","CharacterId","CharacterName","Job","AttackPower","Rounds","IsManual")
     VALUES
-        (v_auto_team, 1003, 'P2', 'ch1003', 'C2', jobs[2], 980, 1, false),
-        (v_auto_team, 1004, 'P3', 'ch1004', 'C3', jobs[3], 970, 1, false);
+        (v_auto_team, 1003, 'P2', 'c1003', 'C2', jobs[2], 980, 1, false),
+        (v_auto_team, 1004, 'P3', 'c1004', 'C3', jobs[3], 970, 1, false);
 
     -- 既有【保留隊】(Source=auto 但含補位 IsManual=true 的 P1)：明天 20:00、缺 5 人
     --   → 重排時整隊保留、自動補滿 5 個空位（補入者 IsManual=false）
@@ -92,7 +92,7 @@ BEGIN
     INSERT INTO "TeamSlotCharacter"
         ("TeamSlotId","DiscordId","DiscordName","CharacterId","CharacterName","Job","AttackPower","Rounds","IsManual")
     VALUES
-        (v_prot_team, 1002, 'P1', 'ch1002', 'C1', jobs[1], 990, 1, true);
+        (v_prot_team, 1002, 'P1', 'c1002', 'C1', jobs[1], 990, 1, true);
 
     -- Admin session（SessionExpiry = 我的政策 30 天；Expiry 是 access token metadata）
     INSERT INTO "Session"("SessionId","DiscordId","AccessToken","RefreshToken","Expiry","SessionExpiry")

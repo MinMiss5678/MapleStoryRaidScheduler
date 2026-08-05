@@ -55,7 +55,7 @@ public class TeamSlotServiceFillTests
                 SlotDateTime = DateTimeOffset.UtcNow,
                 DiscordId = 3001,
                 DiscordName = "P-Fill",
-                CharacterId = "ch3001",
+                CharacterId = "c3001",
                 CharacterName = "CFill",
                 Job = "Hero",
                 AttackPower = 940
@@ -77,7 +77,7 @@ public class TeamSlotServiceFillTests
             BossId = bossId,
             Characters = new List<TeamSlotCharacter>
             {
-                new TeamSlotCharacter { Id = 5, DiscordId = 4001, DiscordName = "P-Dummy", Job = "Hero", CharacterId = "ch4001" }
+                new TeamSlotCharacter { Id = 5, DiscordId = 4001, DiscordName = "P-Dummy", Job = "Hero", CharacterId = "c4001" }
             }
         };
         _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId)).ReturnsAsync(existingTeam);
@@ -88,7 +88,7 @@ public class TeamSlotServiceFillTests
         {
             TeamSlotId = teamSlotId,
             DiscordName = "P-Fill",
-            CharacterId = "ch3001",
+            CharacterId = "c3001",
             CharacterName = "CFill",
             Job = "Hero",
             AttackPower = 940,
@@ -101,7 +101,7 @@ public class TeamSlotServiceFillTests
 
         _teamSlotCharacterRepositoryMock.Verify(r => r.CreateAsync(It.Is<TeamSlotCharacter>(c =>
             c.DiscordId == currentDiscordId &&
-            c.CharacterId == "ch3001" &&
+            c.CharacterId == "c3001" &&
             c.TeamSlotId == teamSlotId &&
             c.DiscordName == "P-Fill" &&
             c.IsManual)), Times.Once);

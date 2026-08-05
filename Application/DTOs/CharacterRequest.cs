@@ -7,7 +7,7 @@ namespace Application.DTOs;
 public class CharacterRequest
 {
     [Required]
-    [MaxLength(50)]
+    [MaxLength(5)] // 角色代碼＝遊戲內 ID，長度上限 5（前端 CharacterForm 角色代碼欄亦 maxLength=5）
     public string Id { get; set; } = string.Empty;
 
     public ulong DiscordId { get; set; } // 由 Controller 從 Claims 注入，不驗證
