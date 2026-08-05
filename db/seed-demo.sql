@@ -94,9 +94,9 @@ BEGIN
     VALUES
         (v_prot_team, 1002, 'P1', 'c1002', 'C1', jobs[1], 990, 1, true);
 
-    -- Admin session（SessionExpiry = 我的政策 30 天；Expiry 是 access token metadata）
-    INSERT INTO "Session"("SessionId","DiscordId","AccessToken","RefreshToken","Expiry","SessionExpiry")
-    VALUES ('demo-admin-session', 1001, '', '', now() + interval '30 days', now() + interval '30 days');
+    -- Admin session（SessionExpiry = 我的政策 30 天；AccessToken/RefreshToken/Expiry 已於 000006 移除）
+    INSERT INTO "Session"("SessionId","DiscordId","SessionExpiry")
+    VALUES ('demo-admin-session', 1001, now() + interval '30 days');
 
     RAISE NOTICE 'DEMO 就緒 → periodId=%, bossId=%, templateId=%, 保留隊 slot=%',
         v_period_id, v_boss_id, v_template_id, v_slot_ts;
