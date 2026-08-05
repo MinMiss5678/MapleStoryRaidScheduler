@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Npgsql;
 using Presentation.WebApi.Middleware;
 using Xunit;
 
@@ -95,5 +96,27 @@ public class ExceptionHandlerMiddlewareTests
     {
         var (_, problem) = await RunWith(new BusinessException("庫存不足"), Environments.Production);
         Assert.Equal("庫存不足", problem!.Detail); // 4xx 是可安全外露的業務訊息
+    }
+
+    [Fact]
+    public async Task PostgresException_UniqueViolation_對映_409_且不外洩DB訊息()
+    {
+        // 並發 race 的 unique 違反是預期結果（非 bug）→ 409；且不回原始 DB 訊息（避免洩漏 constraint 名）
+        var ex = new PostgresException("duplicate key value violates unique constraint \"pk_x\"",
+            "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation);
+        var (status, problem) = await RunWith(ex, Environments.Production);
+        Assert.Equal(StatusCodes.Status409Conflict, status);
+        Assert.Equal("發生併發衝突，請稍後重試。", problem!.Detail);
+    }
+
+    [Fact]
+    public async Task PostgresException_其他約束違反_維持_500_且隱藏細節()
+    {
+        // FK/check/not-null/length 等應被 app 層先擋；到 DB 即 bug → 維持 500 + 告警 + 隱藏細節
+        var ex = new PostgresException("insert violates foreign key constraint \"fk_x\"",
+            "ERROR", "ERROR", PostgresErrorCodes.ForeignKeyViolation);
+        var (status, problem) = await RunWith(ex, Environments.Production);
+        Assert.Equal(StatusCodes.Status500InternalServerError, status);
+        Assert.Null(problem!.Detail);
     }
 }
