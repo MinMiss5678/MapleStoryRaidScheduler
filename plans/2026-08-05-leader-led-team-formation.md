@@ -48,6 +48,7 @@
   - `ApplyAsync`（玩家申請 → `Applied`，Push）
   - `ApproveAsync` / `RejectAsync`（隊長審核，Push；approve→`Confirmed`）
 - **權限/狀態機**：只有隊長能審核/挑人、只有本人能申請/退出；狀態轉移守 `HasRoom`（不超 `RequireMembers`）不變式，沿用聚合守法。
+- **接手技術債（自 validation-layering 延後至此）**：現行 `TeamSlotService.UpdateAsync` 是 god method——同時做 建/改/刪隊＋加/改/刪成員，且用 `bool isAdmin` 當角色開關、授權判斷散在每個 mutation 點（`if(!isAdmin)…` ×5+）。leader-led 把授權主體從 `isAdmin` 換成「隊長／申請者／admin」時本就要重寫這些分支，屆時一併：(1) 建隊分支（`Id<=0`）抽成獨立 `CreateTeamAsync`（含其 FK 存在性檢查〔Boss/Period/Template〕），(2) 授權集中到狀態機/服務入口、不再散在迴圈內。**現在刻意不先重構**（避免替即將被換掉的 code 拋光）。另補：admin 加成員的 `TeamSlotCharacter.CharacterId` 目前無存在性檢查（壞 id→500），此處一併收（需 by-id 角色存在查詢）。見 `plans/2026-08-06-validation-layering.md` §5.2。
 
 ## 5. API（演化現有 `TeamSlotController`）
 
