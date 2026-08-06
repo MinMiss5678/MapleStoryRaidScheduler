@@ -6,8 +6,9 @@ namespace Domain.Entities;
 /// </summary>
 public static class TeamSlotSource
 {
-    public const string Auto = "auto";   // 玩家報名時系統自動建立
-    public const string Admin = "admin"; // 管理員手動開團 / 批次重排
+    public const string Auto = "auto";     // 玩家報名時系統自動建立（leader-led contract 後退場）
+    public const string Admin = "admin";   // 管理員手動開團 / 批次重排
+    public const string Leader = "leader"; // 隊長主導開團（leader-led）
 }
 
 /// <summary>

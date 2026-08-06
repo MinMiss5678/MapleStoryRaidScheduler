@@ -11,10 +11,24 @@ namespace Presentation.WebApi.Controller;
 public class TeamSlotController : ControllerBase
 {
     private readonly ITeamSlotService _teamSlotService;
+    private readonly ITeamLeaderService _teamLeaderService;
 
-    public TeamSlotController(ITeamSlotService teamSlotService)
+    public TeamSlotController(ITeamSlotService teamSlotService, ITeamLeaderService teamLeaderService)
     {
         _teamSlotService = teamSlotService;
+        _teamLeaderService = teamLeaderService;
+    }
+
+    // 隊長開隊 + 條件（leader-led，§5「不分權」→ 任何登入者可開隊）。LeaderDiscordId 用登入身分、不信任 client。
+    [HttpPost]
+    public async Task<IActionResult> CreateTeamAsync([FromBody] CreateTeamCommand command)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        command.LeaderDiscordId = discordId;
+        var teamSlotId = await _teamLeaderService.CreateTeamAsync(command);
+        return Ok(new { teamSlotId });
     }
 
     [HttpGet]

@@ -22,6 +22,11 @@ public class TeamSlotRepository : ITeamSlotRepository
             .Set(x => x.SlotDateTime, teamSlot.SlotDateTime.ToUniversalTime())
             .Set(x => x.Source, teamSlot.Source)
             .Set(x => x.TemplateId, teamSlot.TemplateId)
+            // leader-led 新欄：舊 auto-assign 路徑不帶（PeriodId=0/其餘 null）→ 寫 NULL、不變行為；
+            // PeriodId 是 Period FK，0 會 FK 違反，故 0 一律轉 NULL（只有 leader 開隊帶真值）。
+            .Set(x => x.PeriodId, teamSlot.PeriodId > 0 ? (int?)teamSlot.PeriodId : null)
+            .Set(x => x.LeaderDiscordId, teamSlot.LeaderDiscordId.HasValue ? (long?)teamSlot.LeaderDiscordId.Value : null)
+            .Set(x => x.Description, teamSlot.Description)
             .ReturnId();
 
         return await _dbContext.ExecuteScalarAsync(sql);
