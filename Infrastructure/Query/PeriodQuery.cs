@@ -28,8 +28,13 @@ public class PeriodQuery : IPeriodQuery
         var sql = new QueryBuilder();
         sql.Select<PeriodDbModel>(x => new { x.Id })
             .From<PeriodDbModel>()
-            .Where<PeriodDbModel>(x => x.StartDate <= targetDate && x.EndDate >= targetDate);
+            .Where<PeriodDbModel>(x => x.StartDate <= targetDate && x.EndDate >= targetDate)
+            // 可能有多個 period 涵蓋同一日期（rolling-week 相鄰 period 邊界重疊、或環境殘留舊 period）：
+            // 取 StartDate 最新的那個當「當前」，與 GetActivePeriodAsync 慣例一致，且避免 Single 撞多筆炸 500。
+            .OrderByDescending<PeriodDbModel>(x => x.StartDate)
+            .Limit(1);
 
+        // 已 Limit(1) → 至多一列，QuerySingleOrDefault 安全（不會再撞多筆）。
         var periodId = await _dbContext.QuerySingleOrDefaultAsync<int?>(sql);
         return periodId ?? 0;
     }
