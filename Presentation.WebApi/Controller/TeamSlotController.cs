@@ -41,6 +41,38 @@ public class TeamSlotController : ControllerBase
         return Ok(await _teamLeaderService.GetCandidatesAsync(id));
     }
 
+    // Pull：隊長邀請候選（→Invited）。只有隊長本人可邀。
+    [HttpPost("{id:int}/Invitations")]
+    public async Task<IActionResult> InviteAsync(int id, [FromBody] InviteMemberRequest request)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        await _teamLeaderService.InviteMemberAsync(id, request.CharacterId, discordId);
+        return Ok();
+    }
+
+    // Pull：玩家回應自己收到的邀請 accept（→Confirmed）/ decline（→Rejected）。
+    [HttpPut("{id:int}/Invitations/{memberId:int}")]
+    public async Task<IActionResult> RespondInvitationAsync(int id, int memberId, [FromBody] InvitationActionRequest request)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        switch (request.Action)
+        {
+            case "accept":
+                await _teamLeaderService.AcceptInviteAsync(memberId, discordId);
+                break;
+            case "decline":
+                await _teamLeaderService.DeclineInviteAsync(memberId, discordId);
+                break;
+            default:
+                return BadRequest(new { error = "InvalidAction" });
+        }
+        return Ok();
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAsync([FromQuery] int bossId)
     {

@@ -27,8 +27,69 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
             Job = teamSlot.Job,
             AttackPower = teamSlot.AttackPower,
             Rounds = teamSlot.Rounds,
-            IsManual = teamSlot.IsManual
+            IsManual = teamSlot.IsManual,
+            // leader-led：舊路徑（fill/auto-assign）不設 → 預設 Confirmed / SlotDateTime=null（不變行為）；
+            // leader 邀請設 Invited + 隊時間（跨隊重疊 unique 用）。
+            Status = teamSlot.Status,
+            SlotDateTime = teamSlot.SlotDateTime
         });
+    }
+
+    /// <summary>某隊已 Confirmed 的真實成員數（排除 vacancy 哨兵 DiscordId=0）——leader accept 的容量把關。</summary>
+    public async Task<int> CountConfirmedAsync(int teamSlotId)
+    {
+        const string sql = """
+            SELECT COUNT(*) FROM "TeamSlotCharacter"
+            WHERE "TeamSlotId" = @teamSlotId AND "Status" = 'Confirmed' AND "DiscordId" <> 0;
+            """;
+        return (await _dbContext.QueryAsync<int>(sql, new { teamSlotId })).FirstOrDefault();
+    }
+
+    /// <summary>取單一成員列（含 xmin 版本），供 accept/decline 狀態轉移。</summary>
+    public async Task<TeamSlotCharacter?> GetByIdAsync(int id)
+    {
+        const string sql = """
+            SELECT "Id" AS "Id", "TeamSlotId" AS "TeamSlotId", "DiscordId" AS "DiscordId",
+                   "DiscordName" AS "DiscordName", "CharacterId" AS "CharacterId", "Job" AS "Job",
+                   "Status" AS "Status", xmin::text AS "Version"
+            FROM "TeamSlotCharacter" WHERE "Id" = @id;
+            """;
+        var row = (await _dbContext.QueryAsync<MemberRow>(sql, new { id })).FirstOrDefault();
+        if (row == null) return null;
+        return new TeamSlotCharacter
+        {
+            Id = row.Id,
+            TeamSlotId = row.TeamSlotId,
+            DiscordId = (ulong)row.DiscordId,
+            DiscordName = row.DiscordName,
+            CharacterId = row.CharacterId,
+            Job = row.Job,
+            Status = row.Status,
+            Version = row.Version
+        };
+    }
+
+    /// <summary>樂觀鎖（xmin）改狀態——accept（Invited→Confirmed）/ decline（→Rejected）。false = 版本對不上。</summary>
+    public async Task<bool> UpdateStatusAsync(int id, string status, string version)
+    {
+        int? memberId = id;  // 用 int? 區域變數，避免 int→int? 的 Convert 節點讓 SqlExpressionVisitor 掛掉
+        var sql = new UpdateBuilder<TeamSlotCharacterDbModel>()
+            .Set(x => x.Status, status)
+            .Where(x => x.Id == memberId)
+            .WhereRaw("xmin = @version::xid", new { version });
+        return await _dbContext.ExecuteAsync(sql) > 0;
+    }
+
+    private class MemberRow
+    {
+        public int Id { get; set; }
+        public int TeamSlotId { get; set; }
+        public long DiscordId { get; set; }
+        public string DiscordName { get; set; } = "";
+        public string? CharacterId { get; set; }
+        public string Job { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string Version { get; set; } = "";
     }
 
     public async Task DeleteByTeamSlotIdAsync(int teamSlotId)

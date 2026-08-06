@@ -46,7 +46,7 @@ public class TeamSlotRepository : ITeamSlotRepository
         // 原本是「查 TeamSlot」+「查 Characters」兩次往返，合併成一次 LEFT JOIN：
         // 併發控制迴圈裡每個既有隊伍都會呼叫一次，逐隊各打兩次是可避免的 N+1（見 architecture.md）。
         var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId })
+            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId, x.LeaderDiscordId })
             .Select<TeamSlotCharacterDbModel>(x => new
             {
                 CharacterRowId = x.Id,
@@ -92,6 +92,7 @@ public class TeamSlotRepository : ITeamSlotRepository
             SlotDateTime = first.SlotDateTime,
             Source = first.Source,
             TemplateId = first.TemplateId,
+            LeaderDiscordId = first.LeaderDiscordId.HasValue ? (ulong?)first.LeaderDiscordId.Value : null,
             Characters = characters
         };
     }
@@ -103,6 +104,7 @@ public class TeamSlotRepository : ITeamSlotRepository
         public DateTimeOffset SlotDateTime { get; set; }
         public string Source { get; set; } = "";
         public int? TemplateId { get; set; }
+        public long? LeaderDiscordId { get; set; }
         public int CharacterRowId { get; set; }
         public long DiscordId { get; set; }
         public string? DiscordName { get; set; }

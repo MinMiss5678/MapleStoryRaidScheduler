@@ -15,6 +15,9 @@ public class TeamLeaderServiceTests
     private readonly Mock<ITeamSlotRepository> _teamSlotRepositoryMock = new();
     private readonly Mock<ITeamSlotRequirementRepository> _requirementRepositoryMock = new();
     private readonly Mock<ITeamCandidateQuery> _candidateQueryMock = new();
+    private readonly Mock<ITeamSlotCharacterRepository> _memberRepositoryMock = new();
+    private readonly Mock<ICharacterQuery> _characterQueryMock = new();
+    private readonly Mock<IRegistrationLock> _registrationLockMock = new();
     private readonly TeamLeaderService _service;
 
     public TeamLeaderServiceTests()
@@ -24,7 +27,10 @@ public class TeamLeaderServiceTests
             _periodQueryMock.Object,
             _teamSlotRepositoryMock.Object,
             _requirementRepositoryMock.Object,
-            _candidateQueryMock.Object);
+            _candidateQueryMock.Object,
+            _memberRepositoryMock.Object,
+            _characterQueryMock.Object,
+            _registrationLockMock.Object);
     }
 
     private CreateTeamCommand ValidCommand() => new()
