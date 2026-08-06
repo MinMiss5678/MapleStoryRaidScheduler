@@ -28,7 +28,10 @@ public class TeamLeaderServiceIntegrationTests
             new PeriodQuery(db),
             new TeamSlotRepository(db),
             new TeamSlotRequirementRepository(db),
-            new TeamCandidateQuery(db));
+            new TeamCandidateQuery(db),
+            new TeamSlotCharacterRepository(db),
+            new CharacterQuery(db, new PeriodQuery(db)),
+            new RegistrationLock(db));
     }
 
     [Fact]
@@ -126,6 +129,109 @@ public class TeamLeaderServiceIntegrationTests
         Assert.Equal("箭神", c.Job);
         Assert.Equal(950, c.AttackPower);
         Assert.Equal(2, c.BossClearCount);
+    }
+
+    [Fact]
+    public async Task Invite_Then_Accept_ConfirmsMember()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs, requireMembers: 6);
+        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        await Seed.PlayerAsync(cs, 101, "P101");
+        await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
+
+        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        {
+            LeaderDiscordId = 999, BossId = bossId, SlotDateTime = slot,
+            Requirements = [ new CreateTeamRequirementDto { Count = 1,
+                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
+        });
+
+        await CreateService().InviteMemberAsync(teamId, "archer", leaderDiscordId: 999);
+        var memberId = await GetMemberIdAsync(cs, teamId, "archer");
+
+        await CreateService().AcceptInviteAsync(memberId, currentDiscordId: 101);
+
+        Assert.Equal(1, await new TeamSlotCharacterRepository(_fx.CreateDbContext()).CountConfirmedAsync(teamId));
+        Assert.Equal("Confirmed", await StatusOfAsync(cs, memberId));
+    }
+
+    [Fact]
+    public async Task Accept_SecondOverlappingTeam_ViolatesCrossTeamUnique()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs, requireMembers: 6);
+        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        await Seed.PlayerAsync(cs, 101, "P101");
+        await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
+
+        // 兩隊同一時段（跨隊重疊）
+        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        CreateTeamCommand Cmd() => new() { LeaderDiscordId = 999, BossId = bossId, SlotDateTime = slot,
+            Requirements = [ new CreateTeamRequirementDto { Count = 1,
+                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ] };
+        var teamA = await CreateService().CreateTeamAsync(Cmd());
+        var teamB = await CreateService().CreateTeamAsync(Cmd());
+
+        await CreateService().InviteMemberAsync(teamA, "archer", 999);
+        await CreateService().InviteMemberAsync(teamB, "archer", 999);
+        var mA = await GetMemberIdAsync(cs, teamA, "archer");
+        var mB = await GetMemberIdAsync(cs, teamB, "archer");
+
+        await CreateService().AcceptInviteAsync(mA, 101);   // A → Confirmed
+        // 接受 B（同玩家同時段）→ uq_tsc_confirmed_overlap 觸發 23505（middleware 會轉 409）
+        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => CreateService().AcceptInviteAsync(mB, 101));
+        Assert.Equal("23505", ex.SqlState);
+    }
+
+    [Fact]
+    public async Task DuplicateInvite_SameCharacterSameTeam_ViolatesActiveMembershipUnique()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs, requireMembers: 6);
+        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        await Seed.PlayerAsync(cs, 101, "P101");
+        await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
+
+        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        {
+            LeaderDiscordId = 999, BossId = bossId, SlotDateTime = slot,
+            Requirements = [ new CreateTeamRequirementDto { Count = 1,
+                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
+        });
+
+        await CreateService().InviteMemberAsync(teamId, "archer", 999);
+        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(
+            () => CreateService().InviteMemberAsync(teamId, "archer", 999));
+        Assert.Equal("23505", ex.SqlState);
+    }
+
+    private static async Task<int> GetMemberIdAsync(string cs, int teamSlotId, string charId)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        return await conn.QuerySingleAsync<int>(
+            """SELECT "Id" FROM "TeamSlotCharacter" WHERE "TeamSlotId"=@teamSlotId AND "CharacterId"=@charId;""",
+            new { teamSlotId, charId });
+    }
+
+    private static async Task<string> StatusOfAsync(string cs, int memberId)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        return await conn.QuerySingleAsync<string>(
+            """SELECT "Status" FROM "TeamSlotCharacter" WHERE "Id"=@memberId;""", new { memberId });
     }
 
     private async Task SeedCandidate(string cs, int periodId, int bossId, long discordId, string charId,

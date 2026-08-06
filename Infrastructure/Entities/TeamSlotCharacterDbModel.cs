@@ -18,4 +18,6 @@ public class TeamSlotCharacterDbModel
     public int AttackPower { get; set; }
     public int Rounds { get; set; }
     public bool IsManual { get; set; }
+    public string Status { get; set; } = "Confirmed";      // leader-led（000009）：入隊狀態機
+    public DateTimeOffset? SlotDateTime { get; set; }        // leader-led（000011）：跨隊重疊 unique 用
 }

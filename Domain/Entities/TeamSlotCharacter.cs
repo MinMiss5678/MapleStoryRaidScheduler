@@ -21,6 +21,12 @@ public class TeamSlotCharacter
     /// </summary>
     public string Status { get; set; } = TeamSlotMemberStatus.Confirmed;
 
+    /// <summary>
+    /// 打王時刻的去正規化副本（leader-led，migration 000011）：用於跨隊時段重疊的 DB unique
+    /// （Postgres unique 不能跨表，故複製一份；snapshot 語意）。邀請/開隊時由隊時間填；舊 auto-assign 路徑不填（null）。
+    /// </summary>
+    public DateTimeOffset? SlotDateTime { get; set; }
+
     /// <summary>樂觀鎖版本（Postgres xmin，轉字串）。更新時比對，對不上代表這期間被別的流程動過。</summary>
     public string? Version { get; set; }
 }
