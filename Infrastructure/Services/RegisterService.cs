@@ -14,7 +14,6 @@ public class RegisterService : IRegisterService
     private readonly IPlayerRegisterRepository _playerRegisterRepository;
     private readonly ICharacterRegisterRepository _characterRegisterRepository;
     private readonly IPlayerAvailabilityRepository _playerAvailabilityRepository;
-    private readonly ITeamSlotAutoAssignService _autoAssignService;
     private readonly ITeamSlotCharacterRepository _teamSlotCharacterRepository;
     private readonly ISystemConfigService _systemConfigService;
     private readonly IBossRepository _bossRepository;
@@ -26,7 +25,6 @@ public class RegisterService : IRegisterService
         ICharacterRegisterRepository characterRegisterRepository,
         IPlayerAvailabilityRepository playerAvailabilityRepository,
         ITeamSlotCharacterRepository teamSlotCharacterRepository,
-        ITeamSlotAutoAssignService autoAssignService,
         ISystemConfigService systemConfigService,
         IBossRepository bossRepository,
         ICharacterQuery characterQuery)
@@ -35,7 +33,6 @@ public class RegisterService : IRegisterService
         _playerRegisterRepository = playerRegisterRepository;
         _characterRegisterRepository = characterRegisterRepository;
         _playerAvailabilityRepository = playerAvailabilityRepository;
-        _autoAssignService = autoAssignService;
         _teamSlotCharacterRepository = teamSlotCharacterRepository;
         _systemConfigService = systemConfigService;
         _bossRepository = bossRepository;
@@ -124,7 +121,8 @@ public class RegisterService : IRegisterService
             await _characterRegisterRepository.CreateAsync(characterRegister);
         }
 
-        await _autoAssignService.AutoAssignAsync(register);
+        // leader-led（§7）：報名不再觸發自動排團——報名 = 只把角色+時段放進候選池，
+        // 由隊長開隊後對候選池挑人（Pull）。自動排團引擎降級為隊長 auto-fill（Phase 3）。
     }
 
     public async Task UpdateAsync(RegisterUpdateCommand command)

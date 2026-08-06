@@ -15,7 +15,6 @@ public class RegisterServiceTests
     private readonly Mock<IPlayerRegisterRepository> _playerRegisterRepositoryMock;
     private readonly Mock<ICharacterRegisterRepository> _characterRegisterRepositoryMock;
     private readonly Mock<IPlayerAvailabilityRepository> _playerAvailabilityRepositoryMock;
-    private readonly Mock<ITeamSlotAutoAssignService> _autoAssignServiceMock;
     private readonly Mock<ISystemConfigService> _systemConfigServiceMock;
     private readonly Mock<IBossRepository> _bossRepositoryMock;
     private readonly Mock<ICharacterQuery> _characterQueryMock;
@@ -27,7 +26,6 @@ public class RegisterServiceTests
         _playerRegisterRepositoryMock = new Mock<IPlayerRegisterRepository>();
         _characterRegisterRepositoryMock = new Mock<ICharacterRegisterRepository>();
         _playerAvailabilityRepositoryMock = new Mock<IPlayerAvailabilityRepository>();
-        _autoAssignServiceMock = new Mock<ITeamSlotAutoAssignService>();
         _systemConfigServiceMock = new Mock<ISystemConfigService>();
         _bossRepositoryMock = new Mock<IBossRepository>();
         _bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>());
@@ -41,7 +39,6 @@ public class RegisterServiceTests
             _characterRegisterRepositoryMock.Object,
             _playerAvailabilityRepositoryMock.Object,
             new Mock<ITeamSlotCharacterRepository>().Object,
-            _autoAssignServiceMock.Object,
             _systemConfigServiceMock.Object,
             _bossRepositoryMock.Object,
             _characterQueryMock.Object
@@ -113,7 +110,7 @@ public class RegisterServiceTests
         _playerRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<Register>()), Times.Once);
         _playerAvailabilityRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<PlayerAvailability>()), Times.Once);
         _characterRegisterRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<CharacterRegister>()), Times.Once);
-        _autoAssignServiceMock.Verify(t => t.AutoAssignAsync(It.IsAny<Register>()), Times.Once);
+        // leader-led（§7）：報名不再觸發自動排團 → 不呼叫 AutoAssign（此依賴已從 RegisterService 移除）。
     }
 
     [Fact]
