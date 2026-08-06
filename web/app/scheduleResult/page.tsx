@@ -23,7 +23,7 @@ export default function ScheduleResultPage() {
         );
     }, [myCharacters]);
 
-    // 根據過濾條件加載團隊數據
+    // 根據過濾條件載入團隊資料
     useEffect(() => {
         if (bosses.length === 0) return;
 

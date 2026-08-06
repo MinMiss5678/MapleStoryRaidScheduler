@@ -94,7 +94,7 @@
 6. ✅ **好友同組保留**（Q4）：報名選填 group key，候選排序優先同 key。
 7. ✅ **條件用 Level 2（隊長自訂 OR 組合）**：每個需求列＝一組可接受職業（分類一鍵展開成職業快照 ＋ 可單勾特定職業）＋數量＋攻擊下限。篩選＝`Job ∈ 集合`。
 8. ✅ **admin 全期重排降級 → 草稿「建議名單」（B）**：`AutoScheduleWithTemplateAsync` 的全期權威重排 → 降成選用的「**草稿剩餘池**」，只對還沒進任何 `Confirmed` 隊的人**產「建議分組」（不是已存在的隊）**、**絕不覆蓋隊長隊**。底層 `FillTeamFromPool` 引擎**留用**作隊長 per-team auto-fill（見 §7）。
-9. ✅ **不變式：存在的隊一定有召集人**。草稿是「建議名單」，需**有人自願認領、當召集人**才落地成真隊（`Source=leader`、補上 `LeaderDiscordId`）；**沒人認領就不落地**（沒團長＝沒團，符合現實）。→ 不存在無主隊；`admin` + `LeaderDiscordId=null` 僅是「未認領建議」的過渡表示。
+9. ✅ **不變式：存在的隊一定有召集人**。草稿是「建議名單」，需**有人自願認領、當召集人**才實現成真隊（`Source=leader`、補上 `LeaderDiscordId`）；**沒人認領就不成形**（沒團長＝沒團，符合現實）。→ 不存在無主隊；`admin` + `LeaderDiscordId=null` 僅是「未認領建議」的過渡表示。
 10. ✅ **`TeamSlot.Source` 收斂成 `{ leader, admin }`、砍 `auto`**：新模型無 `auto` 產生者。「未認領建議 vs 已成隊」用 `LeaderDiscordId is null` 表達，不進 `Source`。遷移改 CHECK ＋轉舊 `auto` 資料。
 11. ✅ **隱私：PII 最小化、承諾才揭露**。`discordId`／`discordName` 屬敏感（與 `sentry-discordid-hmac` 立場一致）。**未認領建議**只顯示組成（職業/攻擊/時段/角色名），**藏聯絡身分**；**認領後**才把 roster 的 `discordId`/`name` 給召集人；已成隊隊員彼此可見。前提：**認領＝真承諾（掛名負責）**，否則變免費去匿名按鈕。Pull 候選清單同原則（`discordName` 顯示與否見待定 §12）。
 12. ✅ **Pull 候選清單走「更嚴」**：**藏 `discordId` + `discordName`**，只顯示角色名/職業/攻擊/時段——隊長按**能力**挑，不按 Discord 身分挑（擋看身分挑人/盜揪）；身分於 **pick（＝承諾）後**才對召集人顯示。→ 候選查詢的 DTO **不回傳** discord 身分欄位。

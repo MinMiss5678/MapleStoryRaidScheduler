@@ -23,7 +23,7 @@
 
 1. `docker/setup-buildx-action@v3`——GitHub-hosted runner 原生 Docker，不需要像自架 GitLab dind 那樣額外處理 TLS/`network=host`。
 2. 登入 Docker Hub（推映像）；layer cache 用 GitHub Actions 原生快取（`cache-from/cache-to: type=gha`），不需要另外的 registry cache。
-3. **build + push 4 映像**（雙標籤）：`:<short-sha>`（不可變，用來部署/回滾/追溯）＋ `:latest`（給首次部署 `deploy.ps1` / manifest 方便）。backend·frontend 走 GHA layer cache，frontend 用 **prod 目標**（非 e2e 的 `--target dev`）。
+3. **build + push 4 映像**（雙標籤）：`:<short-sha>`（不可變，用來部署/rollback/追溯）＋ `:latest`（給首次部署 `deploy.ps1` / manifest 方便）。backend·frontend 走 GHA layer cache，frontend 用 **prod 目標**（非 e2e 的 `--target dev`）。
 4. **migration**：Job spec immutable → 先 `kubectl delete job migrate`，把映像 `sed` pin 成本次 SHA 再 `apply` → `kubectl wait complete`。
 5. **滾動更新**：Kustomize 宣告式部署——`sed` 把 `k8s/kustomization.yaml` 的 `images.newTag` 換成本次 SHA → `kubectl apply -k k8s`（內建 kustomize，只套三個應用，不碰 secret/db/migrate）→ `rollout status` 逐一等綠。SHA 不可變 → `rollout undo` 能真的退回上一版；`deploy.ps1` 與 CD 走同一份 kustomization → **兩條路徑不漂移**。
 
@@ -32,10 +32,10 @@
 GitHub repo 頁面 → **Actions** 分頁 → 左側選 **Deploy** workflow → 右上 **Run workflow** 按鈕（只能選 `main` 分支）。
 或 CLI：`gh workflow run deploy.yml`。跑之前若 `production` Environment 設了 required reviewers，會先卡在「Waiting」等核准。
 
-## 回滾
+## rollback
 
 ```bash
-kubectl rollout undo deployment/backend -n maple-raid     # 退回上一個 SHA（真回滾，映像不可變）
+kubectl rollout undo deployment/backend -n maple-raid     # 退回上一個 SHA（真rollback，映像不可變）
 kubectl rollout status deployment/backend -n maple-raid
 # 或指定退到某個 SHA：
 kubectl set image deployment/backend backend=minqq/presentation.webapi:<舊SHA> -n maple-raid
@@ -45,7 +45,7 @@ kubectl set image deployment/backend backend=minqq/presentation.webapi:<舊SHA> 
 
 ## 設計說明（常被誤認成坑，其實是刻意設計）
 
-- **`imagePullPolicy` / SHA tag**：`kustomization.yaml` 的 `newTag` committed 值是 `latest`（佔位），部署時 `sed` 成 SHA。SHA 是新 tag → kubelet 沒有 → 一定拉；回滾到舊 SHA 命中節點快取（不可變、正確）。不需額外設 policy。
+- **`imagePullPolicy` / SHA tag**：`kustomization.yaml` 的 `newTag` committed 值是 `latest`（佔位），部署時 `sed` 成 SHA。SHA 是新 tag → kubelet 沒有 → 一定拉；rollback到舊 SHA 命中節點快取（不可變、正確）。不需額外設 policy。
 - **三條路徑一致（無漂移）**：CD 與 `deploy.ps1` 都 `apply -k` 同一份 kustomization（映像 = 當次 git SHA）；`rollout.ps1` 是單一服務快速更新，用 `set image`（重建那一個服務的 SHA）。因映像都 pin git SHA，重跑任一路徑得到的都是該 commit 的版本 → 不會意外打回 `:latest`。
 
 ## 已知坑 / 未決
@@ -97,12 +97,12 @@ SELECT * FROM schema_migrations;   -- version + dirty
 docker build -f db/Dockerfile.migrate -t minqq/migrate:<新SHA> db/ && docker push ...
 # 重跑 migrate Job（up）→ 乾淨套用
 ```
-> 一律**往前修**，不在 prod 跑 `migrate down`——`down.sql` 是開發工具；prod 回滾靠 DB snapshot / PITR。
+> 一律**往前修**，不在 prod 跑 `migrate down`——`down.sql` 是開發工具；prod rollback靠 DB snapshot / PITR。
 
 ## 讓 migration 失敗不致命：向後相容（expand-contract）
 
-真正把「migration 失敗 / 回滾」的殺傷力降到最低的，不是換工具，是**紀律**：
+真正把「migration 失敗 / rollback」的殺傷力降到最低的，不是換工具，是**紀律**：
 
 - **加不刪、不在同一次 deploy 又改又用**：新 schema 讓**舊 code 仍能跑**、新 code 也能跑舊 schema。
 - 破壞性變更拆兩步：先 **expand**（加新欄位 / 表、必要時雙寫）→ 部署新 code、確認穩 → 下一版才 **contract**（刪舊）。
-- 好處：`migrate` 先於 `rollout` 已保護「失敗 → 舊 code + 舊 schema 續跑」；再加向後相容，即使 migration 半套或需回滾，**線上舊 pod 也不會因 schema 對不上而爆**。
+- 好處：`migrate` 先於 `rollout` 已保護「失敗 → 舊 code + 舊 schema 續跑」；再加向後相容，即使 migration 半套或需rollback，**線上舊 pod 也不會因 schema 對不上而爆**。

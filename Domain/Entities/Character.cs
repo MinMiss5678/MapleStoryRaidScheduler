@@ -13,7 +13,7 @@ public class Character
 
     /// <summary>
     /// 楓葉祝福等級（自填，0=無；leader-led，見計畫 §9.18）。Phase 1a：欄位已在 DB（migration 000009，
-    /// DEFAULT 0），此屬性先落地；repo 讀寫映射待 1b/1c 有消費者時再接（維持不改行為）。
+    /// DEFAULT 0），此屬性先實作；repo 讀寫映射待 1b/1c 有消費者時再接（維持不改行為）。
     /// </summary>
     public int MapleBlessingLevel { get; set; }
 }

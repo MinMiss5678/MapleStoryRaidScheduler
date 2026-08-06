@@ -214,7 +214,7 @@ Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL
 | Production 出問題 | PostgreSQL PITR / DB snapshot restore |
 | Schema 寫錯 | 補一版 forward fix migration（`000003_fix_xxx.up.sql`） |
 
-`down.sql` 是開發工具，不是 production rollback 機制。Production 回滾依賴 infrastructure 層（DB snapshot），而非應用層 migration。
+`down.sql` 是開發工具，不是 production rollback 機制。Production rollback 依賴 infrastructure 層（DB snapshot），而非應用層 migration。
 
 ### 7. 設定變更的可靠投遞（Transactional Outbox）
 
@@ -224,7 +224,7 @@ Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL
 
 | 端 | 元件 | 做法 |
 |---|---|---|
-| 寫入 | `IOutbox` / `Outbox` | 用**當前 UoW 的交易** INSERT outbox 列 → 與業務資料**原子提交/回滾**（rollback 無鬼影事件） |
+| 寫入 | `IOutbox` / `Outbox` | 用**當前 UoW 的交易** INSERT outbox 列 → 與業務資料**原子提交/rollback**（無鬼影事件） |
 | 派發 | `OutboxDispatcher`（跑 bot、自開專屬連線） | 輪詢已提交列 → 依 `Type` 派 `IOutboxHandler` → 標 `ProcessedAt` |
 
 寫入端（API）跟派發端（bot）是**兩個獨立行程**，中間沒有直接呼叫，只靠共享 DB 的已提交列銜接——下圖同時畫出正常路徑，跟「handler 執行完、commit 前中斷」的 crash 重送路徑（`OutboxIntegrationTests.CrashBeforeCommit_...` 實測過的情境，不是只推論）：
@@ -864,4 +864,4 @@ flowchart LR
 
 > **PR 閘**：`changes` job 用 `dorny/paths-filter` 判斷這次改動是否只碰文件；純文件時其餘 job 用 `if:` 條件跳過（標 skipped），不是在 `on:` 用 `paths-ignore`——後者會讓 workflow 整個不觸發，required status checks 永遠等不到回報、PR 會卡死。GitHub 把 skipped 視為通過，required checks 照樣滿足。
 > **`main` 分支保護**：required status checks（上述 7 個 job）+ 禁止 force push/刪除 + **`enforce_admins` 開啟**（admin 帳號也一樣得走 PR，不能直接推）。
-> **CI 跟 deploy 是兩條獨立流程**：push 進 `main` 只會重跑一次 `ci.yml`（post-merge 守門，不是 deploy 的前置步驟）；`deploy.yml` 是完全獨立、`workflow_dispatch` 手動觸發、掛 `production` Environment 當核准閘。映像以 git SHA 版本化 → 可追溯、可真回滾（`kubectl rollout undo` 或指定 SHA）。
+> **CI 跟 deploy 是兩條獨立流程**：push 進 `main` 只會重跑一次 `ci.yml`（post-merge 守門，不是 deploy 的前置步驟）；`deploy.yml` 是完全獨立、`workflow_dispatch` 手動觸發、掛 `production` Environment 當核准閘。映像以 git SHA 版本化 → 可追溯、可真 rollback（`kubectl rollout undo` 或指定 SHA）。

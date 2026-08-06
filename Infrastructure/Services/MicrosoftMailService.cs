@@ -26,7 +26,7 @@ public class MicrosoftMailService : IMicrosoftMailService
     {
         var client = _httpClientFactory.CreateClient();
 
-        // 換 access token。注意：Microsoft 可能在回應裡一併發新的 refresh token（輪替），這裡刻意不落地
+        // 換 access token。注意：Microsoft 可能在回應裡一併發新的 refresh token（輪替），這裡刻意不存檔
         // 儲存——低風險的已知限制，真的失效時重跑一次性登入流程換新 refresh token 即可，不影響主功能。
         var tokenResponse = await client.PostAsync(
             $"https://login.microsoftonline.com/{_options.TenantId}/oauth2/v2.0/token",

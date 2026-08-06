@@ -57,7 +57,7 @@ ALTER TABLE "DiscordRoleMapping" ADD COLUMN guild_id BIGINT NOT NULL DEFAULT 0;
 
 ### SqlBuilder 在多公會並發下的效能陷阱
 
-自製 `SqlBuilder` 使用 `ExpressionVisitor` 在每次查詢時重新解析 Lambda 表達式樹。單公會低頻調用沒問題，但多公會並發時：
+自製 `SqlBuilder` 使用 `ExpressionVisitor` 在每次查詢時重新解析 Lambda 表達式樹。單公會低頻呼叫沒問題，但多公會並發時：
 
 **潛在問題**：`SqlExpressionVisitor` 無快取，每次 `Build()` 都是完整的 Reflection 計算。
 
@@ -240,7 +240,7 @@ CREATE TABLE "SystemConfig" (
 
 **1. 極低資源的多租戶設計**
 
-> 採用單 DB + GuildId 邏輯隔離策略，搭配 Dapper 輕量 ORM 與自製型別安全 SqlBuilder，全棧運行於 Lightsail $3.5（512MB RAM）。無 Entity Framework，無 ORM 映射開銷。
+> 採用單 DB + GuildId 邏輯隔離策略，搭配 Dapper 輕量 ORM 與自製型別安全 SqlBuilder，全端運行於 Lightsail $3.5（512MB RAM）。無 Entity Framework，無 ORM 映射開銷。
 
 **2. 事件驅動的身分同步**
 

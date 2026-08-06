@@ -47,7 +47,7 @@
 - **位置**：後端 `Presentation.WebApi/Controller/TeamSlotController.cs:40`
 - **後端代碼**：`var isAdmin = User.IsInRole("admin");`（小寫）
 - **實際 role**：後端儲存 `"Admin"`（大寫），`AuthAppService.LoginAsync:62` 確認 `if (role == "Admin")`
-- **問題**：`ClaimsIdentity.IsInRole()` 大小寫敏感，永遠回傳 `false`，所有使用者（包含 Admin）都被當作一般用戶處理，`TeamSlotService.UpdateAsync` 的 admin 路徑從未被執行
+- **問題**：`ClaimsIdentity.IsInRole()` 大小寫敏感，永遠回傳 `false`，所有使用者（包含 Admin）都被當作一般使用者處理，`TeamSlotService.UpdateAsync` 的 admin 路徑從未被執行
 - **修法**：後端改為 `User.IsInRole("Admin")` 或 `string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase)`
 - **前端影響**：此 bug 修復前，管理員補位功能與一般玩家行為相同（無法設定 `IsManual = true`）
 
