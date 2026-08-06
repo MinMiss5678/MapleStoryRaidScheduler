@@ -31,6 +31,16 @@ public class TeamSlotController : ControllerBase
         return Ok(new { teamSlotId });
     }
 
+    // Pull：某隊符合條件的候選清單（回能力欄、不含 discord 身分，§9.12）。
+    [HttpGet("{id:int}/Candidates")]
+    public async Task<IActionResult> GetCandidatesAsync(int id)
+    {
+        if (!this.TryGetCurrentDiscordId(out _))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetCandidatesAsync(id));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAsync([FromQuery] int bossId)
     {

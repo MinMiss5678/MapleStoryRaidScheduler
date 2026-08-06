@@ -69,6 +69,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITeamSlotRequirementRepository, TeamSlotRequirementRepository>();
         services.AddScoped<ICharacterBossClearRepository, CharacterBossClearRepository>();
         services.AddScoped<ITeamLeaderService, TeamLeaderService>();
+        services.AddScoped<ITeamCandidateQuery, TeamCandidateQuery>();
         services.AddScoped<IRegistrationLock, RegistrationLock>();
         return services;
     }
