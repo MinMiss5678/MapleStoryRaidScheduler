@@ -228,6 +228,71 @@ public class TeamLeaderServiceIntegrationTests
         Assert.Equal("23505", ex.SqlState);
     }
 
+    [Fact]
+    public async Task Apply_Then_Approve_ConfirmsMember()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs, requireMembers: 6);
+        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        await Seed.PlayerAsync(cs, 101, "P101");
+        await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
+
+        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        {
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
+            Requirements = [new CreateTeamRequirementDto { Count = 1, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }]
+        });
+
+        // 玩家申請（用本人角色）→ Applied
+        await CreateService().ApplyAsync(teamId, "archer", applicantDiscordId: 101);
+        var memberId = await GetMemberIdAsync(cs, teamId, "archer");
+        Assert.Equal("Applied", await StatusOfAsync(cs, memberId));
+
+        // 隊長核准 → Confirmed
+        await CreateService().ApproveAsync(memberId, leaderDiscordId: 999);
+        Assert.Equal("Confirmed", await StatusOfAsync(cs, memberId));
+        Assert.Equal(1, await new TeamSlotCharacterRepository(_fx.CreateDbContext()).CountConfirmedAsync(teamId));
+    }
+
+    [Fact]
+    public async Task Apply_Then_Reject_SetsRejected_And_NonLeaderCannotApprove()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs, requireMembers: 6);
+        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        await Seed.PlayerAsync(cs, 101, "P101");
+        await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
+
+        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        {
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
+            Requirements = [new CreateTeamRequirementDto { Count = 1, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }]
+        });
+
+        await CreateService().ApplyAsync(teamId, "archer", 101);
+        var memberId = await GetMemberIdAsync(cs, teamId, "archer");
+
+        // 非隊長（別人）不能核准
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(
+            () => CreateService().ApproveAsync(memberId, leaderDiscordId: 888));
+
+        // 隊長拒絕 → Rejected
+        await CreateService().RejectAsync(memberId, leaderDiscordId: 999);
+        Assert.Equal("Rejected", await StatusOfAsync(cs, memberId));
+    }
+
     private static async Task<int> GetMemberIdAsync(string cs, int teamSlotId, string charId)
     {
         await using var conn = new NpgsqlConnection(cs);

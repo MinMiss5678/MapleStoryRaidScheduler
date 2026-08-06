@@ -159,7 +159,16 @@ public class TeamLeaderService : ITeamLeaderService
         if (member.Status != TeamSlotMemberStatus.Invited)
             throw new BusinessException("此邀請目前無法接受（狀態已變）。");
 
-        // 悲觀鎖（per-team）：取鎖 → 重讀 Confirmed 數 → 檢查容量 → 改狀態。序列化同隊的多方 confirm，防超編。
+        await ConfirmMemberAsync(member);
+    }
+
+    /// <summary>
+    /// 把一筆 Invited/Applied 成員定案成 Confirmed（accept〔玩家〕/ approve〔隊長〕共用）：
+    /// 悲觀鎖（per-team）→ 重讀 Confirmed 數 → 檢查容量 → xmin 改狀態。序列化同隊多方 confirm，防超編；
+    /// 跨隊時段重疊由 uq_tsc_confirmed_overlap → 23505 → ExceptionHandlerMiddleware 轉 409。呼叫端已各自做完授權。
+    /// </summary>
+    private async Task ConfirmMemberAsync(TeamSlotCharacter member)
+    {
         try
         {
             await _registrationLock.AcquireTeamSlotEditLockAsync(member.TeamSlotId);
@@ -175,15 +184,12 @@ public class TeamLeaderService : ITeamLeaderService
 
         var boss = await _bossRepository.GetByIdAsync(team.BossId);
         var capacity = boss?.RequireMembers ?? 6;
-        var confirmed = await _memberRepository.CountConfirmedAsync(member.TeamSlotId);
-        if (confirmed >= capacity)
+        if (await _memberRepository.CountConfirmedAsync(member.TeamSlotId) >= capacity)
             throw new BusinessException("隊伍已滿。");
 
-        // 跨隊時段重疊：改成 Confirmed 使該列進入 uq_tsc_confirmed_overlap；若同玩家同時段已有 Confirmed
-        // → 23505 → ExceptionHandlerMiddleware 轉 409（見 plans/2026-08-06-validation-layering.md §4）。
-        var ok = await _memberRepository.UpdateStatusAsync(memberId, TeamSlotMemberStatus.Confirmed, member.Version!);
+        var ok = await _memberRepository.UpdateStatusAsync(member.Id!.Value, TeamSlotMemberStatus.Confirmed, member.Version!);
         if (!ok)
-            throw new BusinessException("邀請狀態已被更新，請重新整理。");
+            throw new BusinessException("狀態已被更新，請重新整理。");
     }
 
     public async Task DeclineInviteAsync(int memberId, ulong currentDiscordId)
@@ -199,5 +205,68 @@ public class TeamLeaderService : ITeamLeaderService
         var ok = await _memberRepository.UpdateStatusAsync(memberId, TeamSlotMemberStatus.Rejected, member.Version!);
         if (!ok)
             throw new BusinessException("邀請狀態已被更新，請重新整理。");
+    }
+
+    public async Task ApplyAsync(int teamSlotId, string characterId, ulong applicantDiscordId)
+    {
+        var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
+        if (team == null)
+            throw new NotFoundException($"TeamSlot {teamSlotId} not found");
+
+        // 申請須用本人角色（存在 + 擁有權）→ 404；快照角色屬性（同邀請）。
+        var character = await _characterQuery.GetByIdAsync(characterId);
+        if (character == null || character.DiscordId != applicantDiscordId)
+            throw new NotFoundException($"Character {characterId} not found");
+
+        // 重複申請（同隊同人已有 Applied/Invited）由 DB unique uq_tsc_active_membership → 23505 → 409。
+        await _memberRepository.CreateAsync(new TeamSlotCharacter
+        {
+            TeamSlotId = teamSlotId,
+            DiscordId = applicantDiscordId,
+            DiscordName = "",
+            CharacterId = character.Id,
+            CharacterName = character.Name,
+            Job = character.Job,
+            AttackPower = character.AttackPower,
+            Status = TeamSlotMemberStatus.Applied,
+            SlotDateTime = team.SlotDateTime,
+            IsManual = true
+        });
+    }
+
+    public async Task ApproveAsync(int memberId, ulong leaderDiscordId)
+    {
+        var member = await _memberRepository.GetByIdAsync(memberId);
+        if (member == null)
+            throw new NotFoundException($"Application {memberId} not found");
+        if (member.Status != TeamSlotMemberStatus.Applied)
+            throw new BusinessException("此申請目前無法核准（狀態已變）。");
+
+        await EnsureLeaderOwnsTeamAsync(member.TeamSlotId, leaderDiscordId, "只有隊長能核准申請。");
+        await ConfirmMemberAsync(member);
+    }
+
+    public async Task RejectAsync(int memberId, ulong leaderDiscordId)
+    {
+        var member = await _memberRepository.GetByIdAsync(memberId);
+        if (member == null)
+            throw new NotFoundException($"Application {memberId} not found");
+        if (member.Status != TeamSlotMemberStatus.Applied)
+            throw new BusinessException("此申請目前無法拒絕（狀態已變）。");
+
+        await EnsureLeaderOwnsTeamAsync(member.TeamSlotId, leaderDiscordId, "只有隊長能拒絕申請。");
+
+        var ok = await _memberRepository.UpdateStatusAsync(memberId, TeamSlotMemberStatus.Rejected, member.Version!);
+        if (!ok)
+            throw new BusinessException("狀態已被更新，請重新整理。");
+    }
+
+    private async Task EnsureLeaderOwnsTeamAsync(int teamSlotId, ulong leaderDiscordId, string forbiddenMessage)
+    {
+        var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
+        if (team == null)
+            throw new NotFoundException($"TeamSlot {teamSlotId} not found");
+        if (team.LeaderDiscordId != leaderDiscordId)
+            throw new ForbiddenException(forbiddenMessage);
     }
 }

@@ -19,4 +19,13 @@ public interface ITeamLeaderService
 
     /// <summary>玩家拒絕邀請（→Rejected，xmin 樂觀鎖）。</summary>
     Task DeclineInviteAsync(int memberId, ulong currentDiscordId);
+
+    /// <summary>Push：玩家申請入隊（→Applied，須用本人角色）。重複申請由 DB unique 擋成 409。</summary>
+    Task ApplyAsync(int teamSlotId, string characterId, ulong applicantDiscordId);
+
+    /// <summary>Push：隊長核准申請（Applied→Confirmed）：1002 鎖守容量；跨隊時段重疊由 DB unique→409。</summary>
+    Task ApproveAsync(int memberId, ulong leaderDiscordId);
+
+    /// <summary>Push：隊長拒絕申請（→Rejected，xmin 樂觀鎖）。</summary>
+    Task RejectAsync(int memberId, ulong leaderDiscordId);
 }

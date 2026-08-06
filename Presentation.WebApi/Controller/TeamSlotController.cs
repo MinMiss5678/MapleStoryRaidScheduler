@@ -73,6 +73,38 @@ public class TeamSlotController : ControllerBase
         return Ok();
     }
 
+    // Push：玩家申請入隊（→Applied，用本人角色）。
+    [HttpPost("{id:int}/Applications")]
+    public async Task<IActionResult> ApplyAsync(int id, [FromBody] ApplyRequest request)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        await _teamLeaderService.ApplyAsync(id, request.CharacterId, discordId);
+        return Ok();
+    }
+
+    // Push：隊長審核申請 approve（→Confirmed）/ reject（→Rejected）。
+    [HttpPut("{id:int}/Applications/{memberId:int}")]
+    public async Task<IActionResult> RespondApplicationAsync(int id, int memberId, [FromBody] ApplicationActionRequest request)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        switch (request.Action)
+        {
+            case "approve":
+                await _teamLeaderService.ApproveAsync(memberId, discordId);
+                break;
+            case "reject":
+                await _teamLeaderService.RejectAsync(memberId, discordId);
+                break;
+            default:
+                return BadRequest(new { error = "InvalidAction" });
+        }
+        return Ok();
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAsync([FromQuery] int bossId)
     {
