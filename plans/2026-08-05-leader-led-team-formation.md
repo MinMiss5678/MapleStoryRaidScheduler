@@ -160,3 +160,36 @@
 ### 退場 / 平移
 - **1001（auto-assign per period）退場**：報名不再開隊；其「跨隊去重」責任交給 DB 重疊約束。
 - 呼叫端平移：**1002/xmin 從 `FillSlotAsync`／`UpdateAsync` 換成 accept／approve／leave**；補位（Fill）與 admin 全期重排（`UpdateAsync`）皆退場（見 §7、§9.8）。
+
+## 11. 通知（Phase 2 設計）
+
+**管道＝Outbox（原子、跨行程、可靠）+ 主走 Discord DM**（玩家本來就是 Discord 使用者；mail 多數玩家沒填、且屬 `AlertMail` 系統告警用途，非玩家面）。
+
+### 觸發事件（雙向）
+| 事件 | 通知對象 |
+|---|---|
+| 隊長邀請（→`Invited`，Pull） | 被邀玩家 |
+| 玩家接受/拒絕（→`Confirmed`/`Rejected`） | 隊長 |
+| 玩家申請（→`Applied`，Push） | 隊長 |
+| 隊長核准/拒絕（→`Confirmed`/`Rejected`） | 申請玩家 |
+
+### 機制（沿用現有 outbox）
+1. 狀態改動的**同一交易**內寫一列 `OutboxMessage`（新 `Type`，如 `MemberInvited`；payload 帶 `teamSlotId / targetDiscordId / BossName / SlotDateTime`）→ 通知不因崩潰遺失。
+2. **bot 行程**註冊對應 `IOutboxHandler` → 讀到 → 送 Discord（跨行程：寫在 API、送在 bot，正是 outbox 存在的理由）。
+3. `OutboxDispatcher` 既有保證：at-least-once + 冪等 + 多 pod `FOR UPDATE SKIP LOCKED`。
+
+### Discord DM（需新增 per-user 能力）
+現有 `IDiscordService.SendMessageAsync(message)` **只發固定頻道**。要私訊本人需加：
+```csharp
+Task SendDirectMessageAsync(ulong discordId, string message);
+// impl：GetGuildAsync(GuildId) → GetMemberAsync(discordId) → member.SendMessageAsync(msg)
+```
+前置已就緒：`DiscordOptions.GuildId` 有、bot intents 已含 `GuildMembers`。**為何 DM 而非頻道 @提及**：@頻道會把「誰被邀」公開，違反 §9.11/§9.12「承諾前不揭露身分」；DM 只有本人看到。
+
+### ⚠️ handler 失敗分流（否則毒訊息）
+outbox 失敗會重試 5 次。handler 要分辨：
+- **永久失敗吞掉、不重試**：`UnauthorizedException`（對方關 DM，403）、`NotFoundException`（已退公會）→ log 後**不 rethrow**（讓 outbox 標 processed）。
+- **暫時失敗才 throw**：網路、429 限流 → 讓 outbox 重送。
+
+### 站內清單為權威、DM 為加料
+DM 可能永久送不到（玩家關 DM）→ **站內「我的邀請/我的隊」清單（`/Me/Invitations`、§5）是權威真相**，玩家登入即見；**DM 只是主動提醒**，非唯一觸達。即使 DM 全滅，功能不漏。
