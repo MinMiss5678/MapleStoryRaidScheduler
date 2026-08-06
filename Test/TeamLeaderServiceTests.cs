@@ -31,7 +31,8 @@ public class TeamLeaderServiceTests
             _memberRepositoryMock.Object,
             _characterQueryMock.Object,
             _registrationLockMock.Object,
-            new Mock<Application.Interface.IOutbox>().Object);
+            new Mock<Application.Interface.IOutbox>().Object,
+            new Mock<Application.Queries.ITeamMembershipQuery>().Object);
     }
 
     private CreateTeamCommand ValidCommand() => new()
