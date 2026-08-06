@@ -115,6 +115,7 @@ public class Program
                  // dispatcher 自開專屬連線（不共用 singleton IDbConnection，免與 Discord 事件/計時器互踩）。
                  services.AddSingleton<IOutbox, Outbox>();
                  services.AddSingleton<IOutboxHandler, ConfigChangedOutboxHandler>();
+                 services.AddSingleton<IOutboxHandler, TeamNotificationOutboxHandler>();  // leader-led 組隊通知 → Discord DM
                  services.AddHostedService(sp => new OutboxDispatcher(
                      connectionString,
                      sp.GetServices<IOutboxHandler>(),

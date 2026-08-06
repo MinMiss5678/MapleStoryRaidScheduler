@@ -1,4 +1,5 @@
 using Application.DTOs;
+using Application.Events;
 using Application.Exceptions;
 using Application.Interface;
 using Application.Queries;
@@ -19,6 +20,7 @@ public class TeamLeaderService : ITeamLeaderService
     private readonly ITeamSlotCharacterRepository _memberRepository;
     private readonly ICharacterQuery _characterQuery;
     private readonly IRegistrationLock _registrationLock;
+    private readonly IOutbox _outbox;
 
     public TeamLeaderService(
         IBossRepository bossRepository,
@@ -28,7 +30,8 @@ public class TeamLeaderService : ITeamLeaderService
         ITeamCandidateQuery candidateQuery,
         ITeamSlotCharacterRepository memberRepository,
         ICharacterQuery characterQuery,
-        IRegistrationLock registrationLock)
+        IRegistrationLock registrationLock,
+        IOutbox outbox)
     {
         _bossRepository = bossRepository;
         _periodQuery = periodQuery;
@@ -38,6 +41,19 @@ public class TeamLeaderService : ITeamLeaderService
         _memberRepository = memberRepository;
         _characterQuery = characterQuery;
         _registrationLock = registrationLock;
+        _outbox = outbox;
+    }
+
+    // leader-led §11 通知：與狀態改動同交易 enqueue 一則 outbox（原子，崩了不遺失）→ bot handler 發 Discord DM。
+    // target=0（如未認領隊無 leader）則略過。訊息在此組好（有王名/時段 context），handler 只負責送。
+    private async Task NotifyAsync(int bossId, DateTimeOffset slot, ulong target, Func<string, string, string> buildMessage)
+    {
+        if (target == 0) return;
+        var boss = await _bossRepository.GetByIdAsync(bossId);
+        var bossName = boss?.Name ?? "王";
+        var time = slot.ToOffset(TimeSpan.FromHours(8)).ToString("M/d HH:mm");
+        await _outbox.EnqueueAsync(OutboxEventType.TeamNotification,
+            new TeamNotificationEvent { TargetDiscordId = target, Message = buildMessage(bossName, time) });
     }
 
     public async Task<int> CreateTeamAsync(CreateTeamCommand command)
@@ -147,6 +163,10 @@ public class TeamLeaderService : ITeamLeaderService
             SlotDateTime = team.SlotDateTime,
             IsManual = true
         });
+
+        // 通知被邀玩家
+        await NotifyAsync(team.BossId, team.SlotDateTime, character.DiscordId,
+            (boss, time) => $"隊長邀請你加入「{boss}」{time} 的隊伍，請至站內接受或拒絕。");
     }
 
     public async Task AcceptInviteAsync(int memberId, ulong currentDiscordId)
@@ -160,6 +180,12 @@ public class TeamLeaderService : ITeamLeaderService
             throw new BusinessException("此邀請目前無法接受（狀態已變）。");
 
         await ConfirmMemberAsync(member);
+
+        // 通知隊長：邀請被接受
+        var team = await _teamSlotRepository.GetByIdAsync(member.TeamSlotId);
+        if (team != null)
+            await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0,
+                (boss, time) => $"你「{boss}」{time} 隊伍的一則邀請已被接受、成員入隊。");
     }
 
     /// <summary>
@@ -205,6 +231,12 @@ public class TeamLeaderService : ITeamLeaderService
         var ok = await _memberRepository.UpdateStatusAsync(memberId, TeamSlotMemberStatus.Rejected, member.Version!);
         if (!ok)
             throw new BusinessException("邀請狀態已被更新，請重新整理。");
+
+        // 通知隊長：邀請被拒絕
+        var team = await _teamSlotRepository.GetByIdAsync(member.TeamSlotId);
+        if (team != null)
+            await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0,
+                (boss, time) => $"你「{boss}」{time} 隊伍的一則邀請已被拒絕。");
     }
 
     public async Task ApplyAsync(int teamSlotId, string characterId, ulong applicantDiscordId)
@@ -232,6 +264,10 @@ public class TeamLeaderService : ITeamLeaderService
             SlotDateTime = team.SlotDateTime,
             IsManual = true
         });
+
+        // 通知隊長有新申請
+        await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0,
+            (boss, time) => $"有玩家申請加入你「{boss}」{time} 的隊伍，請至站內審核。");
     }
 
     public async Task ApproveAsync(int memberId, ulong leaderDiscordId)
@@ -242,8 +278,12 @@ public class TeamLeaderService : ITeamLeaderService
         if (member.Status != TeamSlotMemberStatus.Applied)
             throw new BusinessException("此申請目前無法核准（狀態已變）。");
 
-        await EnsureLeaderOwnsTeamAsync(member.TeamSlotId, leaderDiscordId, "只有隊長能核准申請。");
+        var team = await EnsureLeaderOwnsTeamAsync(member.TeamSlotId, leaderDiscordId, "只有隊長能核准申請。");
         await ConfirmMemberAsync(member);
+
+        // 通知申請玩家：通過入隊
+        await NotifyAsync(team.BossId, team.SlotDateTime, member.DiscordId,
+            (boss, time) => $"你申請的「{boss}」{time} 隊伍已通過、成功入隊。");
     }
 
     public async Task RejectAsync(int memberId, ulong leaderDiscordId)
@@ -254,19 +294,24 @@ public class TeamLeaderService : ITeamLeaderService
         if (member.Status != TeamSlotMemberStatus.Applied)
             throw new BusinessException("此申請目前無法拒絕（狀態已變）。");
 
-        await EnsureLeaderOwnsTeamAsync(member.TeamSlotId, leaderDiscordId, "只有隊長能拒絕申請。");
+        var team = await EnsureLeaderOwnsTeamAsync(member.TeamSlotId, leaderDiscordId, "只有隊長能拒絕申請。");
 
         var ok = await _memberRepository.UpdateStatusAsync(memberId, TeamSlotMemberStatus.Rejected, member.Version!);
         if (!ok)
             throw new BusinessException("狀態已被更新，請重新整理。");
+
+        // 通知申請玩家：未通過
+        await NotifyAsync(team.BossId, team.SlotDateTime, member.DiscordId,
+            (boss, time) => $"你申請的「{boss}」{time} 隊伍未通過。");
     }
 
-    private async Task EnsureLeaderOwnsTeamAsync(int teamSlotId, ulong leaderDiscordId, string forbiddenMessage)
+    private async Task<TeamSlot> EnsureLeaderOwnsTeamAsync(int teamSlotId, ulong leaderDiscordId, string forbiddenMessage)
     {
         var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
         if (team == null)
             throw new NotFoundException($"TeamSlot {teamSlotId} not found");
         if (team.LeaderDiscordId != leaderDiscordId)
             throw new ForbiddenException(forbiddenMessage);
+        return team;
     }
 }

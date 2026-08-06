@@ -31,7 +31,8 @@ public class TeamLeaderServiceIntegrationTests
             new TeamCandidateQuery(db),
             new TeamSlotCharacterRepository(db),
             new CharacterQuery(db, new PeriodQuery(db)),
-            new RegistrationLock(db));
+            new RegistrationLock(db),
+            new Outbox(db));
     }
 
     [Fact]
@@ -291,6 +292,41 @@ public class TeamLeaderServiceIntegrationTests
         // 隊長拒絕 → Rejected
         await CreateService().RejectAsync(memberId, leaderDiscordId: 999);
         Assert.Equal("Rejected", await StatusOfAsync(cs, memberId));
+    }
+
+    [Fact]
+    public async Task Invite_EnqueuesTeamNotification_ForInvitedPlayer()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs, name: "西格諾斯", requireMembers: 6);
+        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        await Seed.PlayerAsync(cs, 101, "P101");
+        await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
+
+        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        {
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
+            Requirements = [new CreateTeamRequirementDto { Count = 1, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }]
+        });
+
+        await CreateService().InviteMemberAsync(teamId, "archer", leaderDiscordId: 999);
+
+        // 邀請的同交易內寫了一則 TeamNotification outbox，收件人＝被邀玩家 101（原子；bot 之後撈去發 DM）
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        var row = await conn.QuerySingleAsync<(string Type, string Payload)>(
+            """SELECT "Type", "Payload"::text FROM "OutboxMessage" ORDER BY "Id" DESC LIMIT 1;""");
+        Assert.Equal("TeamNotification", row.Type);
+        // jsonb::text 會正規化（key 排序/空白）→ 反序列化回物件再斷言，較穩健
+        var evt = System.Text.Json.JsonSerializer.Deserialize<Application.Events.TeamNotificationEvent>(row.Payload)!;
+        Assert.Equal(101UL, evt.TargetDiscordId);   // 收件人＝被邀玩家
+        Assert.Contains("西格諾斯", evt.Message);    // 訊息帶王名
     }
 
     private static async Task<int> GetMemberIdAsync(string cs, int teamSlotId, string charId)
