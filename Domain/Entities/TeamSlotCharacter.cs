@@ -14,6 +14,13 @@ public class TeamSlotCharacter
     public int Rounds { get; set; }
     public bool IsManual { get; set; } // 是否為玩家手動補位或管理員手動微調，排團邏輯不應覆蓋
 
+    /// <summary>
+    /// 入隊狀態（leader-led，見 <see cref="TeamSlotMemberStatus"/>）。只有 Confirmed 占容量。
+    /// Phase 1a：欄位已在 DB（migration 000009，DEFAULT 'Confirmed'），此屬性先落地；
+    /// repo 讀寫映射待 1b/1c 有消費者時再接（現無人讀寫，故不動既有查詢/INSERT，維持不改行為）。
+    /// </summary>
+    public string Status { get; set; } = TeamSlotMemberStatus.Confirmed;
+
     /// <summary>樂觀鎖版本（Postgres xmin，轉字串）。更新時比對，對不上代表這期間被別的流程動過。</summary>
     public string? Version { get; set; }
 }
