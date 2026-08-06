@@ -35,6 +35,7 @@ DECLARE
     v_boss4_id    int;
     v_tpl4_id     int;
     v_team4_id    int;
+    v_reg_cand    int;
     -- period 設「未來一週」：截止日永遠在 period 開始前一週（GetDeadlineForPeriod 的 -7），
     -- StartDate 要夠遠（+10）截止日才落在未來、報名才開著（符合 app「當前=即將開打的下週」模型）
     v_weekday     int         := EXTRACT(DOW FROM (CURRENT_DATE + 11))::int;
@@ -118,6 +119,25 @@ BEGIN
     INSERT INTO "TeamSlotCharacter"
         ("TeamSlotId","DiscordId","DiscordName","CharacterId","CharacterName","Job","AttackPower","Rounds","IsManual")
     VALUES (v_team4_id, 4002, 'P-Dummy2', 'c4002', 'CDummy2', 'Hero', 900, 0, false);
+
+    -- leader-led（隊長主導）Push 流程 e2e：申請者 P-LL(6002) + 角色 c6002（獨立、不與其他測試共用）。
+    -- 隊長由 test-login 於測試中自建 Player（6001），故不必在此 seed。開隊/申請/審核全走 UI，
+    -- 用專屬王時段（測試自選當期內時間）→ 不依賴上面的 auto 隊，也不干擾其他 spec。
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (6002, 'P-LL', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower")
+    VALUES ('c6002', 6002, 'C-LL', '英雄', 950);
+
+    -- leader-led 候選(Pull) e2e：候選 P-Cand(6003) 角色 c6003（中文職業「英雄」＝隊長 builder 選得到）
+    -- + 報名（進候選池）+ 全週 7 天整天可用時段（00:00–00:00＝整天）→ 讓候選配對不吃團時段的星期/時區，
+    -- 任何當期內的開團時間都命中。隊長由 test-login 自建（6004）。供 開隊→挑候選→邀請→玩家接受 流程。
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (6003, 'P-Cand', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower")
+    VALUES ('c6003', 6003, 'C-Cand', '英雄', 950);
+    INSERT INTO "PlayerRegister"("DiscordId","PeriodId") VALUES (6003, v_period_id) RETURNING "Id" INTO v_reg_cand;
+    INSERT INTO "CharacterRegister"("PlayerRegisterId","CharacterId","BossId","Rounds")
+    VALUES (v_reg_cand, 'c6003', v_boss_id, 1);
+    INSERT INTO "PlayerAvailability"("PlayerRegisterId","Weekday","StartTime","EndTime")
+    SELECT v_reg_cand, gs, TIME '00:00', TIME '00:00' FROM generate_series(1, 7) AS gs;
 
     RAISE NOTICE 'E2E seed 就緒 → periodId=%, bossId=%, teamId=%', v_period_id, v_boss_id, v_team_id;
 END $$;
