@@ -63,3 +63,24 @@ describe('API proxy — 204 No Content 轉發', () => {
         expect(res.status).toBe(204)
     })
 })
+
+describe('API proxy — 路徑白名單', () => {
+    beforeEach(() => {
+        process.env.BACKEND_API_URL = 'http://backend:5230'
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('ok', { status: 200 })))
+    })
+    afterEach(() => vi.unstubAllGlobals())
+
+    // leader-led 玩家/隊長自助讀走 /api/Me/*：若 'me' 未加白名單，proxy 會直接 403（Invitations/Teams/LedTeams 全壞）。
+    it('/api/Me/* 在白名單內 → 轉發給後端（非 403）', async () => {
+        const req = new NextRequest('http://localhost/api/Me/LedTeams')
+        const res = await GET(req, { params: Promise.resolve({ path: ['Me', 'LedTeams'] }) })
+        expect(res.status).toBe(200)
+    })
+
+    it('不在白名單的路徑 → 403', async () => {
+        const req = new NextRequest('http://localhost/api/secretadmin')
+        const res = await GET(req, { params: Promise.resolve({ path: ['secretadmin'] }) })
+        expect(res.status).toBe(403)
+    })
+})
