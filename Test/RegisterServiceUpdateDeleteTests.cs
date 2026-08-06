@@ -17,7 +17,6 @@ public class RegisterServiceUpdateDeleteTests
     private readonly Mock<ICharacterRegisterRepository> _characterRegisterRepositoryMock;
     private readonly Mock<IPlayerAvailabilityRepository> _playerAvailabilityRepositoryMock;
     private readonly Mock<ITeamSlotCharacterRepository> _teamSlotCharacterRepositoryMock;
-    private readonly Mock<ITeamSlotAutoAssignService> _autoAssignServiceMock;
     private readonly Mock<ISystemConfigService> _systemConfigServiceMock;
     private readonly Mock<IBossRepository> _bossRepositoryMock;
     private readonly Mock<ICharacterQuery> _characterQueryMock;
@@ -30,7 +29,6 @@ public class RegisterServiceUpdateDeleteTests
         _characterRegisterRepositoryMock = new Mock<ICharacterRegisterRepository>();
         _playerAvailabilityRepositoryMock = new Mock<IPlayerAvailabilityRepository>();
         _teamSlotCharacterRepositoryMock = new Mock<ITeamSlotCharacterRepository>();
-        _autoAssignServiceMock = new Mock<ITeamSlotAutoAssignService>();
         _systemConfigServiceMock = new Mock<ISystemConfigService>();
         _bossRepositoryMock = new Mock<IBossRepository>();
         _bossRepositoryMock.Setup(b => b.GetAllAsync()).ReturnsAsync(new List<Boss>());
@@ -44,7 +42,6 @@ public class RegisterServiceUpdateDeleteTests
             _characterRegisterRepositoryMock.Object,
             _playerAvailabilityRepositoryMock.Object,
             _teamSlotCharacterRepositoryMock.Object,
-            _autoAssignServiceMock.Object,
             _systemConfigServiceMock.Object,
             _bossRepositoryMock.Object,
             _characterQueryMock.Object
