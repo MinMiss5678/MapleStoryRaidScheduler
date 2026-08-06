@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Inbox, Zap, User, Check, X } from "lucide-react";
+import toast from "react-hot-toast";
 import { useApplications } from "@/hooks/queries/useApplications";
 import { useLedTeams } from "@/hooks/queries/useLedTeams";
 import { leaderService } from "@/services/leaderService";
@@ -23,11 +24,12 @@ export default function ApplicationsPage() {
     const respond = useMutation({
         mutationFn: (v: { memberId: number; action: ApplicationAction }) =>
             leaderService.respondApplication(teamSlotId, v.memberId, v.action),
-        onSuccess: () => {
+        onError: (e) => toast.error(e instanceof ApiError ? e.message : "操作失敗，請稍後再試"),
+        // 成功/失敗都刷新：失敗多半是隊伍已滿（併發搶最後一位）→ 佇列與計數與伺服器對齊
+        onSettled: () => {
             qc.invalidateQueries({ queryKey: ["applications", teamSlotId] });
             qc.invalidateQueries({ queryKey: ["ledTeams"] });
         },
-        onError: (e) => alert(e instanceof ApiError ? e.message : "操作失敗，請稍後再試"),
     });
 
     return (

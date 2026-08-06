@@ -7,6 +7,7 @@ import { Crown, Plus, Trash2, Swords } from "lucide-react";
 import { useBosses } from "@/hooks/queries/useBosses";
 import { usePeriod } from "@/hooks/queries/usePeriod";
 import { useJobMap } from "@/hooks/queries/useScheduleData";
+import toast from "react-hot-toast";
 import { leaderService } from "@/services/leaderService";
 import { ApiError } from "@/services/apiClient";
 import { JOBS } from "@/constants/jobs";
@@ -80,7 +81,7 @@ export default function NewTeamPage() {
                 requirements: rows,
             }),
         onSuccess: () => router.push("/me/led-teams"),
-        onError: (e) => alert(e instanceof ApiError ? e.message : "開隊失敗，請稍後再試"),
+        onError: (e) => toast.error(e instanceof ApiError ? e.message : "開隊失敗，請稍後再試"),
     });
 
     const canSubmit = bossId > 0 && slotDateTime !== "" && rows.every((r) => r.count >= 1);
