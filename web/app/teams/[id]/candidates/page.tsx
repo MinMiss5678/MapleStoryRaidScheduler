@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, UserSearch, Zap, Trophy, Sparkles, UserPlus, Check } from "lucide-react";
+import toast from "react-hot-toast";
 import { useCandidates } from "@/hooks/queries/useCandidates";
 import { useLedTeams } from "@/hooks/queries/useLedTeams";
 import { leaderService } from "@/services/leaderService";
@@ -26,9 +27,10 @@ export default function CandidatesPage() {
         mutationFn: (characterId: string) => leaderService.invite(teamSlotId, characterId),
         onSuccess: (_data, characterId) => {
             setInvited((prev) => new Set(prev).add(characterId));
-            qc.invalidateQueries({ queryKey: ["ledTeams"] });
+            toast.success("已送出邀請");
         },
-        onError: (e) => alert(e instanceof ApiError ? e.message : "邀請失敗，請稍後再試"),
+        onError: (e) => toast.error(e instanceof ApiError ? e.message : "邀請失敗，請稍後再試"),
+        onSettled: () => qc.invalidateQueries({ queryKey: ["ledTeams"] }),
     });
 
     return (

@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Users, Mail, Check, X, Swords, Clock, User, Zap } from "lucide-react";
+import toast from "react-hot-toast";
 import { useMyInvitations } from "@/hooks/queries/useMyInvitations";
 import { useMyTeams } from "@/hooks/queries/useMyTeams";
 import { leaderService } from "@/services/leaderService";
@@ -17,11 +18,12 @@ export default function MyTeamsPage() {
     const respond = useMutation({
         mutationFn: (v: { teamSlotId: number; memberId: number; action: InvitationAction }) =>
             leaderService.respondInvitation(v.teamSlotId, v.memberId, v.action),
-        onSuccess: () => {
+        onError: (e) => toast.error(e instanceof ApiError ? e.message : "操作失敗，請稍後再試"),
+        // 成功/失敗都刷新：接受失敗多半是隊伍已滿 → 邀請/已入隊清單與伺服器對齊
+        onSettled: () => {
             qc.invalidateQueries({ queryKey: ["myInvitations"] });
             qc.invalidateQueries({ queryKey: ["myTeams"] });
         },
-        onError: (e) => alert(e instanceof ApiError ? e.message : "操作失敗，請稍後再試"),
     });
 
     const isLoading = invLoading || teamsLoading;

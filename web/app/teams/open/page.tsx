@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Compass, Swords, Clock, Users, Send, Trophy } from "lucide-react";
+import toast from "react-hot-toast";
 import { useOpenTeams } from "@/hooks/queries/useOpenTeams";
 import { useCharacters } from "@/hooks/queries/useCharacters";
 import { leaderService } from "@/services/leaderService";
@@ -35,11 +36,12 @@ function OpenTeamCard({ team }: { team: OpenTeam }) {
     const apply = useMutation({
         mutationFn: (charId: string) => leaderService.apply(team.teamSlotId, charId),
         onSuccess: () => {
-            alert("已送出申請，等待隊長審核。");
+            toast.success("已送出申請，等待隊長審核。");
             setCharacterId("");
-            qc.invalidateQueries({ queryKey: ["openTeams"] });
         },
-        onError: (e) => alert(e instanceof ApiError ? e.message : "申請失敗，請稍後再試"),
+        onError: (e) => toast.error(e instanceof ApiError ? e.message : "申請失敗，請稍後再試"),
+        // 成功/失敗都刷新：失敗多半是隊伍已滿 → 讓卡片人數/剩餘與伺服器對齊
+        onSettled: () => qc.invalidateQueries({ queryKey: ["openTeams"] }),
     });
 
     const remaining = team.requireMembers - team.confirmedCount;
