@@ -13,6 +13,7 @@ export default function NavBar() {
         {label: "首頁", href: "/", roles: ["", "user", "admin"]},
         {label: "角色管理", href: "/character", roles: ["user", "admin"]},
         {label: "報名", href: "/register", roles: ["user", "admin"]},
+        {label: "我的邀請", href: "/me/invitations", roles: ["user", "admin"]},
         {label: "補位", href: "/schedule", roles: ["user", "admin"]},
         {label: "排團", href: "/admin/schedule", roles: ["admin"]},
         {label: "排團結果", href: "/scheduleResult", roles: ["user", "admin"]},
