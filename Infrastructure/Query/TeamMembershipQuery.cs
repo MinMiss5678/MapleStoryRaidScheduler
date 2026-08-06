@@ -95,6 +95,26 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         return teams;
     }
 
+    public async Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId, int periodId)
+    {
+        // 本期、LeaderDiscordId=本人 的隊；LEFT JOIN 成員一次算三種狀態計數（避免 N+1）。
+        const string sql = """
+            SELECT ts."Id" AS "TeamSlotId", ts."BossId" AS "BossId", b."Name" AS "BossName",
+                   ts."SlotDateTime" AS "SlotDateTime", b."RequireMembers" AS "RequireMembers",
+                   ts."Description" AS "Description",
+                   COUNT(*) FILTER (WHERE tsc."Status" = 'Confirmed')::int AS "ConfirmedCount",
+                   COUNT(*) FILTER (WHERE tsc."Status" = 'Applied')::int   AS "AppliedCount",
+                   COUNT(*) FILTER (WHERE tsc."Status" = 'Invited')::int   AS "InvitedCount"
+            FROM "TeamSlot" ts
+            JOIN "Boss" b ON b."Id" = ts."BossId"
+            LEFT JOIN "TeamSlotCharacter" tsc ON tsc."TeamSlotId" = ts."Id"
+            WHERE ts."LeaderDiscordId" = @leaderDiscordId AND ts."PeriodId" = @periodId
+            GROUP BY ts."Id", ts."BossId", b."Name", ts."SlotDateTime", b."RequireMembers", ts."Description"
+            ORDER BY ts."SlotDateTime";
+            """;
+        return await _dbContext.QueryAsync<LedTeamDto>(sql, new { leaderDiscordId = (long)leaderDiscordId, periodId });
+    }
+
     private class ReqRow
     {
         public int RequirementId { get; set; }
