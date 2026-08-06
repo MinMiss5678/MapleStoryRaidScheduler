@@ -102,7 +102,9 @@ public class TeamLeaderServiceIntegrationTests
         await Seed.PlayerAsync(cs, 999, "隊長");
         var teamSlotId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
-            LeaderDiscordId = 999, BossId = bossId, SlotDateTime = slot,
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
             Requirements = [ new CreateTeamRequirementDto { Count = 1, MinClearCount = 1,
                 Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 },
                          new CreateTeamRequirementJobDto { Job = "槍神", MinAttackPower = 1000 } ] } ]
@@ -146,7 +148,9 @@ public class TeamLeaderServiceIntegrationTests
         var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
         var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
-            LeaderDiscordId = 999, BossId = bossId, SlotDateTime = slot,
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
             Requirements = [ new CreateTeamRequirementDto { Count = 1,
                 Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
         });
@@ -174,9 +178,14 @@ public class TeamLeaderServiceIntegrationTests
 
         // 兩隊同一時段（跨隊重疊）
         var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
-        CreateTeamCommand Cmd() => new() { LeaderDiscordId = 999, BossId = bossId, SlotDateTime = slot,
+        CreateTeamCommand Cmd() => new()
+        {
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
             Requirements = [ new CreateTeamRequirementDto { Count = 1,
-                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ] };
+                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
+        };
         var teamA = await CreateService().CreateTeamAsync(Cmd());
         var teamB = await CreateService().CreateTeamAsync(Cmd());
 
@@ -206,7 +215,9 @@ public class TeamLeaderServiceIntegrationTests
         var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
         var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
-            LeaderDiscordId = 999, BossId = bossId, SlotDateTime = slot,
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
             Requirements = [ new CreateTeamRequirementDto { Count = 1,
                 Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
         });
