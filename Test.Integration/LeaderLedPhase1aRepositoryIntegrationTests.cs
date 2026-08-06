@@ -6,7 +6,7 @@ namespace Test.Integration;
 
 /// <summary>
 /// leader-led Phase 1a 新表 repository 的 round-trip（寫→讀）整合測試，跑在真 Postgres（含 000009 migration）。
-/// 只驗資料層落地正確，尚無業務行為（1b/1c 才接消費者）。
+/// 只驗資料層實作正確，尚無業務行為（1b/1c 才接消費者）。
 /// </summary>
 [Collection("pg")]
 [Trait("Category", "Integration")]

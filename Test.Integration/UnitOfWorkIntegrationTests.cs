@@ -68,7 +68,7 @@ public class UnitOfWorkIntegrationTests
 
         await uow.RollbackAsync();
 
-        // foil：兩張表都必須全數回滾，不能只回一張（原子性）
+        // foil：兩張表都必須全數 rollback，不能只回一張（原子性）
         var teamCount = await Seed.CountTeamAsync(cs, teamId);
         var charCount = await ScalarAsync(cs, """SELECT COUNT(*) FROM "TeamSlotCharacter" WHERE "TeamSlotId" = @id;""", new { id = teamId });
 

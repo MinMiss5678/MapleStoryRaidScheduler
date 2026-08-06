@@ -132,7 +132,7 @@ public class OutboxIntegrationTests : IAsyncLifetime
                 transaction: tx);
             await handler.HandleAsync("{}", CancellationToken.None);
             await conn.ExecuteAsync("""UPDATE "OutboxMessage" SET "ProcessedAt" = now() WHERE "Id" = @id""", new { id }, tx);
-            await tx.RollbackAsync(); // 模擬崩潰：commit 前中斷，標記從沒真的落地
+            await tx.RollbackAsync(); // 模擬崩潰：commit 前中斷，標記從沒真的寫入
         }
         Assert.Equal(1, handler.Count);                                   // 崩潰前 handler 已經執行過一次（副作用已發生）
         Assert.Equal(1, await CountAsync("""WHERE "ProcessedAt" IS NULL""")); // 但 DB 上這列仍是「未處理」

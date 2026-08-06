@@ -11,7 +11,7 @@
 - `DeleteCharacterAsync` 有隱藏副作用：**移除自動隊最後一個真實成員會連整個 `TeamSlot` 一起砍掉**（`Infrastructure/Repositories/TeamSlotCharacterRepository.cs:49-59`，只清 `Source=auto` 的空團）。若此時有人正要對同一隊新增成員，`TeamSlotCharacter.TeamSlotId` 有外鍵約束（`db/migrations/000001_init_schema.up.sql:78`），會撞**原生 FK violation（23503）**，變成未接住的醜陋錯誤，不是我們設計好的訊息。
 
 ### 問題 2：隊伍整個消失（merge / 自動排團的砍掉重灌）
-Merge（`TeamSlotRepository.UpdateAsync` = 整組 DELETE 成員列 + 重新 INSERT）與管理員的「自動排團」（`AutoScheduleWithTemplate`，整王批次重算後靠同一支 `PUT /api/teamSlot` 落地）都會讓既有的 `teamSlot.Id` 或其底下 characters 的 Id 失效。若管理員 A 開著頁面時，管理員 B 觸發了砍掉重灌，A 之後送出的舊 Id：
+Merge（`TeamSlotRepository.UpdateAsync` = 整組 DELETE 成員列 + 重新 INSERT）與管理員的「自動排團」（`AutoScheduleWithTemplate`，整王批次重算後靠同一支 `PUT /api/teamSlot` 寫入）都會讓既有的 `teamSlot.Id` 或其底下 characters 的 Id 失效。若管理員 A 開著頁面時，管理員 B 觸發了砍掉重灌，A 之後送出的舊 Id：
 ```csharp
 var originalTeam = await _teamSlotRepository.GetByIdAsync(teamSlot.Id);
 if (originalTeam == null) continue;   // 現況：靜默跳過，前端仍顯示「已儲存！」

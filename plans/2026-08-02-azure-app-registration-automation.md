@@ -12,7 +12,7 @@
 ## 目標
 
 把「開瀏覽器登入同意」以外的所有步驟寫成一支腳本：Azure App Registration 建立/設定 + PKCE 產生 + 授權網址
-組裝 + code 換 token + refresh token 落地存檔，一次執行到底（中間跳出來要求貼 code 的那一步是唯一的人工
+組裝 + code 換 token + refresh token 存檔，一次執行到底（中間跳出來要求貼 code 的那一步是唯一的人工
 介入點，OAuth2 設計上就需要真人同意，不能也不該自動化）。
 
 ## 範圍
@@ -42,7 +42,7 @@
 
 - **不自動化瀏覽器登入同意本身**：OAuth2 的 Authorization Code flow 設計上就是要真人同意，跳過這步等於繞過
   使用者授權本身的意義，不會做、也不應該做。
-- **不做 refresh token 輪替後的自動落地**：跟 `plans/2026-07-31-error-alerting.md` 的既有決策一致，維持現況
+- **不做 refresh token 輪替後的自動存檔**：跟 `plans/2026-07-31-error-alerting.md` 的既有決策一致，維持現況
   （失效才重跑這支腳本）。
 - **不做常駐服務**：這是一次性/低頻率使用的 setup script，不是背景常駐程式（呼應之前否決 `email-oauth2-proxy`
   那類常駐代理工具的理由——多一個要顧的服務不划算）。

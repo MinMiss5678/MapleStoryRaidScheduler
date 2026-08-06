@@ -28,7 +28,7 @@
 
 ### 做
 - `outbox_message` 表（golang-migrate migration）。
-- **寫入**：`IOutbox.Enqueue(type, payload)`（Application 介面）+ Dapper 實作，用**當前 UoW 的 `DbContext.Connection + Transaction`** 插列 → 與業務資料**原子提交/回滾**（請求 rollback → outbox 列也不在，無鬼影事件）。
+- **寫入**：`IOutbox.Enqueue(type, payload)`（Application 介面）+ Dapper 實作，用**當前 UoW 的 `DbContext.Connection + Transaction`** 插列 → 與業務資料**原子提交/rollback**（請求 rollback → outbox 列也不在，無鬼影事件）。
 - **派發**：`OutboxDispatcher : BackgroundService`（**跑在 bot**，因 handler 要喚醒 bot 的 job）——`FOR UPDATE SKIP LOCKED` 撈批 → 依 `type` 派給 handler → 標 `processed_at`。
 - **handler**：`ConfigChanged` → `notifier.Notify()`（冪等：只是喚醒 job 重讀 config）。
 - `SystemConfigService.UpdateAsync` 改成 `_outbox.Enqueue("ConfigChanged", …)` 取代 `AfterCommit(_notifier.Notify)`。

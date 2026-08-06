@@ -10,7 +10,7 @@
 | [`architecture.md`](architecture.md) | 系統架構總覽、關鍵設計決策、領域設計、ERD、部署拓樸 | 想知道「這個系統整體長什麼樣子、為什麼這樣設計」 |
 | [`business-rules.md`](business-rules.md) | 業務規則清單（不變量、驗收條件），跟 `architecture.md` 是一體兩面：這裡列**規則**，機制怎麼實作看 `architecture.md` | 想知道「系統必須遵守什麼規則」，或改動前確認會不會破壞既有不變量 |
 | [`e2e-testing-setup.md`](e2e-testing-setup.md) | Playwright E2E 測試怎麼跑、seed 資料模型、踩過的坑 | 要跑/寫 E2E 測試 |
-| [`cd-deploy-setup.md`](cd-deploy-setup.md) | CD 部署（GitHub Actions `deploy.yml` → k8s 滾動更新）的完整流程、回滾、migration 失敗恢復 | 要部署到 production，或 migration 出事要恢復 |
+| [`cd-deploy-setup.md`](cd-deploy-setup.md) | CD 部署（GitHub Actions `deploy.yml` → k8s 滾動更新）的完整流程、rollback、migration 失敗恢復 | 要部署到 production，或 migration 出事要恢復 |
 | [`deployment.md`](deployment.md) | 手動部署（本機 `deploy.ps1` / `rollout.ps1`，不走 CI）的操作指令 | 要手動操作 k8s（首次部署、改密碼、重置 DB） |
 
 ## 歷史參考（內容已淘汰，僅供學習）

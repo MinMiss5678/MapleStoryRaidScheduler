@@ -76,7 +76,7 @@ public class SystemConfigService : ISystemConfigService
         }
 
         // 設定變更事件走 transactional outbox：把事件寫進「與本次 UPDATE 同一筆交易」的 outbox 列
-        //  → 與資料原子提交/回滾（rollback 就不會有鬼影事件）。
+        //  → 與資料原子提交/rollback（就不會有鬼影事件）。
         // 取代原本的 in-process AfterCommit：那個 (1) commit 後 crash 會遺失、(2) 跨不了行程
         //  （設定在 API 改、喚醒的 job 在 bot）。outbox 由 bot 的 OutboxDispatcher 讀已提交列去投遞。
         await _outbox.EnqueueAsync(OutboxEventType.ConfigChanged, config);

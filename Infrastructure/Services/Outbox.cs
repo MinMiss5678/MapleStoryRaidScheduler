@@ -6,7 +6,7 @@ namespace Infrastructure.Services;
 
 /// <summary>
 /// Outbox 寫入端。用當前 <see cref="DbContext"/> 的交易插入 outbox 列——
-/// 因此與同一請求的業務資料**原子提交/回滾**（見 <see cref="IOutbox"/>）。
+/// 因此與同一請求的業務資料**原子提交/rollback**（見 <see cref="IOutbox"/>）。
 /// Payload 以 <c>@Payload::jsonb</c> 轉型寫入 jsonb 欄位。
 /// </summary>
 public class Outbox : IOutbox

@@ -13,10 +13,10 @@ public class TeamSlot
     public string Source { get; set; } = TeamSlotSource.Auto;        // auto | admin，見 TeamSlotSource
     public int? TemplateId { get; set; }
 
-    /// <summary>隊長歸屬（leader-led，§3）。null=未認領草稿。Phase 1a 先落地屬性，repo 映射待 1b/1c。</summary>
+    /// <summary>隊長歸屬（leader-led，§3）。null=未認領草稿。Phase 1a 先實作屬性，repo 映射待 1b/1c。</summary>
     public ulong? LeaderDiscordId { get; set; }
 
-    /// <summary>隊伍說明/公告（leader-led，§3 吸收非結構化招募需求）。Phase 1a 先落地屬性，repo 映射待 1b/1c。</summary>
+    /// <summary>隊伍說明/公告（leader-led，§3 吸收非結構化招募需求）。Phase 1a 先實作屬性，repo 映射待 1b/1c。</summary>
     public string? Description { get; set; }
 
     // 容量 = Boss.RequireMembers（由 service 載入/建立時填；不變式需要它才守得住）
