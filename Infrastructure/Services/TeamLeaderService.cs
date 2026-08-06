@@ -336,4 +336,11 @@ public class TeamLeaderService : ITeamLeaderService
         if (periodId == 0) return [];
         return await _membershipQuery.GetOpenTeamsAsync(periodId);
     }
+
+    public async Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId)
+    {
+        var periodId = await _periodQuery.GetActivePeriodIdAsync();
+        if (periodId == 0) return [];
+        return await _membershipQuery.GetLedTeamsAsync(leaderDiscordId, periodId);
+    }
 }

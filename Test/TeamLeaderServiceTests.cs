@@ -18,6 +18,7 @@ public class TeamLeaderServiceTests
     private readonly Mock<ITeamSlotCharacterRepository> _memberRepositoryMock = new();
     private readonly Mock<ICharacterQuery> _characterQueryMock = new();
     private readonly Mock<IRegistrationLock> _registrationLockMock = new();
+    private readonly Mock<ITeamMembershipQuery> _membershipQueryMock = new();
     private readonly TeamLeaderService _service;
 
     public TeamLeaderServiceTests()
@@ -32,7 +33,7 @@ public class TeamLeaderServiceTests
             _characterQueryMock.Object,
             _registrationLockMock.Object,
             new Mock<Application.Interface.IOutbox>().Object,
-            new Mock<Application.Queries.ITeamMembershipQuery>().Object);
+            _membershipQueryMock.Object);
     }
 
     private CreateTeamCommand ValidCommand() => new()
@@ -99,5 +100,29 @@ public class TeamLeaderServiceTests
         await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(
             () => _service.CreateTeamAsync(ValidCommand()));
         _teamSlotRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlot>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetLedTeamsAsync_ReturnsEmpty_WhenNoActivePeriod()
+    {
+        _periodQueryMock.Setup(p => p.GetActivePeriodIdAsync()).ReturnsAsync(0);
+
+        var result = await _service.GetLedTeamsAsync(999);
+
+        Assert.Empty(result);
+        _membershipQueryMock.Verify(q => q.GetLedTeamsAsync(It.IsAny<ulong>(), It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetLedTeamsAsync_QueriesByLeaderAndActivePeriod()
+    {
+        _periodQueryMock.Setup(p => p.GetActivePeriodIdAsync()).ReturnsAsync(7);
+        var teams = new[] { new LedTeamDto { TeamSlotId = 100, BossName = "王", AppliedCount = 2 } };
+        _membershipQueryMock.Setup(q => q.GetLedTeamsAsync(999, 7)).ReturnsAsync(teams);
+
+        var result = await _service.GetLedTeamsAsync(999);
+
+        Assert.Same(teams, result);
+        _membershipQueryMock.Verify(q => q.GetLedTeamsAsync(999, 7), Times.Once);
     }
 }

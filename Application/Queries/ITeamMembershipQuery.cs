@@ -13,4 +13,7 @@ public interface ITeamMembershipQuery
 
     /// <summary>某週期內尚有空位的 leader 開放隊（含條件）——玩家 Push 發現用。</summary>
     Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync(int periodId);
+
+    /// <summary>某隊長某週期開的隊（含 confirmed/applied/invited 計數）——隊長 hub 導覽用。</summary>
+    Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId, int periodId);
 }

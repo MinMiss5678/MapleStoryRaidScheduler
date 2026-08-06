@@ -71,6 +71,16 @@ public class TeamSlotController : ControllerBase
         return Ok(await _teamLeaderService.GetMyTeamsAsync(discordId));
     }
 
+    // 隊長「我開的隊」清單（hub 入口；含 confirmed/applied/invited 計數）。
+    [HttpGet("/api/Me/LedTeams")]
+    public async Task<IActionResult> GetMyLedTeamsAsync()
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetLedTeamsAsync(discordId));
+    }
+
     // Pull：某隊符合條件的候選清單（回能力欄、不含 discord 身分，§9.12）。
     [HttpGet("{id:int}/Candidates")]
     public async Task<IActionResult> GetCandidatesAsync(int id)

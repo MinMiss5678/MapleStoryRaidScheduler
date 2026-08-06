@@ -40,4 +40,7 @@ public interface ITeamLeaderService
 
     /// <summary>本期尚有空位的 leader 開放隊（Push 玩家端發現）。</summary>
     Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync();
+
+    /// <summary>本期我當隊長開的隊（含各狀態計數，隊長 hub 入口）。</summary>
+    Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId);
 }
