@@ -15,3 +15,17 @@ public class InvitationActionRequest
     [Required]
     public required string Action { get; set; }  // "accept" | "decline"
 }
+
+/// <summary>Push：玩家申請入隊（用本人某角色）。</summary>
+public class ApplyRequest
+{
+    [Required]
+    public required string CharacterId { get; set; }
+}
+
+/// <summary>Push：隊長對申請的回應：approve（→Confirmed）/ reject（→Rejected）。</summary>
+public class ApplicationActionRequest
+{
+    [Required]
+    public required string Action { get; set; }  // "approve" | "reject"
+}
