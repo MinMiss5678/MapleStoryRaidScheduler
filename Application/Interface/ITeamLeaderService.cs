@@ -28,4 +28,16 @@ public interface ITeamLeaderService
 
     /// <summary>Push：隊長拒絕申請（→Rejected，xmin 樂觀鎖）。</summary>
     Task RejectAsync(int memberId, ulong leaderDiscordId);
+
+    /// <summary>玩家收到的待處理邀請（Pull 玩家端發現）。</summary>
+    Task<IEnumerable<MembershipDto>> GetMyInvitationsAsync(ulong discordId);
+
+    /// <summary>玩家已入隊的隊（Confirmed，跨隊行程用）。</summary>
+    Task<IEnumerable<MembershipDto>> GetMyTeamsAsync(ulong discordId);
+
+    /// <summary>某隊的申請佇列（隊長審核；驗隊長擁有）。</summary>
+    Task<IEnumerable<MembershipDto>> GetApplicationsAsync(int teamSlotId, ulong leaderDiscordId);
+
+    /// <summary>本期尚有空位的 leader 開放隊（Push 玩家端發現）。</summary>
+    Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync();
 }

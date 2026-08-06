@@ -31,6 +31,46 @@ public class TeamSlotController : ControllerBase
         return Ok(new { teamSlotId });
     }
 
+    // Push：本期尚有空位的 leader 開放隊（玩家發現要申請哪隊）。
+    [HttpGet("Open")]
+    public async Task<IActionResult> GetOpenAsync()
+    {
+        if (!this.TryGetCurrentDiscordId(out _))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetOpenTeamsAsync());
+    }
+
+    // Push：某隊的申請佇列（隊長審核；服務內驗隊長擁有）。
+    [HttpGet("{id:int}/Applications")]
+    public async Task<IActionResult> GetApplicationsAsync(int id)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetApplicationsAsync(id, discordId));
+    }
+
+    // 玩家收到的待處理邀請（Pull 玩家端）。
+    [HttpGet("/api/Me/Invitations")]
+    public async Task<IActionResult> GetMyInvitationsAsync()
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetMyInvitationsAsync(discordId));
+    }
+
+    // 玩家已入隊的隊（跨隊行程）。
+    [HttpGet("/api/Me/Teams")]
+    public async Task<IActionResult> GetMyTeamsAsync()
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetMyTeamsAsync(discordId));
+    }
+
     // Pull：某隊符合條件的候選清單（回能力欄、不含 discord 身分，§9.12）。
     [HttpGet("{id:int}/Candidates")]
     public async Task<IActionResult> GetCandidatesAsync(int id)

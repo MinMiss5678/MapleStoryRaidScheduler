@@ -21,6 +21,7 @@ public class TeamLeaderService : ITeamLeaderService
     private readonly ICharacterQuery _characterQuery;
     private readonly IRegistrationLock _registrationLock;
     private readonly IOutbox _outbox;
+    private readonly ITeamMembershipQuery _membershipQuery;
 
     public TeamLeaderService(
         IBossRepository bossRepository,
@@ -31,7 +32,8 @@ public class TeamLeaderService : ITeamLeaderService
         ITeamSlotCharacterRepository memberRepository,
         ICharacterQuery characterQuery,
         IRegistrationLock registrationLock,
-        IOutbox outbox)
+        IOutbox outbox,
+        ITeamMembershipQuery membershipQuery)
     {
         _bossRepository = bossRepository;
         _periodQuery = periodQuery;
@@ -42,6 +44,7 @@ public class TeamLeaderService : ITeamLeaderService
         _characterQuery = characterQuery;
         _registrationLock = registrationLock;
         _outbox = outbox;
+        _membershipQuery = membershipQuery;
     }
 
     // leader-led §11 通知：與狀態改動同交易 enqueue 一則 outbox（原子，崩了不遺失）→ bot handler 發 Discord DM。
@@ -313,5 +316,24 @@ public class TeamLeaderService : ITeamLeaderService
         if (team.LeaderDiscordId != leaderDiscordId)
             throw new ForbiddenException(forbiddenMessage);
         return team;
+    }
+
+    public Task<IEnumerable<MembershipDto>> GetMyInvitationsAsync(ulong discordId)
+        => _membershipQuery.GetByDiscordIdAndStatusAsync(discordId, TeamSlotMemberStatus.Invited);
+
+    public Task<IEnumerable<MembershipDto>> GetMyTeamsAsync(ulong discordId)
+        => _membershipQuery.GetByDiscordIdAndStatusAsync(discordId, TeamSlotMemberStatus.Confirmed);
+
+    public async Task<IEnumerable<MembershipDto>> GetApplicationsAsync(int teamSlotId, ulong leaderDiscordId)
+    {
+        await EnsureLeaderOwnsTeamAsync(teamSlotId, leaderDiscordId, "只有隊長能查看申請。");
+        return await _membershipQuery.GetApplicationsAsync(teamSlotId);
+    }
+
+    public async Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync()
+    {
+        var periodId = await _periodQuery.GetActivePeriodIdAsync();
+        if (periodId == 0) return [];
+        return await _membershipQuery.GetOpenTeamsAsync(periodId);
     }
 }

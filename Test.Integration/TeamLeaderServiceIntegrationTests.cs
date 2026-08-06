@@ -32,7 +32,8 @@ public class TeamLeaderServiceIntegrationTests
             new TeamSlotCharacterRepository(db),
             new CharacterQuery(db, new PeriodQuery(db)),
             new RegistrationLock(db),
-            new Outbox(db));
+            new Outbox(db),
+            new TeamMembershipQuery(db));
     }
 
     [Fact]
@@ -327,6 +328,55 @@ public class TeamLeaderServiceIntegrationTests
         var evt = System.Text.Json.JsonSerializer.Deserialize<Application.Events.TeamNotificationEvent>(row.Payload)!;
         Assert.Equal(101UL, evt.TargetDiscordId);   // 收件人＝被邀玩家
         Assert.Contains("西格諾斯", evt.Message);    // 訊息帶王名
+    }
+
+    [Fact]
+    public async Task ReadApis_MyInvitations_OpenTeams_Applications()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs, requireMembers: 6);
+        var periodId = await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        await Seed.PlayerAsync(cs, 101, "P101");
+        await Seed.CharacterAsync(cs, "archer", 101, "C1", "箭神", 950);
+        await Seed.PlayerAsync(cs, 102, "P102");
+        await Seed.CharacterAsync(cs, "mage", 102, "C2", "主教", 800);
+
+        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        {
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
+            Requirements = [new CreateTeamRequirementDto { Count = 1, MinClearCount = 0, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }]
+        });
+
+        await CreateService().InviteMemberAsync(teamId, "archer", leaderDiscordId: 999);  // 101 被邀
+        await CreateService().ApplyAsync(teamId, "mage", applicantDiscordId: 102);          // 102 申請
+
+        var q = new TeamMembershipQuery(_fx.CreateDbContext());
+
+        // 我的邀請（101）
+        var invs = (await q.GetByDiscordIdAndStatusAsync(101, "Invited")).ToList();
+        Assert.Single(invs);
+        Assert.Equal(teamId, invs[0].TeamSlotId);
+        Assert.Equal("箭神", invs[0].Job);
+
+        // 申請佇列（隊長看）
+        var apps = (await q.GetApplicationsAsync(teamId)).ToList();
+        Assert.Single(apps);
+        Assert.Equal("主教", apps[0].Job);
+
+        // 開放隊（尚有空位）+ 條件
+        var open = (await q.GetOpenTeamsAsync(periodId)).ToList();
+        Assert.Single(open);
+        Assert.Equal(teamId, open[0].TeamSlotId);
+        Assert.Equal(0, open[0].ConfirmedCount);
+        Assert.Equal(6, open[0].RequireMembers);
+        Assert.Single(open[0].Requirements);
+        Assert.Contains(open[0].Requirements[0].Jobs, j => j.Job == "箭神" && j.MinAttackPower == 900);
     }
 
     private static async Task<int> GetMemberIdAsync(string cs, int teamSlotId, string charId)
