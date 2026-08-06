@@ -14,6 +14,7 @@ public class TeamLeaderServiceTests
     private readonly Mock<IPeriodQuery> _periodQueryMock = new();
     private readonly Mock<ITeamSlotRepository> _teamSlotRepositoryMock = new();
     private readonly Mock<ITeamSlotRequirementRepository> _requirementRepositoryMock = new();
+    private readonly Mock<ITeamCandidateQuery> _candidateQueryMock = new();
     private readonly TeamLeaderService _service;
 
     public TeamLeaderServiceTests()
@@ -22,7 +23,8 @@ public class TeamLeaderServiceTests
             _bossRepositoryMock.Object,
             _periodQueryMock.Object,
             _teamSlotRepositoryMock.Object,
-            _requirementRepositoryMock.Object);
+            _requirementRepositoryMock.Object,
+            _candidateQueryMock.Object);
     }
 
     private CreateTeamCommand ValidCommand() => new()
