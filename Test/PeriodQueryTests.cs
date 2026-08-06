@@ -52,6 +52,27 @@ public class PeriodQueryTests
     }
 
     [Fact]
+    public async Task GetPeriodIdByDateAsync_ShouldOrderByStartDateDescAndLimit1_ToTolerateOverlappingPeriods()
+    {
+        // 多個 period 涵蓋同一日期（相鄰邊界重疊/環境殘留）時，須取 StartDate 最新者、且限一列，
+        // 否則舊版 Single 會撞多筆炸 500（leader-led 開隊/候選踩到，見 e2e）。
+        QueryBuilder? captured = null;
+        _dbContextMock
+            .Setup(u => u.QuerySingleOrDefaultAsync<int?>(It.IsAny<QueryBuilder>()))
+            .Callback<QueryBuilder>(qb => captured = qb)
+            .ReturnsAsync(5);
+
+        await _periodQuery.GetPeriodIdByDateAsync(new DateTimeOffset(2026, 3, 22, 0, 0, 0, TimeSpan.Zero));
+
+        Assert.NotNull(captured);
+        var (sql, _) = captured.Build();
+        var upper = sql.ToUpperInvariant();
+        Assert.Contains("ORDER BY", upper);
+        Assert.Contains("DESC", upper);
+        Assert.Contains("LIMIT", upper);
+    }
+
+    [Fact]
     public async Task GetPeriodIdByDateAsync_ShouldUseUtcDate_WhenInputHasPositiveOffset()
     {
         // 04/23 01:00 +08:00 = 04/22 17:00 UTC
