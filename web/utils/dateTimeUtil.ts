@@ -25,6 +25,23 @@ export function formatDateTime(
 }
 
 /**
+ * 打王時段的精簡顯示（TPE、含星期），leader-led 各頁共用。
+ * 例：「4/8 (三) 20:00」
+ * @param iso ISO 格式日期字串
+ */
+export function formatSlot(iso: string): string {
+    return new Date(iso).toLocaleString("zh-TW", {
+        timeZone: "Asia/Taipei",
+        month: "numeric",
+        day: "numeric",
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    });
+}
+
+/**
  * 取得目前使用者系統所在的時區名稱
  * 例如："Asia/Taipei"、"America/Los_Angeles"
  */
