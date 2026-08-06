@@ -151,6 +151,8 @@ services:
     environment:
       - ConnectionStrings__DefaultConnectionFile=/run/secrets/db_connection
       - Discord__BotTokenFile=/run/secrets/discord_bot_token
+      # DM 發送要 GetGuildAsync(GuildId)→bot 也需 GuildId（backend 有、bot 原本漏）。缺 → outbox 無限重試、DM 送不出。
+      - Discord__GuildId=840590742270771220
       - App__AppUrl=https://maplestory.paralleluniversegame.uk
       - Redis__Configuration=redis:6379
       - Seq__ServerUrl=http://seq:5341

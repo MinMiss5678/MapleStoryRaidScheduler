@@ -32,6 +32,10 @@ spec:
                   key: discord_bot_token
             - name: Discord__ChannelId
               value: "840590742270771223"
+            # DM 發送（leader-led 通知）走 GetGuildAsync(GuildId).GetMemberAsync → bot 也要 GuildId。
+            # 缺這行 → Convert.ToUInt64("") 丟例外 → outbox 無限重試、DM 送不出（backend 有、bot 漏了）。
+            - name: Discord__GuildId
+              value: "840590742270771220"
             - name: App__AppUrl
               value: https://maplestory.paralleluniversegame.uk
             - name: Seq__ServerUrl
