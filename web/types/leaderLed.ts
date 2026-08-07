@@ -10,6 +10,8 @@ export type Membership = {
     job: string | null;
     attackPower: number;
     status: string; // Applied | Invited | Confirmed | Rejected
+    requireMembers: number; // 隊伍容量
+    confirmedCount: number; // 已入隊數（用來判斷是否已滿）
 };
 
 export type OpenTeamRequirementJob = { job: string; minAttackPower: number };

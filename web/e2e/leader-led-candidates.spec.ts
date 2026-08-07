@@ -43,6 +43,8 @@ test('隊長開隊 → 挑候選邀請 → 玩家接受入隊（Pull）', async 
   // ── 3) 候選玩家接受邀請 → 已加入 ──
   await loginAs(page, { discordId: 6003, name: 'P-Cand', role: 'user' });
   await page.goto('/me/teams');
+  // Tier 2：邀請卡顯示隊伍人數（後端 confirmedCount/requireMembers）——此隊 0 confirmed、容量 6
+  await expect(page.getByText('0/6')).toBeVisible();
   await Promise.all([
     page.waitForResponse(r => /\/Invitations\/\d+$/.test(new URL(r.url()).pathname) && r.request().method() === 'PUT' && r.ok()),
     page.getByRole('button', { name: '接受' }).first().click(),
