@@ -15,6 +15,8 @@ public class MembershipDto
     public string? Job { get; set; }
     public int AttackPower { get; set; }
     public string Status { get; set; } = "";
+    public int RequireMembers { get; set; }   // 隊伍容量（Boss.RequireMembers）——供前端顯示 confirmed/require、判斷是否已滿
+    public int ConfirmedCount { get; set; }    // 已入隊真實成員數（占容量者）
 }
 
 /// <summary>

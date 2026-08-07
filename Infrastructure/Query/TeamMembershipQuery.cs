@@ -19,7 +19,10 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             SELECT tsc."Id" AS "MemberId", tsc."TeamSlotId" AS "TeamSlotId", b."Name" AS "BossName",
                    ts."SlotDateTime" AS "SlotDateTime", tsc."CharacterId" AS "CharacterId",
                    tsc."CharacterName" AS "CharacterName", tsc."Job" AS "Job",
-                   tsc."AttackPower" AS "AttackPower", tsc."Status" AS "Status"
+                   tsc."AttackPower" AS "AttackPower", tsc."Status" AS "Status",
+                   b."RequireMembers" AS "RequireMembers",
+                   (SELECT COUNT(*) FROM "TeamSlotCharacter" c
+                    WHERE c."TeamSlotId" = ts."Id" AND c."Status" = 'Confirmed')::int AS "ConfirmedCount"
             FROM "TeamSlotCharacter" tsc
             JOIN "TeamSlot" ts ON ts."Id" = tsc."TeamSlotId"
             JOIN "Boss" b      ON b."Id" = ts."BossId"
@@ -35,7 +38,10 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             SELECT tsc."Id" AS "MemberId", tsc."TeamSlotId" AS "TeamSlotId", b."Name" AS "BossName",
                    ts."SlotDateTime" AS "SlotDateTime", tsc."CharacterId" AS "CharacterId",
                    tsc."CharacterName" AS "CharacterName", tsc."Job" AS "Job",
-                   tsc."AttackPower" AS "AttackPower", tsc."Status" AS "Status"
+                   tsc."AttackPower" AS "AttackPower", tsc."Status" AS "Status",
+                   b."RequireMembers" AS "RequireMembers",
+                   (SELECT COUNT(*) FROM "TeamSlotCharacter" c
+                    WHERE c."TeamSlotId" = ts."Id" AND c."Status" = 'Confirmed')::int AS "ConfirmedCount"
             FROM "TeamSlotCharacter" tsc
             JOIN "TeamSlot" ts ON ts."Id" = tsc."TeamSlotId"
             JOIN "Boss" b      ON b."Id" = ts."BossId"
