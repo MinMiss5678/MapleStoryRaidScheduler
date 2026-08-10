@@ -57,4 +57,16 @@ test('容量 1 隊：一人接受額滿 → 另一人邀請自動撤銷', async 
   await loginAs(page, { discordId: 6006, name: 'P-Full-B', role: 'user' });
   await page.goto('/me/teams');
   await expect(page.getByText('E2E王滿')).toHaveCount(0);
+
+  // 6) 不允許超額邀請：隊伍已滿後，隊長對「已滿的隊」再邀（B 被撤銷成 Rejected → 重回候選）→ 後端擋下（400）
+  await loginAs(page, { discordId: 6007, name: 'P-Full-Leader', role: 'user' });
+  await page.goto('/me/led-teams');
+  await page.locator('li').filter({ hasText: desc }).getByRole('link', { name: /挑候選/ }).click();
+  await page.waitForURL(/\/teams\/\d+\/candidates/);
+  const bRow = page.locator('li').filter({ hasText: 'C-Full-B' });
+  await expect(bRow).toBeVisible();
+  await Promise.all([
+    page.waitForResponse(r => r.url().includes('/Invitations') && r.request().method() === 'POST' && r.status() === 400),
+    bRow.getByRole('button', { name: '邀請' }).click(),
+  ]);
 });
