@@ -126,6 +126,19 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         return ids.Select(x => (ulong)x).ToHashSet();
     }
 
+    public async Task<IReadOnlyCollection<ulong>> RevokePendingInvitesAsync(int teamSlotId)
+    {
+        // 額滿後其餘 Invited 已無法接受 → 一次撤銷為 Rejected，RETURNING 回被邀玩家 DiscordId 供通知。
+        // 單條 UPDATE 原子完成撤銷＋取名單；呼叫端在 per-team advisory lock 內執行，與定案序列化。
+        const string sql = """
+            UPDATE "TeamSlotCharacter" SET "Status" = 'Rejected'
+            WHERE "TeamSlotId" = @teamSlotId AND "Status" = 'Invited'
+            RETURNING "DiscordId";
+            """;
+        var ids = await _dbContext.QueryAsync<long>(sql, new { teamSlotId });
+        return ids.Select(x => (ulong)x).ToList();
+    }
+
     private class MemberRow
     {
         public int Id { get; set; }

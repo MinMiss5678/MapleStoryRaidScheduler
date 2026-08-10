@@ -278,4 +278,47 @@ public class TeamLeaderServiceTests
         await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() => _service.RespondLeaderTransferAsync(10, 888, "accept"));
         _teamSlotRepositoryMock.Verify(r => r.CompleteLeaderTransferAsync(It.IsAny<int>(), It.IsAny<ulong>()), Times.Never);
     }
+
+    private static TeamSlotCharacter InvitedMember() => new()
+    {
+        Id = 5,
+        TeamSlotId = 10,
+        DiscordId = 999,
+        DiscordName = "X",
+        Job = "英雄",
+        Status = TeamSlotMemberStatus.Invited,
+        Version = "v1"
+    };
+
+    [Fact]
+    public async Task AcceptInviteAsync_RevokesRemainingInvites_WhenTeamBecomesFull()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember());
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 1 });
+        // 定案前 0（<容量 → 通過把關）；定案後 1（>=容量 → 觸發撤銷）
+        _memberRepositoryMock.SetupSequence(r => r.CountConfirmedAsync(10)).ReturnsAsync(0).ReturnsAsync(1);
+        _memberRepositoryMock.Setup(r => r.UpdateStatusAsync(5, TeamSlotMemberStatus.Confirmed, "v1")).ReturnsAsync(true);
+        _memberRepositoryMock.Setup(r => r.RevokePendingInvitesAsync(10)).ReturnsAsync(new ulong[] { 888 });
+
+        await _service.AcceptInviteAsync(5, 999);
+
+        _memberRepositoryMock.Verify(r => r.RevokePendingInvitesAsync(10), Times.Once);
+    }
+
+    [Fact]
+    public async Task AcceptInviteAsync_DoesNotRevoke_WhenTeamNotFull()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember());
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
+        _memberRepositoryMock.Setup(r => r.CountConfirmedAsync(10)).ReturnsAsync(0); // 前後皆 0 < 6 → 未滿
+        _memberRepositoryMock.Setup(r => r.UpdateStatusAsync(5, TeamSlotMemberStatus.Confirmed, "v1")).ReturnsAsync(true);
+
+        await _service.AcceptInviteAsync(5, 999);
+
+        _memberRepositoryMock.Verify(r => r.RevokePendingInvitesAsync(It.IsAny<int>()), Times.Never);
+    }
 }
