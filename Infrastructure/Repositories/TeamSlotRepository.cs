@@ -46,7 +46,7 @@ public class TeamSlotRepository : ITeamSlotRepository
         // 原本是「查 TeamSlot」+「查 Characters」兩次往返，合併成一次 LEFT JOIN：
         // 併發控制迴圈裡每個既有隊伍都會呼叫一次，逐隊各打兩次是可避免的 N+1（見 architecture.md）。
         var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId, x.LeaderDiscordId })
+            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId, x.LeaderDiscordId, x.PendingLeaderDiscordId })
             .Select<TeamSlotCharacterDbModel>(x => new
             {
                 CharacterRowId = x.Id,
@@ -93,8 +93,23 @@ public class TeamSlotRepository : ITeamSlotRepository
             Source = first.Source,
             TemplateId = first.TemplateId,
             LeaderDiscordId = first.LeaderDiscordId.HasValue ? (ulong?)first.LeaderDiscordId.Value : null,
+            PendingLeaderDiscordId = first.PendingLeaderDiscordId.HasValue ? (ulong?)first.PendingLeaderDiscordId.Value : null,
             Characters = characters
         };
+    }
+
+    public async Task SetPendingLeaderAsync(int teamSlotId, ulong? pendingDiscordId)
+    {
+        // 提議轉讓（設目標）/ 拒絕或作廢（設 null）。低併發，raw UPDATE by Id。
+        const string sql = """UPDATE "TeamSlot" SET "PendingLeaderDiscordId" = @pending WHERE "Id" = @id""";
+        await _dbContext.ExecuteAsync(sql, new { id = teamSlotId, pending = pendingDiscordId.HasValue ? (long?)pendingDiscordId.Value : null });
+    }
+
+    public async Task CompleteLeaderTransferAsync(int teamSlotId, ulong newLeaderDiscordId)
+    {
+        // 接受轉讓：搬進 LeaderDiscordId、清空 pending。
+        const string sql = """UPDATE "TeamSlot" SET "LeaderDiscordId" = @leader, "PendingLeaderDiscordId" = NULL WHERE "Id" = @id""";
+        await _dbContext.ExecuteAsync(sql, new { id = teamSlotId, leader = (long)newLeaderDiscordId });
     }
 
     private class TeamSlotWithCharacterRow
@@ -105,6 +120,7 @@ public class TeamSlotRepository : ITeamSlotRepository
         public string Source { get; set; } = "";
         public int? TemplateId { get; set; }
         public long? LeaderDiscordId { get; set; }
+        public long? PendingLeaderDiscordId { get; set; }
         public int CharacterRowId { get; set; }
         public long DiscordId { get; set; }
         public string? DiscordName { get; set; }

@@ -16,6 +16,9 @@ public class TeamSlot
     /// <summary>隊長歸屬（leader-led，§3）。null=未認領草稿。Phase 1a 先實作屬性，repo 映射待 1b/1c。</summary>
     public ulong? LeaderDiscordId { get; set; }
 
+    /// <summary>隊長轉讓（需同意）：提議轉給的目標；等對方接受才搬進 LeaderDiscordId。null=無待處理轉讓。</summary>
+    public ulong? PendingLeaderDiscordId { get; set; }
+
     /// <summary>隊伍說明/公告（leader-led，§3 吸收非結構化招募需求）。Phase 1a 先實作屬性，repo 映射待 1b/1c。</summary>
     public string? Description { get; set; }
 

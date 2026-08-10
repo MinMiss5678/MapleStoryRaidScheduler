@@ -235,4 +235,47 @@ public class TeamLeaderServiceTests
         _candidateQueryMock.Verify(q => q.GetHighLeaveRateDiscordIdsAsync(
             It.IsAny<IEnumerable<ulong>>(), It.IsAny<DateTimeOffset>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never);
     }
+
+    [Fact]
+    public async Task ProposeLeaderTransferAsync_SetsPending_WhenLeaderAndTargetConfirmed()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(ConfirmedMember()); // DiscordId=999, TeamSlotId=10, Confirmed
+
+        await _service.ProposeLeaderTransferAsync(10, 5, 111);
+
+        _teamSlotRepositoryMock.Verify(r => r.SetPendingLeaderAsync(10, 999UL), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProposeLeaderTransferAsync_ThrowsForbidden_WhenNotLeader()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111 });
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() => _service.ProposeLeaderTransferAsync(10, 5, 222));
+        _teamSlotRepositoryMock.Verify(r => r.SetPendingLeaderAsync(It.IsAny<int>(), It.IsAny<ulong?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RespondLeaderTransferAsync_Completes_WhenAcceptByTarget()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, PendingLeaderDiscordId = 999, SlotDateTime = DateTimeOffset.UtcNow });
+
+        await _service.RespondLeaderTransferAsync(10, 999, "accept");
+
+        _teamSlotRepositoryMock.Verify(r => r.CompleteLeaderTransferAsync(10, 999UL), Times.Once);
+    }
+
+    [Fact]
+    public async Task RespondLeaderTransferAsync_ThrowsForbidden_WhenNotPendingTarget()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, PendingLeaderDiscordId = 999 });
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() => _service.RespondLeaderTransferAsync(10, 888, "accept"));
+        _teamSlotRepositoryMock.Verify(r => r.CompleteLeaderTransferAsync(It.IsAny<int>(), It.IsAny<ulong>()), Times.Never);
+    }
 }

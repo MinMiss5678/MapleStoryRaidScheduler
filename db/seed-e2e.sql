@@ -139,6 +139,11 @@ BEGIN
     INSERT INTO "PlayerAvailability"("PlayerRegisterId","Weekday","StartTime","EndTime")
     SELECT v_reg_cand, gs, TIME '00:00', TIME '00:00' FROM generate_series(1, 7) AS gs;
 
+    -- leader-led 隊長轉讓 e2e：申請者/未來新隊長 P-Trans(7002) + 角色 c7002（獨立、Push 流程用來入隊後被轉讓）。
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (7002, 'P-Trans', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower")
+    VALUES ('c7002', 7002, 'C-Trans', '英雄', 950);
+
     RAISE NOTICE 'E2E seed 就緒 → periodId=%, bossId=%, teamId=%', v_period_id, v_boss_id, v_team_id;
 END $$;
 

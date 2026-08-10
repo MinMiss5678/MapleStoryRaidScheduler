@@ -14,5 +14,6 @@ public class TeamSlotDbModel
     public int? TemplateId { get; set; }
     public int? PeriodId { get; set; }          // leader-led（migration 000009）：週期權威歸屬
     public long? LeaderDiscordId { get; set; }  // 隊長歸屬；null=未認領草稿
+    public long? PendingLeaderDiscordId { get; set; }  // 隊長轉讓待接受目標
     public string? Description { get; set; }     // 隊伍說明/公告
 }

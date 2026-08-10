@@ -16,4 +16,10 @@ public interface ITeamMembershipQuery
 
     /// <summary>某隊長某週期開的隊（含 confirmed/applied/invited 計數）——隊長 hub 導覽用。</summary>
     Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId, int periodId);
+
+    /// <summary>玩家收到的待處理隊長轉讓（PendingLeaderDiscordId=本人）。</summary>
+    Task<IEnumerable<LeaderTransferDto>> GetPendingLeaderTransfersAsync(ulong discordId);
+
+    /// <summary>某隊 Confirmed 成員名冊（memberId + 顯示名）——隊長轉讓挑人用。</summary>
+    Task<IEnumerable<RosterMemberDto>> GetConfirmedRosterAsync(int teamSlotId);
 }

@@ -3,7 +3,9 @@ import {
     ApplicationAction,
     CreateTeamCommand,
     InvitationAction,
+    LeaderTransfer,
     LedTeam,
+    RosterMember,
     Membership,
     OpenTeam,
     TeamCandidate,
@@ -15,6 +17,14 @@ export const leaderService = {
     getMyInvitations: () => apiClient.get<Membership[]>('/api/Me/Invitations'),
     getMyTeams: () => apiClient.get<Membership[]>('/api/Me/Teams'),
     leaveTeam: (teamSlotId: number) => apiClient.post(`/api/teamSlot/${teamSlotId}/Leave`),
+
+    // 隊長轉讓
+    getMyLeaderTransfers: () => apiClient.get<LeaderTransfer[]>('/api/Me/LeaderTransfers'),
+    getTeamRoster: (teamSlotId: number) => apiClient.get<RosterMember[]>(`/api/teamSlot/${teamSlotId}/Roster`),
+    proposeTransfer: (teamSlotId: number, memberId: number) =>
+        apiClient.post(`/api/teamSlot/${teamSlotId}/TransferLeader`, { memberId }),
+    respondTransfer: (teamSlotId: number, action: 'accept' | 'decline') =>
+        apiClient.put(`/api/teamSlot/${teamSlotId}/TransferLeader`, { action }),
     respondInvitation: (teamSlotId: number, memberId: number, action: InvitationAction) =>
         apiClient.put(`/api/teamSlot/${teamSlotId}/Invitations/${memberId}`, { action }),
 

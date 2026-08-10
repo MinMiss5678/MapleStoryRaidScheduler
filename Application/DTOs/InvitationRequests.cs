@@ -29,3 +29,17 @@ public class ApplicationActionRequest
     [Required]
     public required string Action { get; set; }  // "approve" | "reject"
 }
+
+/// <summary>隊長轉讓提議：目標為本隊某 Confirmed 成員的 memberId（不用 raw discordId）。</summary>
+public class TransferLeaderRequest
+{
+    [Range(1, int.MaxValue)]
+    public int MemberId { get; set; }
+}
+
+/// <summary>被指定者回應隊長轉讓：accept / decline。</summary>
+public class TransferLeaderActionRequest
+{
+    [Required]
+    public required string Action { get; set; }  // "accept" | "decline"
+}

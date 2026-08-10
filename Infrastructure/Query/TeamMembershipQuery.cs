@@ -121,6 +121,30 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         return await _dbContext.QueryAsync<LedTeamDto>(sql, new { leaderDiscordId = (long)leaderDiscordId, periodId });
     }
 
+    public async Task<IEnumerable<LeaderTransferDto>> GetPendingLeaderTransfersAsync(ulong discordId)
+    {
+        const string sql = """
+            SELECT ts."Id" AS "TeamSlotId", b."Name" AS "BossName", ts."SlotDateTime" AS "SlotDateTime"
+            FROM "TeamSlot" ts
+            JOIN "Boss" b ON b."Id" = ts."BossId"
+            WHERE ts."PendingLeaderDiscordId" = @discordId
+            ORDER BY ts."SlotDateTime";
+            """;
+        return await _dbContext.QueryAsync<LeaderTransferDto>(sql, new { discordId = (long)discordId });
+    }
+
+    public async Task<IEnumerable<RosterMemberDto>> GetConfirmedRosterAsync(int teamSlotId)
+    {
+        const string sql = """
+            SELECT tsc."Id" AS "MemberId", tsc."CharacterName" AS "CharacterName", p."DiscordName" AS "DiscordName"
+            FROM "TeamSlotCharacter" tsc
+            JOIN "Player" p ON p."DiscordId" = tsc."DiscordId"
+            WHERE tsc."TeamSlotId" = @teamSlotId AND tsc."Status" = 'Confirmed'
+            ORDER BY tsc."Id";
+            """;
+        return await _dbContext.QueryAsync<RosterMemberDto>(sql, new { teamSlotId });
+    }
+
     private class ReqRow
     {
         public int RequirementId { get; set; }

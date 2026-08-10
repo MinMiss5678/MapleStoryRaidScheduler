@@ -145,6 +145,48 @@ public class TeamSlotController : ControllerBase
         return Ok();
     }
 
+    // 隊長轉讓——某隊 Confirmed 名冊（挑轉讓對象；服務內驗隊長擁有）。
+    [HttpGet("{id:int}/Roster")]
+    public async Task<IActionResult> GetTeamRosterAsync(int id)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetTeamRosterAsync(id, discordId));
+    }
+
+    // 隊長轉讓——提議轉給某成員（→PendingLeaderDiscordId，需對方接受）。
+    [HttpPost("{id:int}/TransferLeader")]
+    public async Task<IActionResult> ProposeTransferAsync(int id, [FromBody] TransferLeaderRequest request)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        await _teamLeaderService.ProposeLeaderTransferAsync(id, request.MemberId, discordId);
+        return Ok();
+    }
+
+    // 隊長轉讓——被指定者回應 accept（→成為新隊長）/ decline。
+    [HttpPut("{id:int}/TransferLeader")]
+    public async Task<IActionResult> RespondTransferAsync(int id, [FromBody] TransferLeaderActionRequest request)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        await _teamLeaderService.RespondLeaderTransferAsync(id, discordId, request.Action);
+        return Ok();
+    }
+
+    // 我收到的待處理隊長轉讓（收件匣）。
+    [HttpGet("/api/Me/LeaderTransfers")]
+    public async Task<IActionResult> GetMyLeaderTransfersAsync()
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetMyLeaderTransfersAsync(discordId));
+    }
+
     // Push：隊長審核申請 approve（→Confirmed）/ reject（→Rejected）。
     [HttpPut("{id:int}/Applications/{memberId:int}")]
     public async Task<IActionResult> RespondApplicationAsync(int id, int memberId, [FromBody] ApplicationActionRequest request)
