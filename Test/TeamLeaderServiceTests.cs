@@ -279,6 +279,18 @@ public class TeamLeaderServiceTests
         _teamSlotRepositoryMock.Verify(r => r.CompleteLeaderTransferAsync(It.IsAny<int>(), It.IsAny<ulong>()), Times.Never);
     }
 
+    [Fact]
+    public async Task InviteMemberAsync_ThrowsBusiness_WhenTeamFull()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 1 });
+        _memberRepositoryMock.Setup(r => r.CountConfirmedAsync(10)).ReturnsAsync(1); // 已滿（Confirmed 達容量）
+
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.InviteMemberAsync(10, "cX", 111));
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
+    }
+
     private static TeamSlotCharacter InvitedMember() => new()
     {
         Id = 5,

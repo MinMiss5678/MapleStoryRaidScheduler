@@ -169,6 +169,14 @@ public class TeamLeaderService : ITeamLeaderService
         if (team.LeaderDiscordId != leaderDiscordId)
             throw new ForbiddenException("只有隊長能邀請成員。");
 
+        // 不允許超額邀請：隊伍已滿（Confirmed 達容量）→ 擋下新邀請（前線 400）。
+        // 只擋「滿隊再邀」；未滿時仍可邀超過剩餘位數的候選（Pull 常態：多邀幾人搶位，滿了由 Tier 3 自動撤銷其餘）。
+        // 容量整合性由 confirm 端 advisory lock 重數把關；此處為 UX 前線守衛（見 plans/2026-08-06-validation-layering.md）。
+        var boss = await _bossRepository.GetByIdAsync(team.BossId);
+        var capacity = boss?.RequireMembers ?? 6;
+        if (await _memberRepository.CountConfirmedAsync(teamSlotId) >= capacity)
+            throw new BusinessException("隊伍已滿，無法再邀請。");
+
         var character = await _characterQuery.GetByIdAsync(characterId);
         if (character == null)
             throw new NotFoundException($"Character {characterId} not found");
