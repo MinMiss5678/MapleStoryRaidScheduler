@@ -333,4 +333,100 @@ public class TeamLeaderServiceTests
 
         _memberRepositoryMock.Verify(r => r.RevokePendingInvitesAsync(It.IsAny<int>()), Times.Never);
     }
+
+    // ── 候選過濾行為邊界（殺變異：Any→All / && / >= / == 存活）──
+    private void SetRequirement(string job, int minAttack, int minClear)
+        => _requirementRepositoryMock.Setup(r => r.GetByTeamSlotIdAsync(10)).ReturnsAsync(new[]
+        {
+            new TeamSlotRequirement { Count = 1, MinClearCount = minClear, Jobs = [new TeamSlotRequirementJob { Job = job, MinAttackPower = minAttack }] }
+        });
+
+    [Fact]
+    public async Task GetCandidatesAsync_ExcludesCandidate_WhenAttackBelowRequirement()
+    {
+        SetupCandidatesPipeline(WarnCandidate()); // 攻擊 900
+        SetRequirement("英雄", 1000, 0);          // 門檻 1000 → 900 不足
+
+        Assert.Empty(await _service.GetCandidatesAsync(10));
+    }
+
+    [Fact]
+    public async Task GetCandidatesAsync_IncludesCandidate_WhenAttackExactlyAtRequirement()
+    {
+        SetupCandidatesPipeline(WarnCandidate()); // 攻擊 900
+        SetRequirement("英雄", 900, 0);           // 門檻剛好 900 → >= 命中（守 >= 對 > 邊界）
+
+        Assert.Single(await _service.GetCandidatesAsync(10));
+    }
+
+    [Fact]
+    public async Task GetCandidatesAsync_ExcludesCandidate_WhenJobMismatch()
+    {
+        SetupCandidatesPipeline(WarnCandidate()); // 英雄
+        SetRequirement("法師", 0, 0);             // 需求職業不符 → 排除
+
+        Assert.Empty(await _service.GetCandidatesAsync(10));
+    }
+
+    [Fact]
+    public async Task GetCandidatesAsync_ExcludesCandidate_WhenClearCountBelowRequirement()
+    {
+        SetupCandidatesPipeline(WarnCandidate()); // BossClearCount 0
+        SetRequirement("英雄", 0, 1);             // 需最低通關 1 → 0 不足
+
+        Assert.Empty(await _service.GetCandidatesAsync(10));
+    }
+
+    [Fact]
+    public async Task GetCandidatesAsync_ExcludesCandidate_WhenAlreadyActiveMember()
+    {
+        SetupCandidatesPipeline(WarnCandidate()); // DiscordId 777
+        _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10)).ReturnsAsync(new HashSet<ulong> { 777 }); // 已在本隊 active → 去重
+
+        Assert.Empty(await _service.GetCandidatesAsync(10));
+    }
+
+    [Fact]
+    public async Task AcceptInviteAsync_ThrowsFull_WhenConfirmedEqualsCapacity()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember());
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 1 });
+        _memberRepositoryMock.Setup(r => r.CountConfirmedAsync(10)).ReturnsAsync(1); // 剛好等於容量 → 隊伍已滿（守 >= 對 > 邊界）
+
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.AcceptInviteAsync(5, 999));
+        _memberRepositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProposeLeaderTransferAsync_ThrowsNotFound_WhenTargetInDifferentTeam()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(new TeamSlotCharacter
+        {
+            Id = 5,
+            TeamSlotId = 99, // 別隊成員
+            DiscordId = 999,
+            DiscordName = "X",
+            Job = "英雄",
+            Status = TeamSlotMemberStatus.Confirmed,
+            Version = "v1"
+        });
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.ProposeLeaderTransferAsync(10, 5, 111));
+        _teamSlotRepositoryMock.Verify(r => r.SetPendingLeaderAsync(It.IsAny<int>(), It.IsAny<ulong?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProposeLeaderTransferAsync_ThrowsNotFound_WhenTargetNotConfirmed()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember()); // TeamSlotId=10 但 Status=Invited（非 Confirmed）
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.ProposeLeaderTransferAsync(10, 5, 111));
+        _teamSlotRepositoryMock.Verify(r => r.SetPendingLeaderAsync(It.IsAny<int>(), It.IsAny<ulong?>()), Times.Never);
+    }
 }
