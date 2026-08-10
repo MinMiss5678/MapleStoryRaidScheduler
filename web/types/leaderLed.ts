@@ -47,6 +47,7 @@ export type LedTeam = {
 export type TeamCandidate = {
     characterId: string;
     characterName: string;
+    discordName: string | null; // 顯示名（公會暱稱優先）——讓隊長認得出老班底
     job: string;
     attackPower: number;
     mapleBlessingLevel: number;

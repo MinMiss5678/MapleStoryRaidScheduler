@@ -1,13 +1,16 @@
 namespace Application.DTOs;
 
 /// <summary>
-/// 隊長挑人的候選（leader-led §4/§9.12）：**只回能力欄、不含 discord 身分**（按能力挑、非身分；
-/// 身分於 pick/承諾後才揭露）。CharacterId 是遊戲角色代碼（非 PII），供隊長發邀請的目標。
+/// 隊長挑人的候選（leader-led §4）：能力欄 + **顯示名（公會暱稱優先）**。
+/// §9.12 匿名已翻（2026-08-07 透明化，見 plans/2026-08-07-leave-team-and-candidate-dedup.md）——
+/// 公會內固定開團、身分本互通，改為顯示 DiscordName 讓隊長認得出老班底、養固定團。
+/// raw discordId 仍留後端（邀請以 CharacterId 為目標）。
 /// </summary>
 public class TeamCandidateDto
 {
     public required string CharacterId { get; set; }
     public required string CharacterName { get; set; }
+    public string? DiscordName { get; set; }        // 顯示名（登入時 nick ?? global_name ?? username）
     public required string Job { get; set; }
     public int AttackPower { get; set; }
     public int MapleBlessingLevel { get; set; }    // 挑 buffer 用（§9.18）

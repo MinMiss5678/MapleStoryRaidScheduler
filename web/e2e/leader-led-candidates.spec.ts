@@ -34,6 +34,8 @@ test('隊長開隊 → 挑候選邀請 → 玩家接受入隊（Pull）', async 
   await page.waitForURL(/\/teams\/\d+\/candidates/);
   const candRow = page.locator('li').filter({ hasText: 'C-Cand' });
   await expect(candRow).toBeVisible();
+  // 透明化：候選卡顯示玩家顯示名（公會暱稱優先）——seed 的 P-Cand
+  await expect(candRow).toContainText('@P-Cand');
   await Promise.all([
     page.waitForResponse(r => r.url().includes('/Invitations') && r.request().method() === 'POST' && r.ok()),
     candRow.getByRole('button', { name: '邀請' }).click(),

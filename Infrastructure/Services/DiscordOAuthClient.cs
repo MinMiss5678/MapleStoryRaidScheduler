@@ -65,7 +65,7 @@ public class DiscordOAuthClient : IDiscordOAuthClient
         return JsonSerializer.Deserialize<DiscordTokenResponse>(json);
     }
 
-    public async Task<IEnumerable<string>> GetUserRolesAsync(ulong discordId)
+    public async Task<GuildMemberDto> GetGuildMemberAsync(ulong discordId)
     {
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bot", _discordOptions.BotToken);
         var resp = await _http.GetAsync($"https://discord.com/api/guilds/{_discordOptions.GuildId}/members/{discordId}");
@@ -73,7 +73,9 @@ public class DiscordOAuthClient : IDiscordOAuthClient
 
         var json = await resp.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
-        var roles = doc.RootElement.GetProperty("roles").EnumerateArray().Select(x => x.GetString()!).ToList();
-        return roles;
+        var root = doc.RootElement;
+        var roles = root.GetProperty("roles").EnumerateArray().Select(x => x.GetString()!).ToList();
+        var nick = root.TryGetProperty("nick", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
+        return new GuildMemberDto { Roles = roles, Nick = nick };
     }
 }

@@ -70,6 +70,9 @@ export default function CandidatesPage() {
                                     <span className="font-semibold truncate">
                                         {c.characterName} <span className="text-muted-foreground font-normal">（{c.job}）</span>
                                     </span>
+                                    {c.discordName && (
+                                        <span className="text-xs text-muted-foreground truncate">@{c.discordName}</span>
+                                    )}
                                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                                         <span className="flex items-center gap-1"><Zap size={12} /> {c.attackPower}</span>
                                         <span className="flex items-center gap-1"><Trophy size={12} /> 通關 {c.bossClearCount}</span>

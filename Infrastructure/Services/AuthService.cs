@@ -32,6 +32,7 @@ public class AuthService : IAuthService
         {
             Id = userDto.Id,
             Name = userDto.Username,
+            GlobalName = userDto.GlobalName,
         };
     }
 
@@ -46,8 +47,8 @@ public class AuthService : IAuthService
 
     public async Task<string?> RefreshToken(ulong discordId)
     {
-        var roles = await _discordClient.GetUserRolesAsync(discordId);
-        var roleIds = roles
+        var member = await _discordClient.GetGuildMemberAsync(discordId);
+        var roleIds = member.Roles
             .Select(r =>
             {
                 if (ulong.TryParse(r, out var id)) return (ulong?)id;

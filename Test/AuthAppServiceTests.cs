@@ -28,6 +28,9 @@ public class AuthAppServiceTests
         _roleMappingRepositoryMock = new Mock<IDiscordRoleMappingRepository>();
         _discordOptionsMock = new Mock<IOptions<DiscordOptions>>();
         _discordOptionsMock.Setup(x => x.Value).Returns(_discordOptions);
+        // 預設：公會成員查詢回空（無身分組、無暱稱）→ 各測試需要身分組再覆寫
+        _discordOAuthClientMock.Setup(x => x.GetGuildMemberAsync(It.IsAny<ulong>()))
+            .ReturnsAsync(new GuildMemberDto());
 
         _authAppService = new AuthAppService(
             _authServiceMock.Object,
@@ -47,8 +50,8 @@ public class AuthAppServiceTests
 
         _authServiceMock.Setup(x => x.ExchangeCodeAsync(code))
             .ReturnsAsync(user);
-        _discordOAuthClientMock.Setup(x => x.GetUserRolesAsync(user.Id))
-            .ReturnsAsync(roles);
+        _discordOAuthClientMock.Setup(x => x.GetGuildMemberAsync(user.Id))
+            .ReturnsAsync(new GuildMemberDto { Roles = roles });
         _roleMappingRepositoryMock
             .Setup(x => x.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
             .ReturnsAsync("admin");
@@ -74,8 +77,8 @@ public class AuthAppServiceTests
 
         _authServiceMock.Setup(x => x.ExchangeCodeAsync(code))
             .ReturnsAsync(user);
-        _discordOAuthClientMock.Setup(x => x.GetUserRolesAsync(user.Id))
-            .ReturnsAsync(roles);
+        _discordOAuthClientMock.Setup(x => x.GetGuildMemberAsync(user.Id))
+            .ReturnsAsync(new GuildMemberDto { Roles = roles });
         _roleMappingRepositoryMock
             .Setup(x => x.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
             .ReturnsAsync("User");
@@ -98,7 +101,7 @@ public class AuthAppServiceTests
         var code = "test-code";
         var user = new DiscordUser { Id = 12345, Name = "user-name" };
         _authServiceMock.Setup(x => x.ExchangeCodeAsync(code)).ReturnsAsync(user);
-        _discordOAuthClientMock.Setup(x => x.GetUserRolesAsync(user.Id)).ReturnsAsync(new List<string>());
+        _discordOAuthClientMock.Setup(x => x.GetGuildMemberAsync(user.Id)).ReturnsAsync(new GuildMemberDto());
         _roleMappingRepositoryMock
             .Setup(x => x.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
             .ReturnsAsync((string?)null);
