@@ -344,4 +344,23 @@ public class TeamLeaderService : ITeamLeaderService
         if (periodId == 0) return [];
         return await _membershipQuery.GetLedTeamsAsync(leaderDiscordId, periodId);
     }
+
+    public async Task LeaveTeamAsync(int teamSlotId, ulong currentDiscordId)
+    {
+        // 只能退自己在該隊的 Confirmed 成員資格（一人一隊至多一個 Confirmed）。查無 → 不在此隊/已退。
+        var member = await _memberRepository.GetConfirmedMemberAsync(teamSlotId, currentDiscordId);
+        if (member == null)
+            throw new NotFoundException("你不在此隊、或已退出。");
+
+        // Confirmed→Left（xmin）。退隊只減 Confirmed → 位子自動重開（容量/開放隊/我的隊皆按 Confirmed 計）。
+        var ok = await _memberRepository.LeaveAsync(member.Id!.Value, member.Version!);
+        if (!ok)
+            throw new BusinessException("狀態已被更新，請重新整理。");
+
+        // 通知隊長：有人退隊、位子重開
+        var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
+        if (team != null)
+            await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0,
+                (boss, time) => $"有成員退出你「{boss}」{time} 的隊伍，位子已重開。");
+    }
 }

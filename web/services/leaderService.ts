@@ -14,6 +14,7 @@ export const leaderService = {
     // Pull 玩家端：我的邀請 / 我的隊
     getMyInvitations: () => apiClient.get<Membership[]>('/api/Me/Invitations'),
     getMyTeams: () => apiClient.get<Membership[]>('/api/Me/Teams'),
+    leaveTeam: (teamSlotId: number) => apiClient.post(`/api/teamSlot/${teamSlotId}/Leave`),
     respondInvitation: (teamSlotId: number, memberId: number, action: InvitationAction) =>
         apiClient.put(`/api/teamSlot/${teamSlotId}/Invitations/${memberId}`, { action }),
 

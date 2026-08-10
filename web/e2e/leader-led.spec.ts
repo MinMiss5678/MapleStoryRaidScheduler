@@ -61,4 +61,12 @@ test('隊長開隊 → 玩家申請 → 隊長核准 → 玩家看到已加入',
   await page.goto('/me/teams');
   await expect(page.getByText('已加入')).toBeVisible();
   await expect(page.getByText('E2E王').first()).toBeVisible();
+
+  // ── 5) 玩家自助退隊 → 位子重開、已加入變空 ──
+  // window.confirm 由頂端 dialog handler 自動接受
+  await Promise.all([
+    page.waitForResponse(r => /\/teamSlot\/\d+\/Leave$/i.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok()),
+    page.getByRole('button', { name: '退隊' }).click(),
+  ]);
+  await expect(page.getByText('你目前還沒有已確認的隊伍')).toBeVisible();
 });

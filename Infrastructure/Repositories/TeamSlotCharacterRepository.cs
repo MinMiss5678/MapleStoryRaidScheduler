@@ -80,6 +80,41 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         return await _dbContext.ExecuteAsync(sql) > 0;
     }
 
+    public async Task<TeamSlotCharacter?> GetConfirmedMemberAsync(int teamSlotId, ulong discordId)
+    {
+        const string sql = """
+            SELECT "Id" AS "Id", "TeamSlotId" AS "TeamSlotId", "DiscordId" AS "DiscordId",
+                   "DiscordName" AS "DiscordName", "CharacterId" AS "CharacterId", "Job" AS "Job",
+                   "Status" AS "Status", xmin::text AS "Version"
+            FROM "TeamSlotCharacter"
+            WHERE "TeamSlotId" = @teamSlotId AND "DiscordId" = @discordId AND "Status" = 'Confirmed'
+            LIMIT 1;
+            """;
+        var row = (await _dbContext.QueryAsync<MemberRow>(sql, new { teamSlotId, discordId = (long)discordId })).FirstOrDefault();
+        if (row == null) return null;
+        return new TeamSlotCharacter
+        {
+            Id = row.Id,
+            TeamSlotId = row.TeamSlotId,
+            DiscordId = (ulong)row.DiscordId,
+            DiscordName = row.DiscordName,
+            CharacterId = row.CharacterId,
+            Job = row.Job,
+            Status = row.Status,
+            Version = row.Version
+        };
+    }
+
+    public async Task<bool> LeaveAsync(int id, string version)
+    {
+        // Confirmed→Left + 記 LeftAt=now()，xmin 樂觀鎖。退隊只減 Confirmed 數、不觸容量上限 → 不需 advisory lock。
+        const string sql = """
+            UPDATE "TeamSlotCharacter" SET "Status" = 'Left', "LeftAt" = now()
+            WHERE "Id" = @id AND xmin = @version::xid;
+            """;
+        return await _dbContext.ExecuteAsync(sql, new { id, version }) > 0;
+    }
+
     private class MemberRow
     {
         public int Id { get; set; }

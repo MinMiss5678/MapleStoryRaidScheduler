@@ -125,4 +125,45 @@ public class TeamLeaderServiceTests
         Assert.Same(teams, result);
         _membershipQueryMock.Verify(q => q.GetLedTeamsAsync(999, 7), Times.Once);
     }
+
+    private static TeamSlotCharacter ConfirmedMember() => new()
+    {
+        Id = 5,
+        TeamSlotId = 10,
+        DiscordId = 999,
+        DiscordName = "X",
+        Job = "英雄",
+        Status = TeamSlotMemberStatus.Confirmed,
+        Version = "v1"
+    };
+
+    [Fact]
+    public async Task LeaveTeamAsync_LeavesConfirmedMember_WhenSelfConfirmed()
+    {
+        _memberRepositoryMock.Setup(r => r.GetConfirmedMemberAsync(10, 999UL)).ReturnsAsync(ConfirmedMember());
+        _memberRepositoryMock.Setup(r => r.LeaveAsync(5, "v1")).ReturnsAsync(true);
+        // team 回 null → 通知略過，測試聚焦退隊本身
+
+        await _service.LeaveTeamAsync(10, 999);
+
+        _memberRepositoryMock.Verify(r => r.LeaveAsync(5, "v1"), Times.Once);
+    }
+
+    [Fact]
+    public async Task LeaveTeamAsync_ThrowsNotFound_WhenNotConfirmedMember()
+    {
+        _memberRepositoryMock.Setup(r => r.GetConfirmedMemberAsync(10, 999UL)).ReturnsAsync((TeamSlotCharacter?)null);
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.LeaveTeamAsync(10, 999));
+        _memberRepositoryMock.Verify(r => r.LeaveAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task LeaveTeamAsync_ThrowsBusiness_WhenVersionConflict()
+    {
+        _memberRepositoryMock.Setup(r => r.GetConfirmedMemberAsync(10, 999UL)).ReturnsAsync(ConfirmedMember());
+        _memberRepositoryMock.Setup(r => r.LeaveAsync(5, "v1")).ReturnsAsync(false); // xmin 對不上
+
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.LeaveTeamAsync(10, 999));
+    }
 }
