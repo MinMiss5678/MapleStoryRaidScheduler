@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Crown, Swords, Clock, Users, UserSearch, Inbox, Plus } from "lucide-react";
 import { useLedTeams } from "@/hooks/queries/useLedTeams";
 import { formatSlot } from "@/utils/dateTimeUtil";
+import { TransferControl } from "./TransferControl";
 
 export default function LedTeamsPage() {
     const { data: teams = [], isLoading } = useLedTeams();
@@ -78,6 +79,7 @@ export default function LedTeamsPage() {
                             {t.invitedCount > 0 && (
                                 <p className="text-xs text-muted-foreground">已送出 {t.invitedCount} 則邀請，等待玩家回覆。</p>
                             )}
+                            <TransferControl teamSlotId={t.teamSlotId} />
                         </li>
                     ))}
                 </ul>

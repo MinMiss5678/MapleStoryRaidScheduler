@@ -36,6 +36,22 @@ public class LedTeamDto
     public string? Description { get; set; }
 }
 
+/// <summary>玩家收到的待處理隊長轉讓（Me/LeaderTransfers）：王/時段，供接受/拒絕。</summary>
+public class LeaderTransferDto
+{
+    public int TeamSlotId { get; set; }
+    public string? BossName { get; set; }
+    public DateTimeOffset SlotDateTime { get; set; }
+}
+
+/// <summary>某隊 Confirmed 成員一列（隊長轉讓挑人用）：memberId 當轉讓目標（不外流 raw discordId）+ 顯示名。</summary>
+public class RosterMemberDto
+{
+    public int MemberId { get; set; }
+    public string? CharacterName { get; set; }
+    public string? DiscordName { get; set; }
+}
+
 /// <summary>玩家可申請的開放隊（Push 發現）：王/時段/容量/剩餘 + 條件，供玩家判斷是否申請。</summary>
 public class OpenTeamDto
 {

@@ -385,4 +385,55 @@ public class TeamLeaderService : ITeamLeaderService
             await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0,
                 (boss, time) => $"有成員退出你「{boss}」{time} 的隊伍，位子已重開。");
     }
+
+    public async Task ProposeLeaderTransferAsync(int teamSlotId, int memberId, ulong currentDiscordId)
+    {
+        var team = await EnsureLeaderOwnsTeamAsync(teamSlotId, currentDiscordId, "只有隊長能轉讓。");
+
+        // 目標須為本隊的 Confirmed 成員（MVP）；不能轉給自己。
+        var member = await _memberRepository.GetByIdAsync(memberId);
+        if (member == null || member.TeamSlotId != teamSlotId || member.Status != TeamSlotMemberStatus.Confirmed)
+            throw new NotFoundException("轉讓目標必須是本隊的已入隊成員。");
+        if (member.DiscordId == currentDiscordId)
+            throw new BusinessException("不能把隊長轉給自己。");
+
+        await _teamSlotRepository.SetPendingLeaderAsync(teamSlotId, member.DiscordId);
+        await NotifyAsync(team.BossId, team.SlotDateTime, member.DiscordId,
+            (boss, time) => $"隊長想把「{boss}」{time} 的隊長轉給你，請至站內接受或拒絕。");
+    }
+
+    public async Task RespondLeaderTransferAsync(int teamSlotId, ulong currentDiscordId, string action)
+    {
+        var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
+        if (team == null)
+            throw new NotFoundException($"TeamSlot {teamSlotId} not found");
+        if (team.PendingLeaderDiscordId != currentDiscordId)
+            throw new ForbiddenException("沒有指定給你的待處理轉讓。");
+
+        var oldLeader = team.LeaderDiscordId ?? 0;
+        switch (action)
+        {
+            case "accept":
+                await _teamSlotRepository.CompleteLeaderTransferAsync(teamSlotId, currentDiscordId);
+                await NotifyAsync(team.BossId, team.SlotDateTime, oldLeader,
+                    (boss, time) => $"你「{boss}」{time} 的隊長轉讓已被接受、對方成為新隊長。");
+                break;
+            case "decline":
+                await _teamSlotRepository.SetPendingLeaderAsync(teamSlotId, null);
+                await NotifyAsync(team.BossId, team.SlotDateTime, oldLeader,
+                    (boss, time) => $"你「{boss}」{time} 的隊長轉讓被拒絕。");
+                break;
+            default:
+                throw new BusinessException("無效的動作。");
+        }
+    }
+
+    public Task<IEnumerable<LeaderTransferDto>> GetMyLeaderTransfersAsync(ulong discordId)
+        => _membershipQuery.GetPendingLeaderTransfersAsync(discordId);
+
+    public async Task<IEnumerable<RosterMemberDto>> GetTeamRosterAsync(int teamSlotId, ulong leaderDiscordId)
+    {
+        await EnsureLeaderOwnsTeamAsync(teamSlotId, leaderDiscordId, "只有隊長能查看名冊。");
+        return await _membershipQuery.GetConfirmedRosterAsync(teamSlotId);
+    }
 }

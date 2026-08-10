@@ -46,4 +46,16 @@ public interface ITeamLeaderService
 
     /// <summary>玩家自助退隊（Confirmed→Left，釋放位子、可重邀）：只能退自己在該隊的成員資格；xmin 樂觀鎖；通知隊長。</summary>
     Task LeaveTeamAsync(int teamSlotId, ulong currentDiscordId);
+
+    /// <summary>隊長提議把隊長轉給某 Confirmed 成員（→PendingLeaderDiscordId，需對方接受）。只有隊長能提議。</summary>
+    Task ProposeLeaderTransferAsync(int teamSlotId, int memberId, ulong currentDiscordId);
+
+    /// <summary>被指定者回應轉讓 accept（→成為新隊長）/ decline；通知原隊長。</summary>
+    Task RespondLeaderTransferAsync(int teamSlotId, ulong currentDiscordId, string action);
+
+    /// <summary>我收到的待處理隊長轉讓（收件匣）。</summary>
+    Task<IEnumerable<LeaderTransferDto>> GetMyLeaderTransfersAsync(ulong discordId);
+
+    /// <summary>某隊 Confirmed 名冊（隊長轉讓挑人；驗隊長擁有）。</summary>
+    Task<IEnumerable<RosterMemberDto>> GetTeamRosterAsync(int teamSlotId, ulong leaderDiscordId);
 }

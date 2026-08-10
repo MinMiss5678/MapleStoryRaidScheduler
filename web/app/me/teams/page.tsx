@@ -1,7 +1,7 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Users, Mail, Check, X, Swords, Clock, User, Zap, LogOut } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Users, Mail, Check, X, Swords, Clock, User, Zap, LogOut, UserCog } from "lucide-react";
 import toast from "react-hot-toast";
 import { useMyInvitations } from "@/hooks/queries/useMyInvitations";
 import { useMyTeams } from "@/hooks/queries/useMyTeams";
@@ -36,6 +36,22 @@ export default function MyTeamsPage() {
         },
     });
 
+    const { data: transfers = [] } = useQuery({
+        queryKey: ["leaderTransfers"],
+        queryFn: () => leaderService.getMyLeaderTransfers(),
+    });
+
+    const respondTransfer = useMutation({
+        mutationFn: (v: { teamSlotId: number; action: "accept" | "decline" }) =>
+            leaderService.respondTransfer(v.teamSlotId, v.action),
+        onSuccess: (_d, v) => toast.success(v.action === "accept" ? "你已成為新隊長" : "已拒絕轉讓"),
+        onError: (e) => toast.error(e instanceof ApiError ? e.message : "操作失敗，請稍後再試"),
+        onSettled: () => {
+            qc.invalidateQueries({ queryKey: ["leaderTransfers"] });
+            qc.invalidateQueries({ queryKey: ["ledTeams"] });
+        },
+    });
+
     const isLoading = invLoading || teamsLoading;
 
     return (
@@ -54,6 +70,48 @@ export default function MyTeamsPage() {
                 <p className="text-muted-foreground py-12 text-center">載入中…</p>
             ) : (
                 <div className="space-y-8">
+                    {/* 待處理隊長轉讓（有才顯示） */}
+                    {transfers.length > 0 && (
+                        <section>
+                            <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mb-3">
+                                <UserCog size={16} /> 隊長轉讓（{transfers.length}）
+                            </h2>
+                            <ul className="space-y-4">
+                                {transfers.map((t) => (
+                                    <li
+                                        key={t.teamSlotId}
+                                        className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-3"
+                                    >
+                                        <div className="flex items-center gap-2 text-lg font-semibold">
+                                            <Swords size={18} className="text-purple-500" />
+                                            {t.bossName ?? "王"}
+                                        </div>
+                                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                                            <Clock size={14} /> {formatSlot(t.slotDateTime)}
+                                        </span>
+                                        <p className="text-sm text-muted-foreground">隊長想把這隊的隊長轉給你。</p>
+                                        <div className="flex gap-2 pt-1">
+                                            <button
+                                                disabled={respondTransfer.isPending}
+                                                onClick={() => respondTransfer.mutate({ teamSlotId: t.teamSlotId, action: "accept" })}
+                                                className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 font-medium"
+                                            >
+                                                <Check size={16} /> 接受當隊長
+                                            </button>
+                                            <button
+                                                disabled={respondTransfer.isPending}
+                                                onClick={() => respondTransfer.mutate({ teamSlotId: t.teamSlotId, action: "decline" })}
+                                                className="px-4 py-2 bg-muted text-foreground rounded-xl hover:bg-muted/70 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 font-medium"
+                                            >
+                                                <X size={16} /> 拒絕
+                                            </button>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+                    )}
+
                     {/* 待處理邀請（有才顯示，當作可動作的 inbox） */}
                     {invitations.length > 0 && (
                         <section>

@@ -28,6 +28,10 @@ export type OpenTeam = {
 };
 
 export type InvitationAction = 'accept' | 'decline';
+
+// 隊長轉讓
+export type LeaderTransfer = { teamSlotId: number; bossName: string | null; slotDateTime: string };
+export type RosterMember = { memberId: number; characterName: string | null; discordName: string | null };
 export type ApplicationAction = 'approve' | 'reject';
 
 // 隊長「我開的隊」hub 一列（對齊後端 LedTeamDto）
