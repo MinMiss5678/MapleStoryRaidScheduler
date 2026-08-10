@@ -137,20 +137,15 @@ export default function MyTeamsPage() {
                                             </span>
                                             <span className="flex items-center gap-1">
                                                 <Users size={14} /> {inv.confirmedCount}/{inv.requireMembers}
-                                                {inv.confirmedCount >= inv.requireMembers && (
-                                                    <span className="text-red-500 dark:text-red-400">（已滿）</span>
-                                                )}
                                             </span>
                                         </div>
                                         <div className="flex gap-2 pt-1">
                                             <button
-                                                disabled={respond.isPending || inv.confirmedCount >= inv.requireMembers}
+                                                disabled={respond.isPending}
                                                 onClick={() => respond.mutate({ teamSlotId: inv.teamSlotId, memberId: inv.memberId, action: "accept" })}
-                                                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5 font-medium"
+                                                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 font-medium"
                                             >
-                                                {inv.confirmedCount >= inv.requireMembers
-                                                    ? <>已滿</>
-                                                    : <><Check size={16} /> 接受</>}
+                                                <Check size={16} /> 接受
                                             </button>
                                             <button
                                                 disabled={respond.isPending}
