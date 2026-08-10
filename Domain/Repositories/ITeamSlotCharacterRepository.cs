@@ -28,4 +28,10 @@ public interface ITeamSlotCharacterRepository
 
     /// <summary>某隊 active（Confirmed/Invited/Applied）成員的 DiscordId 集合——供候選去重（排除已在隊/待處理者）。</summary>
     Task<IReadOnlyCollection<ulong>> GetActiveMemberDiscordIdsAsync(int teamSlotId);
+
+    /// <summary>
+    /// 隊伍額滿時，把該隊其餘「待接受邀請（Invited）」一次撤銷為 Rejected；回傳被撤銷者的被邀玩家 DiscordId（供通知）。
+    /// 只動 Invited（隊長選定卻搶不到位）；不動 Applied（保留為候補，位子重開後隊長可再核准）。
+    /// </summary>
+    Task<IReadOnlyCollection<ulong>> RevokePendingInvitesAsync(int teamSlotId);
 }

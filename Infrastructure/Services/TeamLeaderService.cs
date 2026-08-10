@@ -242,6 +242,16 @@ public class TeamLeaderService : ITeamLeaderService
         var ok = await _memberRepository.UpdateStatusAsync(member.Id!.Value, TeamSlotMemberStatus.Confirmed, member.Version!);
         if (!ok)
             throw new BusinessException("狀態已被更新，請重新整理。");
+
+        // mutation-ux Tier 3：本次定案若使隊伍額滿 → 自動撤銷其餘待接受邀請（否則玩家端只剩無法按的死按鈕、隊長邀請數也虛掛）。
+        // 仍在 per-team advisory lock 內，與其他 confirm 序列化，不會與「同時另一人接受」競態。
+        if (await _memberRepository.CountConfirmedAsync(member.TeamSlotId) >= capacity)
+        {
+            var revokedDiscordIds = await _memberRepository.RevokePendingInvitesAsync(member.TeamSlotId);
+            foreach (var discordId in revokedDiscordIds)
+                await NotifyAsync(team.BossId, team.SlotDateTime, discordId,
+                    (boss, time) => $"「{boss}」{time} 的隊伍已額滿，你的邀請自動失效。");
+        }
     }
 
     public async Task DeclineInviteAsync(int memberId, ulong currentDiscordId)

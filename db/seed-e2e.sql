@@ -36,6 +36,8 @@ DECLARE
     v_tpl4_id     int;
     v_team4_id    int;
     v_reg_cand    int;
+    v_boss_full_id int;
+    v_reg_full    int;
     -- period 設「未來一週」：截止日永遠在 period 開始前一週（GetDeadlineForPeriod 的 -7），
     -- StartDate 要夠遠（+10）截止日才落在未來、報名才開著（符合 app「當前=即將開打的下週」模型）
     v_weekday     int         := EXTRACT(DOW FROM (CURRENT_DATE + 11))::int;
@@ -138,6 +140,24 @@ BEGIN
     VALUES (v_reg_cand, 'c6003', v_boss_id, 1);
     INSERT INTO "PlayerAvailability"("PlayerRegisterId","Weekday","StartTime","EndTime")
     SELECT v_reg_cand, gs, TIME '00:00', TIME '00:00' FROM generate_series(1, 7) AS gs;
+
+    -- leader-led 自動撤銷過期邀請(Tier 3) e2e：容量 1 的王「E2E王滿」+ 兩名全週可用候選
+    -- P-Full-A(6005,c6005) / P-Full-B(6006,c6006)。隊長（6007,test-login 自建）邀兩人 → 其一接受使隊伍額滿
+    -- → 另一人的邀請被自動撤銷（從其待處理邀請消失）。獨立王隔離、不與其他測試互撞。
+    INSERT INTO "Boss"("Name","RequireMembers","RoundConsumption") VALUES ('E2E王滿', 1, 1) RETURNING "Id" INTO v_boss_full_id;
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (6005, 'P-Full-A', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower") VALUES ('c6005', 6005, 'C-Full-A', '夜使者', 950);
+    INSERT INTO "PlayerRegister"("DiscordId","PeriodId") VALUES (6005, v_period_id) RETURNING "Id" INTO v_reg_full;
+    INSERT INTO "CharacterRegister"("PlayerRegisterId","CharacterId","BossId","Rounds") VALUES (v_reg_full, 'c6005', v_boss_full_id, 1);
+    INSERT INTO "PlayerAvailability"("PlayerRegisterId","Weekday","StartTime","EndTime")
+    SELECT v_reg_full, gs, TIME '00:00', TIME '00:00' FROM generate_series(1, 7) AS gs;
+
+    INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (6006, 'P-Full-B', 'user');
+    INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower") VALUES ('c6006', 6006, 'C-Full-B', '夜使者', 950);
+    INSERT INTO "PlayerRegister"("DiscordId","PeriodId") VALUES (6006, v_period_id) RETURNING "Id" INTO v_reg_full;
+    INSERT INTO "CharacterRegister"("PlayerRegisterId","CharacterId","BossId","Rounds") VALUES (v_reg_full, 'c6006', v_boss_full_id, 1);
+    INSERT INTO "PlayerAvailability"("PlayerRegisterId","Weekday","StartTime","EndTime")
+    SELECT v_reg_full, gs, TIME '00:00', TIME '00:00' FROM generate_series(1, 7) AS gs;
 
     -- leader-led 隊長轉讓 e2e：申請者/未來新隊長 P-Trans(7002) + 角色 c7002（獨立、Push 流程用來入隊後被轉讓）。
     INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (7002, 'P-Trans', 'user');
