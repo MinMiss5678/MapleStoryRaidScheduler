@@ -429,4 +429,181 @@ public class TeamLeaderServiceTests
         await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.ProposeLeaderTransferAsync(10, 5, 111));
         _teamSlotRepositoryMock.Verify(r => r.SetPendingLeaderAsync(It.IsAny<int>(), It.IsAny<ulong?>()), Times.Never);
     }
+
+    // ── 授權/守衛分支（中批 A：leader-only / self-only / 狀態 / xmin 衝突；補 e2e happy path 測不到的錯誤路徑）──
+    private static TeamSlotCharacter AppliedMember() => new()
+    {
+        Id = 5,
+        TeamSlotId = 10,
+        DiscordId = 999,
+        DiscordName = "X",
+        Job = "英雄",
+        Status = TeamSlotMemberStatus.Applied,
+        Version = "v1"
+    };
+
+    [Fact]
+    public async Task InviteMemberAsync_ThrowsForbidden_WhenNotLeader()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() => _service.InviteMemberAsync(10, "cX", 222));
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task InviteMemberAsync_ThrowsNotFound_WhenCharacterMissing()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
+        _memberRepositoryMock.Setup(r => r.CountConfirmedAsync(10)).ReturnsAsync(0);
+        _characterQueryMock.Setup(q => q.GetByIdAsync("cX")).ReturnsAsync((Character?)null);
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.InviteMemberAsync(10, "cX", 111));
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AcceptInviteAsync_ThrowsForbidden_WhenNotSelf()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember()); // DiscordId=999
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() => _service.AcceptInviteAsync(5, 888));
+        _memberRepositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AcceptInviteAsync_ThrowsBusiness_WhenNotInvitedStatus()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(ConfirmedMember()); // 已 Confirmed，非 Invited
+
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.AcceptInviteAsync(5, 999));
+        _memberRepositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeclineInviteAsync_ThrowsForbidden_WhenNotSelf()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember()); // DiscordId=999
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() => _service.DeclineInviteAsync(5, 888));
+        _memberRepositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeclineInviteAsync_ThrowsBusiness_WhenVersionConflict()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember());
+        _memberRepositoryMock.Setup(r => r.UpdateStatusAsync(5, TeamSlotMemberStatus.Rejected, "v1")).ReturnsAsync(false); // xmin 對不上
+
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.DeclineInviteAsync(5, 999));
+    }
+
+    [Fact]
+    public async Task ApplyAsync_ThrowsNotFound_WhenCharacterNotOwned()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, SlotDateTime = DateTimeOffset.UtcNow });
+        _characterQueryMock.Setup(q => q.GetByIdAsync("cX")).ReturnsAsync(new Character
+        {
+            Id = "cX",
+            DiscordId = 777,
+            Name = "C",
+            Job = "英雄",
+            AttackPower = 900 // 屬於別人（777≠999）
+        });
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.ApplyAsync(10, "cX", 999));
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_ThrowsNotFound_WhenMemberMissing()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync((TeamSlotCharacter?)null);
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.ApproveAsync(5, 111));
+    }
+
+    [Fact]
+    public async Task ApproveAsync_ThrowsBusiness_WhenNotAppliedStatus()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(ConfirmedMember()); // 非 Applied
+
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.ApproveAsync(5, 111));
+    }
+
+    [Fact]
+    public async Task ApproveAsync_ThrowsForbidden_WhenNotLeader()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(AppliedMember()); // TeamSlotId=10
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() => _service.ApproveAsync(5, 222));
+        _memberRepositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RejectAsync_ThrowsForbidden_WhenNotLeader()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(AppliedMember());
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() => _service.RejectAsync(5, 222));
+        _memberRepositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RejectAsync_ThrowsBusiness_WhenVersionConflict()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(AppliedMember());
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _memberRepositoryMock.Setup(r => r.UpdateStatusAsync(5, TeamSlotMemberStatus.Rejected, "v1")).ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.RejectAsync(5, 111));
+    }
+
+    [Fact]
+    public async Task GetApplicationsAsync_ThrowsForbidden_WhenNotLeader()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() => _service.GetApplicationsAsync(10, 222));
+        _membershipQueryMock.Verify(q => q.GetApplicationsAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeclineInviteAsync_ThrowsBusiness_WhenNotInvitedStatus()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(ConfirmedMember()); // 自己、但已 Confirmed（非 Invited）
+
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.DeclineInviteAsync(5, 999));
+        _memberRepositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_ThrowsNotFound_WhenTeamMissing()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10)).ReturnsAsync((TeamSlot?)null);
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.ApplyAsync(10, "cX", 999));
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_ThrowsNotFound_WhenCharacterMissing()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, SlotDateTime = DateTimeOffset.UtcNow });
+        _characterQueryMock.Setup(q => q.GetByIdAsync("cX")).ReturnsAsync((Character?)null);
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.ApplyAsync(10, "cX", 999));
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
+    }
 }
