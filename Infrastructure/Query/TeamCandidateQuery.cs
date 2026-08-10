@@ -28,6 +28,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             SELECT DISTINCT
                 c."Id"                       AS "CharacterId",
                 c."Name"                     AS "CharacterName",
+                c."DiscordId"                AS "DiscordId",
                 p."DiscordName"              AS "DiscordName",
                 c."Job"                      AS "Job",
                 c."AttackPower"              AS "AttackPower",
@@ -57,6 +58,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                 {
                     CharacterId = first.CharacterId,
                     CharacterName = first.CharacterName,
+                    DiscordId = (ulong)first.DiscordId,
                     DiscordName = first.DiscordName,
                     Job = first.Job,
                     AttackPower = first.AttackPower,
@@ -77,6 +79,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
     {
         public string CharacterId { get; set; } = "";
         public string CharacterName { get; set; } = "";
+        public long DiscordId { get; set; }
         public string? DiscordName { get; set; }
         public string Job { get; set; } = "";
         public int AttackPower { get; set; }

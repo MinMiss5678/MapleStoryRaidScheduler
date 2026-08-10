@@ -17,6 +17,7 @@ public class CandidatePoolItem
 {
     public required string CharacterId { get; set; }
     public required string CharacterName { get; set; }
+    public ulong DiscordId { get; set; }          // service 內部去重用（不外流到 DTO）
     public string? DiscordName { get; set; }
     public required string Job { get; set; }
     public int AttackPower { get; set; }
