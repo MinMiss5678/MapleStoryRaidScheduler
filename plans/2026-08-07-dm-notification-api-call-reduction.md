@@ -1,6 +1,6 @@
 # leader-led DM 通知：減少 Discord API 呼叫次數
 
-狀態：**規劃中（YAGNI，尚未實作）**。這是**未來優化**——現況一次一人、偶發通知，離任何限流極遠，先不做；本文件備妥「量大了照這個做」。
+狀態：**優化 1+2 已實作**（2026-08-11，`DiscordService.cs`：DM 頻道快取 + 成員快取優先 → 熱路徑 3→1 REST）；**優化 3（同人彙整）仍待產品決策**（時間窗/訊息格式），量成長成痛點再做。
 
 關聯：`Infrastructure/Services/DiscordService.cs`、`Infrastructure/BackgroundJobs/TeamNotificationOutboxHandler.cs`、`OutboxDispatcher.cs`。DM 架構＝Transactional Outbox（見 leader-led §11）。
 
