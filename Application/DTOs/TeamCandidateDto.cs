@@ -15,4 +15,5 @@ public class TeamCandidateDto
     public int AttackPower { get; set; }
     public int MapleBlessingLevel { get; set; }    // 挑 buffer 用（§9.18）
     public int BossClearCount { get; set; }         // 本王總通關（跨該玩家角色加總，老手參考，§9.14）
+    public bool LeaveRateWarn { get; set; }         // 退團率偏高警示（Feature 1b；admin 開且達門檻才 true）
 }

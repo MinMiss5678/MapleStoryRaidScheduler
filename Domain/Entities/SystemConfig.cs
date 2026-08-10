@@ -22,6 +22,16 @@ public class SystemConfig
     /// </summary>
     public bool IsDeadlineNotified { get; set; }
 
+    // ── 候選「退團率」可靠度信號（Feature 1b，預設關）──
+    /// <summary>是否在候選卡顯示「退團率偏高」警示。預設關（名譽信號敏感）。</summary>
+    public bool LeaveRateWarnEnabled { get; set; }
+    /// <summary>退團率統計時間窗（月）。只看最近 N 個月的參加/退團。</summary>
+    public int LeaveRateWindowMonths { get; set; } = 3;
+    /// <summary>示警門檻（百分比）：退團率 ≥ 此值才警示。</summary>
+    public int LeaveRateThreshold { get; set; } = 30;
+    /// <summary>最小樣本數：窗內參加 < 此數不算率（避免 1/1=100% 小樣本誤判）。</summary>
+    public int LeaveRateMinSample { get; set; } = 5;
+
     /// <summary>
     /// 根據指定週期的開始日期，計算該週期的報名截止時間
     /// </summary>

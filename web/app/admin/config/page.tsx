@@ -117,6 +117,46 @@ export default function AdminConfigPage() {
                                 </div>
                             </div>
 
+                            <div className="space-y-4 pt-4 border-t border-border">
+                                <label className="flex items-center gap-2 text-sm font-medium">
+                                    <input
+                                        type="checkbox"
+                                        checked={config.leaveRateWarnEnabled}
+                                        onChange={(e) => setConfig({ ...config, leaveRateWarnEnabled: e.target.checked })}
+                                    />
+                                    候選卡顯示「退團率偏高」警示（預設關）
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <label className="space-y-2 block">
+                                        <span className="text-sm font-medium text-muted-foreground">時間窗（月）</span>
+                                        <input
+                                            type="number" min={1}
+                                            className="w-full h-10 px-3 text-sm rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            value={config.leaveRateWindowMonths}
+                                            onChange={(e) => setConfig({ ...config, leaveRateWindowMonths: parseInt(e.target.value) || 0 })}
+                                        />
+                                    </label>
+                                    <label className="space-y-2 block">
+                                        <span className="text-sm font-medium text-muted-foreground">門檻率（%）</span>
+                                        <input
+                                            type="number" min={0} max={100}
+                                            className="w-full h-10 px-3 text-sm rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            value={config.leaveRateThreshold}
+                                            onChange={(e) => setConfig({ ...config, leaveRateThreshold: parseInt(e.target.value) || 0 })}
+                                        />
+                                    </label>
+                                    <label className="space-y-2 block">
+                                        <span className="text-sm font-medium text-muted-foreground">最小樣本數</span>
+                                        <input
+                                            type="number" min={1}
+                                            className="w-full h-10 px-3 text-sm rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            value={config.leaveRateMinSample}
+                                            onChange={(e) => setConfig({ ...config, leaveRateMinSample: parseInt(e.target.value) || 0 })}
+                                        />
+                                    </label>
+                                </div>
+                            </div>
+
                             <div className="flex justify-end pt-4">
                                 <button
                                     onClick={handleSave}

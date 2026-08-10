@@ -11,4 +11,8 @@ public class SystemConfigDbModel
     public int DeadlineDayOfWeek { get; set; }
     public TimeSpan DeadlineTime { get; set; }
     public bool IsDeadlineNotified { get; set; }
+    public bool LeaveRateWarnEnabled { get; set; }
+    public int LeaveRateWindowMonths { get; set; }
+    public int LeaveRateThreshold { get; set; }
+    public int LeaveRateMinSample { get; set; }
 }

@@ -1,4 +1,5 @@
 using Application.DTOs;
+using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
 using Domain.Repositories;
@@ -19,10 +20,12 @@ public class TeamLeaderServiceTests
     private readonly Mock<ICharacterQuery> _characterQueryMock = new();
     private readonly Mock<IRegistrationLock> _registrationLockMock = new();
     private readonly Mock<ITeamMembershipQuery> _membershipQueryMock = new();
+    private readonly Mock<ISystemConfigService> _systemConfigServiceMock = new();
     private readonly TeamLeaderService _service;
 
     public TeamLeaderServiceTests()
     {
+        _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(new Domain.Entities.SystemConfig());
         _service = new TeamLeaderService(
             _bossRepositoryMock.Object,
             _periodQueryMock.Object,
@@ -33,7 +36,8 @@ public class TeamLeaderServiceTests
             _characterQueryMock.Object,
             _registrationLockMock.Object,
             new Mock<Application.Interface.IOutbox>().Object,
-            _membershipQueryMock.Object);
+            _membershipQueryMock.Object,
+            _systemConfigServiceMock.Object);
     }
 
     private CreateTeamCommand ValidCommand() => new()
@@ -165,5 +169,70 @@ public class TeamLeaderServiceTests
         _memberRepositoryMock.Setup(r => r.LeaveAsync(5, "v1")).ReturnsAsync(false); // xmin 對不上
 
         await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.LeaveTeamAsync(10, 999));
+    }
+
+    // 團時間 2026-04-08 12:00Z = 週三 20:00 TPE（ISO weekday 3）；候選帶整天可用時段 + 符合需求。
+    private void SetupCandidatesPipeline(CandidatePoolItem item)
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10)).ReturnsAsync(new TeamSlot
+        {
+            Id = 10,
+            BossId = 1,
+            SlotDateTime = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero)
+        });
+        _periodQueryMock.Setup(p => p.GetPeriodIdByDateAsync(It.IsAny<DateTimeOffset>())).ReturnsAsync(1);
+        _periodQueryMock.Setup(p => p.GetByIdAsync(1)).ReturnsAsync(new Period
+        {
+            Id = 1,
+            StartDate = new DateTimeOffset(2026, 4, 6, 0, 0, 0, TimeSpan.Zero),
+            EndDate = new DateTimeOffset(2026, 4, 13, 0, 0, 0, TimeSpan.Zero)
+        });
+        _requirementRepositoryMock.Setup(r => r.GetByTeamSlotIdAsync(10)).ReturnsAsync(new[]
+        {
+            new TeamSlotRequirement { Count = 1, MinClearCount = 0, Jobs = [new TeamSlotRequirementJob { Job = "英雄", MinAttackPower = 0 }] }
+        });
+        _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10)).ReturnsAsync(new HashSet<ulong>());
+        _candidateQueryMock.Setup(q => q.GetPoolAsync(1, 1)).ReturnsAsync(new[] { item });
+    }
+
+    private static CandidatePoolItem WarnCandidate() => new()
+    {
+        CharacterId = "c1",
+        CharacterName = "C",
+        DiscordId = 777,
+        Job = "英雄",
+        AttackPower = 900,
+        BossClearCount = 0,
+        Availabilities = [new PlayerAvailability { Weekday = 3, StartTime = new TimeOnly(0, 0), EndTime = new TimeOnly(0, 0) }]
+    };
+
+    [Fact]
+    public async Task GetCandidatesAsync_SetsLeaveRateWarn_WhenEnabledAndHighRate()
+    {
+        SetupCandidatesPipeline(WarnCandidate());
+        _systemConfigServiceMock.Setup(s => s.GetAsync())
+            .ReturnsAsync(new Domain.Entities.SystemConfig { LeaveRateWarnEnabled = true, LeaveRateWindowMonths = 3, LeaveRateThreshold = 30, LeaveRateMinSample = 5 });
+        _candidateQueryMock.Setup(q => q.GetHighLeaveRateDiscordIdsAsync(
+                It.IsAny<IEnumerable<ulong>>(), It.IsAny<DateTimeOffset>(), 5, 30))
+            .ReturnsAsync(new HashSet<ulong> { 777 });
+
+        var result = (await _service.GetCandidatesAsync(10)).ToList();
+
+        Assert.Single(result);
+        Assert.True(result[0].LeaveRateWarn);
+    }
+
+    [Fact]
+    public async Task GetCandidatesAsync_NoWarn_WhenConfigDisabled()
+    {
+        SetupCandidatesPipeline(WarnCandidate());
+        // 預設 config（建構子設）LeaveRateWarnEnabled=false → 不查率、warn 一律 false
+
+        var result = (await _service.GetCandidatesAsync(10)).ToList();
+
+        Assert.Single(result);
+        Assert.False(result[0].LeaveRateWarn);
+        _candidateQueryMock.Verify(q => q.GetHighLeaveRateDiscordIdsAsync(
+            It.IsAny<IEnumerable<ulong>>(), It.IsAny<DateTimeOffset>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never);
     }
 }

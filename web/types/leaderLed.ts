@@ -52,6 +52,7 @@ export type TeamCandidate = {
     attackPower: number;
     mapleBlessingLevel: number;
     bossClearCount: number;
+    leaveRateWarn: boolean; // 退團率偏高警示（admin 開且達門檻才 true）
 };
 
 // 開隊 command（對齊後端 CreateTeamCommand；LeaderDiscordId 由後端從登入身分注入）
