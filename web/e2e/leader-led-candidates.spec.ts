@@ -42,6 +42,11 @@ test('隊長開隊 → 挑候選邀請 → 玩家接受入隊（Pull）', async 
   ]);
   await expect(candRow.getByRole('button', { name: '已邀請' })).toBeVisible();
 
+  // 狀態感知去重：邀請後（C-Cand 變 Invited）重整候選頁 → 不再列出（唯一候選 → 空狀態）
+  await page.reload();
+  await expect(page.getByText('沒有符合條件的候選')).toBeVisible();
+  await expect(page.getByText('C-Cand')).toHaveCount(0);
+
   // ── 3) 候選玩家接受邀請 → 已加入 ──
   await loginAs(page, { discordId: 6003, name: 'P-Cand', role: 'user' });
   await page.goto('/me/teams');

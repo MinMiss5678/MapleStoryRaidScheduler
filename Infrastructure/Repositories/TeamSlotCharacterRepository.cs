@@ -115,6 +115,17 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         return await _dbContext.ExecuteAsync(sql, new { id, version }) > 0;
     }
 
+    public async Task<IReadOnlyCollection<ulong>> GetActiveMemberDiscordIdsAsync(int teamSlotId)
+    {
+        // active = Confirmed/Invited/Applied（占位或待處理）；Rejected/Left 排除 → 拒絕/退隊過的可重新出現在候選、可重邀。
+        const string sql = """
+            SELECT DISTINCT "DiscordId" FROM "TeamSlotCharacter"
+            WHERE "TeamSlotId" = @teamSlotId AND "Status" IN ('Confirmed', 'Invited', 'Applied');
+            """;
+        var ids = await _dbContext.QueryAsync<long>(sql, new { teamSlotId });
+        return ids.Select(x => (ulong)x).ToHashSet();
+    }
+
     private class MemberRow
     {
         public int Id { get; set; }

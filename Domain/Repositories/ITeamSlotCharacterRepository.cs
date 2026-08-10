@@ -25,4 +25,7 @@ public interface ITeamSlotCharacterRepository
 
     /// <summary>玩家退隊：Confirmed→Left、寫 LeftAt=now()，xmin 樂觀鎖。false = 版本對不上。</summary>
     Task<bool> LeaveAsync(int id, string version);
+
+    /// <summary>某隊 active（Confirmed/Invited/Applied）成員的 DiscordId 集合——供候選去重（排除已在隊/待處理者）。</summary>
+    Task<IReadOnlyCollection<ulong>> GetActiveMemberDiscordIdsAsync(int teamSlotId);
 }

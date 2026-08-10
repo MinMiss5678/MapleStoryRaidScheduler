@@ -111,6 +111,9 @@ public class TeamLeaderService : ITeamLeaderService
 
         var requirements = (await _requirementRepository.GetByTeamSlotIdAsync(teamSlotId)).ToList();
         var pool = await _candidateQuery.GetPoolAsync(periodId, team.BossId);
+        // 狀態感知去重：排除「其玩家已在本隊 active（Confirmed/Invited/Applied）」者——避免重列已入隊/待處理、再邀撞 409。
+        // 以 DiscordId 為準（active-membership 一人一隊一個）；保留 Rejected/Left → 位子重開時可重邀。
+        var activeIds = await _memberRepository.GetActiveMemberDiscordIdsAsync(teamSlotId);
 
         // 團時間 → weekday/time（TPE），比照 TeamSlotAutoAssignService 慣例
         var twTime = team.SlotDateTime.ToOffset(TimeSpan.FromHours(8));
@@ -119,8 +122,10 @@ public class TeamLeaderService : ITeamLeaderService
 
         return pool
             .Where(item =>
+                // 排除已在本隊 active 的玩家（去重）
+                !activeIds.Contains(item.DiscordId)
                 // 時段重疊：任一時段涵蓋團時間
-                item.Availabilities.Any(a => SlotDateCalculator.IsTimeInAvailability(teamWeekday, teamTime, a, period))
+                && item.Availabilities.Any(a => SlotDateCalculator.IsTimeInAvailability(teamWeekday, teamTime, a, period))
                 // 且符合至少一需求列：某可接受職業==角色職業 且 攻擊≥該職下限 且 本王通關≥該列門檻。
                 // 無需求列 → 無候選（隊長須先定義條件才看得到候選）。
                 && requirements.Any(r =>
