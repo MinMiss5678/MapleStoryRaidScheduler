@@ -22,6 +22,7 @@ public class TeamLeaderService : ITeamLeaderService
     private readonly IRegistrationLock _registrationLock;
     private readonly IOutbox _outbox;
     private readonly ITeamMembershipQuery _membershipQuery;
+    private readonly ISystemConfigService _systemConfigService;
 
     public TeamLeaderService(
         IBossRepository bossRepository,
@@ -33,7 +34,8 @@ public class TeamLeaderService : ITeamLeaderService
         ICharacterQuery characterQuery,
         IRegistrationLock registrationLock,
         IOutbox outbox,
-        ITeamMembershipQuery membershipQuery)
+        ITeamMembershipQuery membershipQuery,
+        ISystemConfigService systemConfigService)
     {
         _bossRepository = bossRepository;
         _periodQuery = periodQuery;
@@ -45,6 +47,7 @@ public class TeamLeaderService : ITeamLeaderService
         _registrationLock = registrationLock;
         _outbox = outbox;
         _membershipQuery = membershipQuery;
+        _systemConfigService = systemConfigService;
     }
 
     // leader-led §11 通知：與狀態改動同交易 enqueue 一則 outbox（原子，崩了不遺失）→ bot handler 發 Discord DM。
@@ -120,7 +123,7 @@ public class TeamLeaderService : ITeamLeaderService
         int teamWeekday = SlotDateCalculator.ToIsoWeekday(twTime.DayOfWeek);
         var teamTime = TimeOnly.FromDateTime(twTime.DateTime);
 
-        return pool
+        var matched = pool
             .Where(item =>
                 // 排除已在本隊 active 的玩家（去重）
                 !activeIds.Contains(item.DiscordId)
@@ -131,6 +134,19 @@ public class TeamLeaderService : ITeamLeaderService
                 && requirements.Any(r =>
                     item.BossClearCount >= r.MinClearCount &&
                     r.Jobs.Any(j => j.Job == item.Job && item.AttackPower >= j.MinAttackPower)))
+            .ToList();
+
+        // 退團率信號（Feature 1b，admin 開才算才回）：窗內退團率達門檻者標警示。
+        IReadOnlyCollection<ulong> warnIds = [];
+        var config = await _systemConfigService.GetAsync();
+        if (config.LeaveRateWarnEnabled && matched.Count > 0)
+        {
+            var windowStart = DateTimeOffset.UtcNow.AddMonths(-config.LeaveRateWindowMonths);
+            warnIds = await _candidateQuery.GetHighLeaveRateDiscordIdsAsync(
+                matched.Select(m => m.DiscordId), windowStart, config.LeaveRateMinSample, config.LeaveRateThreshold);
+        }
+
+        return matched
             .Select(item => new TeamCandidateDto
             {
                 CharacterId = item.CharacterId,
@@ -139,7 +155,8 @@ public class TeamLeaderService : ITeamLeaderService
                 Job = item.Job,
                 AttackPower = item.AttackPower,
                 MapleBlessingLevel = item.MapleBlessingLevel,
-                BossClearCount = item.BossClearCount
+                BossClearCount = item.BossClearCount,
+                LeaveRateWarn = warnIds.Contains(item.DiscordId)
             })
             .ToList();
     }

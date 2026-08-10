@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, UserSearch, Zap, Trophy, Sparkles, UserPlus, Check } from "lucide-react";
+import { ArrowLeft, UserSearch, Zap, Trophy, Sparkles, UserPlus, Check, AlertTriangle } from "lucide-react";
 import toast from "react-hot-toast";
 import { useCandidates } from "@/hooks/queries/useCandidates";
 import { useLedTeams } from "@/hooks/queries/useLedTeams";
@@ -77,6 +77,11 @@ export default function CandidatesPage() {
                                         <span className="flex items-center gap-1"><Zap size={12} /> {c.attackPower}</span>
                                         <span className="flex items-center gap-1"><Trophy size={12} /> 通關 {c.bossClearCount}</span>
                                         <span className="flex items-center gap-1"><Sparkles size={12} /> 祝福 {c.mapleBlessingLevel}</span>
+                                        {c.leaveRateWarn && (
+                                            <span className="flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
+                                                <AlertTriangle size={12} /> 退團率高
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                                 <button

@@ -10,6 +10,13 @@ namespace Application.Queries;
 public interface ITeamCandidateQuery
 {
     Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int periodId, int bossId);
+
+    /// <summary>
+    /// 候選「退團率偏高」的 DiscordId 集合（Feature 1b）：窗內（SlotDateTime ≥ windowStart）以 DiscordId 聚合，
+    /// 參加(Confirmed+Left) ≥ minSample 且 退團(Left)/參加 ≥ thresholdPercent% 者。給定 discordIds 範圍內計算。
+    /// </summary>
+    Task<IReadOnlyCollection<ulong>> GetHighLeaveRateDiscordIdsAsync(
+        IEnumerable<ulong> discordIds, DateTimeOffset windowStart, int minSample, int thresholdPercent);
 }
 
 /// <summary>候選池的一筆角色（含其玩家的時段清單與本王總通關）。DiscordId 僅供 service 內部，不外流到 DTO。</summary>

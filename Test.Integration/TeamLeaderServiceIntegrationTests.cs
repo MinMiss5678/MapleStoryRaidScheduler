@@ -33,7 +33,8 @@ public class TeamLeaderServiceIntegrationTests
             new CharacterQuery(db, new PeriodQuery(db)),
             new RegistrationLock(db),
             new Outbox(db),
-            new TeamMembershipQuery(db));
+            new TeamMembershipQuery(db),
+            new SystemConfigService(db, new Outbox(db)));
     }
 
     [Fact]

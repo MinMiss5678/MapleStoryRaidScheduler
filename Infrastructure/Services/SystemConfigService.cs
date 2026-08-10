@@ -39,7 +39,11 @@ public class SystemConfigService : ISystemConfigService
             Id = dbModel.Id,
             DeadlineDayOfWeek = (DayOfWeek)dbModel.DeadlineDayOfWeek,
             DeadlineTime = dbModel.DeadlineTime,
-            IsDeadlineNotified = dbModel.IsDeadlineNotified
+            IsDeadlineNotified = dbModel.IsDeadlineNotified,
+            LeaveRateWarnEnabled = dbModel.LeaveRateWarnEnabled,
+            LeaveRateWindowMonths = dbModel.LeaveRateWindowMonths,
+            LeaveRateThreshold = dbModel.LeaveRateThreshold,
+            LeaveRateMinSample = dbModel.LeaveRateMinSample
         };
     }
 
@@ -54,7 +58,11 @@ public class SystemConfigService : ISystemConfigService
             {
                 DeadlineDayOfWeek = (int)config.DeadlineDayOfWeek,
                 DeadlineTime = config.DeadlineTime,
-                IsDeadlineNotified = config.IsDeadlineNotified
+                IsDeadlineNotified = config.IsDeadlineNotified,
+                LeaveRateWarnEnabled = config.LeaveRateWarnEnabled,
+                LeaveRateWindowMonths = config.LeaveRateWindowMonths,
+                LeaveRateThreshold = config.LeaveRateThreshold,
+                LeaveRateMinSample = config.LeaveRateMinSample
             });
         }
         else
@@ -72,6 +80,10 @@ public class SystemConfigService : ISystemConfigService
 
             existing.DeadlineDayOfWeek = (int)config.DeadlineDayOfWeek;
             existing.DeadlineTime = config.DeadlineTime;
+            existing.LeaveRateWarnEnabled = config.LeaveRateWarnEnabled;
+            existing.LeaveRateWindowMonths = config.LeaveRateWindowMonths;
+            existing.LeaveRateThreshold = config.LeaveRateThreshold;
+            existing.LeaveRateMinSample = config.LeaveRateMinSample;
             await repository.UpdateAsync(existing);
         }
 

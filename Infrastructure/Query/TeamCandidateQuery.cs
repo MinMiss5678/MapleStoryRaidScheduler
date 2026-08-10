@@ -75,6 +75,27 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             .ToList();
     }
 
+    public async Task<IReadOnlyCollection<ulong>> GetHighLeaveRateDiscordIdsAsync(
+        IEnumerable<ulong> discordIds, DateTimeOffset windowStart, int minSample, int thresholdPercent)
+    {
+        var ids = discordIds.Select(x => (long)x).ToArray();
+        if (ids.Length == 0) return [];
+
+        // 窗內以 DiscordId 聚合：參加=Confirmed+Left、退團=Left；HAVING 濾出樣本足夠且率達門檻者。
+        const string sql = """
+            SELECT "DiscordId"
+            FROM "TeamSlotCharacter"
+            WHERE "DiscordId" = ANY(@ids)
+              AND "Status" IN ('Confirmed', 'Left')
+              AND "SlotDateTime" >= @windowStart
+            GROUP BY "DiscordId"
+            HAVING COUNT(*) >= @minSample
+               AND COUNT(*) FILTER (WHERE "Status" = 'Left') * 100 >= @thresholdPercent * COUNT(*);
+            """;
+        var result = await _dbContext.QueryAsync<long>(sql, new { ids, windowStart, minSample, thresholdPercent });
+        return result.Select(x => (ulong)x).ToHashSet();
+    }
+
     private class PoolRow
     {
         public string CharacterId { get; set; } = "";
