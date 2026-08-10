@@ -1,4 +1,3 @@
-using Application.Interface;
 using Domain.Entities;
 using Domain.Repositories;
 using Infrastructure.Services;
@@ -19,31 +18,15 @@ public class PlayerServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_ShouldCreatePlayer_WhenNotExists()
+    public async Task CreateAsync_ShouldUpsertToRepo_RegardlessOfExistence()
     {
-        // Arrange
-        var player = new Player { DiscordId = 12345, DiscordName = "TestPlayer", Role = "" };
-        _playerRepositoryMock.Setup(r => r.ExistAsync(player.DiscordId)).ReturnsAsync(false);
+        // 現為 upsert：一律呼叫 repo（既有玩家更新 DiscordName＝公會暱稱刷新），不再 check-then-skip。
+        var player = new Player { DiscordId = 12345, DiscordName = "Nick", Role = "user" };
 
-        // Act
         await _playerService.CreateAsync(player);
 
-        // Assert
         _playerRepositoryMock.Verify(r => r.CreateAsync(player), Times.Once);
-    }
-
-    [Fact]
-    public async Task CreateAsync_ShouldSkipCreation_WhenPlayerAlreadyExists()
-    {
-        // Arrange
-        var player = new Player { DiscordId = 12345, DiscordName = "", Role = "" };
-        _playerRepositoryMock.Setup(r => r.ExistAsync(player.DiscordId)).ReturnsAsync(true);
-
-        // Act
-        await _playerService.CreateAsync(player);
-
-        // Assert
-        _playerRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<Player>()), Times.Never);
+        _playerRepositoryMock.Verify(r => r.ExistAsync(It.IsAny<ulong>()), Times.Never); // 不再先查存在
     }
 
     [Fact]

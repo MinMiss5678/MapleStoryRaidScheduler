@@ -130,6 +130,7 @@ public class TeamLeaderService : ITeamLeaderService
             {
                 CharacterId = item.CharacterId,
                 CharacterName = item.CharacterName,
+                DiscordName = item.DiscordName,
                 Job = item.Job,
                 AttackPower = item.AttackPower,
                 MapleBlessingLevel = item.MapleBlessingLevel,

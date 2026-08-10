@@ -28,6 +28,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             SELECT DISTINCT
                 c."Id"                       AS "CharacterId",
                 c."Name"                     AS "CharacterName",
+                p."DiscordName"              AS "DiscordName",
                 c."Job"                      AS "Job",
                 c."AttackPower"              AS "AttackPower",
                 c."MapleBlessingLevel"       AS "MapleBlessingLevel",
@@ -38,6 +39,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             FROM "PlayerRegister" pr
             JOIN "CharacterRegister" cr ON cr."PlayerRegisterId" = pr."Id"
             JOIN "Character" c          ON c."Id" = cr."CharacterId"
+            JOIN "Player" p             ON p."DiscordId" = c."DiscordId"
             JOIN "PlayerAvailability" a ON a."PlayerRegisterId" = pr."Id"
             LEFT JOIN clear_total ct    ON ct."DiscordId" = c."DiscordId"
             WHERE pr."PeriodId" = @periodId;
@@ -55,6 +57,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                 {
                     CharacterId = first.CharacterId,
                     CharacterName = first.CharacterName,
+                    DiscordName = first.DiscordName,
                     Job = first.Job,
                     AttackPower = first.AttackPower,
                     MapleBlessingLevel = first.MapleBlessingLevel,
@@ -74,6 +77,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
     {
         public string CharacterId { get; set; } = "";
         public string CharacterName { get; set; } = "";
+        public string? DiscordName { get; set; }
         public string Job { get; set; } = "";
         public int AttackPower { get; set; }
         public int MapleBlessingLevel { get; set; }

@@ -28,14 +28,17 @@ public class AuthAppService : IAuthAppService
     {
         var user = await _authService.ExchangeCodeAsync(code);
 
-        // user.Name 來自 Discord（IdP，長度本就受限），但此登入用例被 WebApi 與 bot 共用，
-        // 而 bot 那條路徑不經 WebApi 的 DTO 驗證 → 在此共用 choke point 做防禦性檢查，
-        // 確保任何寫入者都不會把空/異常長的名稱落 DB（沿用「登入無法安全進行 → 回失敗」既有模式）。
-        if (string.IsNullOrWhiteSpace(user.Name) || user.Name.Length > MaxDiscordNameLength)
-            return new LoginResult { IsSuccess = false };
-
         var existingPlayer = await _playerService.GetAsync(user.Id);
-        var roles = await _discordOAuthClient.GetUserRolesAsync(user.Id);
+        var member = await _discordOAuthClient.GetGuildMemberAsync(user.Id);
+
+        // 顯示名優先序：公會暱稱(nick) → 帳號顯示名(global_name) → username。登入時決定、並透過 upsert
+        // 更新 Player.DiscordName（既有成員重登即刷新）→ 系統各處顯示大家認得的公會暱稱。
+        // 此共用 choke point 防禦性擋空/異常長（bot 路徑不經 WebApi DTO 驗證），沿用「無法安全登入→回失敗」。
+        var displayName = new[] { member.Nick, user.GlobalName, user.Name }
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? user.Name;
+        if (string.IsNullOrWhiteSpace(displayName) || displayName.Length > MaxDiscordNameLength)
+            return new LoginResult { IsSuccess = false };
+        user.Name = displayName;   // 讓 JWT 與 Player.DiscordName 都用顯示名
 
         // 角色來源改為 DB 映射：
         // 1) 若玩家已存在，沿用 DB 中的 Player.Role
@@ -44,7 +47,7 @@ public class AuthAppService : IAuthAppService
         if (string.IsNullOrEmpty(role))
         {
             // 將 OAuth 回傳的身分組 ID 轉為 ulong 陣列供 DB 映射使用
-            var roleIds = roles
+            var roleIds = member.Roles
                 .Select(r =>
                 {
                     if (ulong.TryParse(r, out var id)) return (ulong?)id;

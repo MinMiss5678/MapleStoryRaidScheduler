@@ -15,10 +15,8 @@ public class PlayerService : IPlayerService
 
     public async Task CreateAsync(Player player)
     {
-        if (!await _playerRepository.ExistAsync(player.DiscordId))
-        {
-            await _playerRepository.CreateAsync(player);
-        }
+        // repo 現為 upsert：既有玩家會更新 DiscordName（公會暱稱重登刷新），故不再 check-then-insert。
+        await _playerRepository.CreateAsync(player);
     }
 
     public async Task<Player?> GetAsync(ulong discordId)

@@ -17,6 +17,7 @@ public class CandidatePoolItem
 {
     public required string CharacterId { get; set; }
     public required string CharacterName { get; set; }
+    public string? DiscordName { get; set; }
     public required string Job { get; set; }
     public int AttackPower { get; set; }
     public int MapleBlessingLevel { get; set; }

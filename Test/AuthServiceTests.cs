@@ -81,8 +81,8 @@ public class AuthServiceTests
     public async Task RefreshToken_WhenRoleExists_ReturnsJwt()
     {
         ulong discordId = 555UL;
-        _discordClientMock.Setup(c => c.GetUserRolesAsync(discordId))
-            .ReturnsAsync(new List<string> { "123456789" });
+        _discordClientMock.Setup(c => c.GetGuildMemberAsync(discordId))
+            .ReturnsAsync(new GuildMemberDto { Roles = new List<string> { "123456789" } });
         _roleMappingRepoMock.Setup(r => r.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
             .ReturnsAsync("Admin");
         _playerRepoMock.Setup(p => p.GetAsync(discordId))
@@ -99,8 +99,8 @@ public class AuthServiceTests
     public async Task RefreshToken_WhenNoRole_ReturnsNull()
     {
         ulong discordId = 666UL;
-        _discordClientMock.Setup(c => c.GetUserRolesAsync(discordId))
-            .ReturnsAsync(new List<string> { "not-a-number" });
+        _discordClientMock.Setup(c => c.GetGuildMemberAsync(discordId))
+            .ReturnsAsync(new GuildMemberDto { Roles = new List<string> { "not-a-number" } });
         _roleMappingRepoMock.Setup(r => r.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
             .ReturnsAsync((string?)null);
 
@@ -113,8 +113,8 @@ public class AuthServiceTests
     public async Task RefreshToken_WithNonNumericRole_FilteredOut()
     {
         ulong discordId = 777UL;
-        _discordClientMock.Setup(c => c.GetUserRolesAsync(discordId))
-            .ReturnsAsync(new List<string> { "abc", "def" }); // 全部非數字
+        _discordClientMock.Setup(c => c.GetGuildMemberAsync(discordId))
+            .ReturnsAsync(new GuildMemberDto { Roles = new List<string> { "abc", "def" } }); // 全部非數字
         _roleMappingRepoMock.Setup(r => r.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>()))
             .ReturnsAsync((string?)null);
 
