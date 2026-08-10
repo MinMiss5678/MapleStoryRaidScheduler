@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Users, Mail, Check, X, Swords, Clock, User, Zap } from "lucide-react";
+import { Users, Mail, Check, X, Swords, Clock, User, Zap, LogOut } from "lucide-react";
 import toast from "react-hot-toast";
 import { useMyInvitations } from "@/hooks/queries/useMyInvitations";
 import { useMyTeams } from "@/hooks/queries/useMyTeams";
@@ -23,6 +23,16 @@ export default function MyTeamsPage() {
         onSettled: () => {
             qc.invalidateQueries({ queryKey: ["myInvitations"] });
             qc.invalidateQueries({ queryKey: ["myTeams"] });
+        },
+    });
+
+    const leave = useMutation({
+        mutationFn: (teamSlotId: number) => leaderService.leaveTeam(teamSlotId),
+        onSuccess: () => toast.success("已退出隊伍"),
+        onError: (e) => toast.error(e instanceof ApiError ? e.message : "退隊失敗，請稍後再試"),
+        onSettled: () => {
+            qc.invalidateQueries({ queryKey: ["myTeams"] });
+            qc.invalidateQueries({ queryKey: ["openTeams"] });
         },
     });
 
@@ -128,6 +138,17 @@ export default function MyTeamsPage() {
                                             <span className="flex items-center gap-1">
                                                 <Zap size={14} /> {t.attackPower}
                                             </span>
+                                        </div>
+                                        <div className="flex pt-1">
+                                            <button
+                                                disabled={leave.isPending}
+                                                onClick={() => {
+                                                    if (window.confirm(`確定退出「${t.bossName ?? "王"}」這隊？位子會重開。`)) leave.mutate(t.teamSlotId);
+                                                }}
+                                                className="ml-auto px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                                            >
+                                                <LogOut size={15} /> 退隊
+                                            </button>
                                         </div>
                                     </li>
                                 ))}

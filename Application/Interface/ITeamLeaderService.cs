@@ -43,4 +43,7 @@ public interface ITeamLeaderService
 
     /// <summary>本期我當隊長開的隊（含各狀態計數，隊長 hub 入口）。</summary>
     Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId);
+
+    /// <summary>玩家自助退隊（Confirmed→Left，釋放位子、可重邀）：只能退自己在該隊的成員資格；xmin 樂觀鎖；通知隊長。</summary>
+    Task LeaveTeamAsync(int teamSlotId, ulong currentDiscordId);
 }

@@ -21,4 +21,5 @@ public static class TeamSlotMemberStatus
     public const string Invited = "Invited";     // Pull：隊長邀請中
     public const string Confirmed = "Confirmed"; // 雙方同意、占容量
     public const string Rejected = "Rejected";   // 任一方拒絕/取消的終態
+    public const string Left = "Left";           // 玩家自願退隊的終態（別於 Rejected；行為同：不占容量、可重邀）
 }

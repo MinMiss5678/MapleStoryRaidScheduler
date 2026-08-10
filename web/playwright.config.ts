@@ -11,6 +11,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
+  // 受限 runner（CI/容器）上高併發會讓重量級 spec（register 等）timeout flake → 上限 2 workers 求穩；
+  // 本機開發不設限（undefined＝依 CPU 預設）。
+  workers: process.env.CI ? 2 : undefined,
   reporter: 'html',
   use: {
     baseURL,

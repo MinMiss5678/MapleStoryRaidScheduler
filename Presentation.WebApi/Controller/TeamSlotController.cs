@@ -134,6 +134,17 @@ public class TeamSlotController : ControllerBase
         return Ok();
     }
 
+    // 玩家自助退隊（Confirmed→Left，釋放位子）。只能退自己在該隊的成員資格（服務內以登入身分定位）。
+    [HttpPost("{id:int}/Leave")]
+    public async Task<IActionResult> LeaveTeamAsync(int id)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        await _teamLeaderService.LeaveTeamAsync(id, discordId);
+        return Ok();
+    }
+
     // Push：隊長審核申請 approve（→Confirmed）/ reject（→Rejected）。
     [HttpPut("{id:int}/Applications/{memberId:int}")]
     public async Task<IActionResult> RespondApplicationAsync(int id, int memberId, [FromBody] ApplicationActionRequest request)

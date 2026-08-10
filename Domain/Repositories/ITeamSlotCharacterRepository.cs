@@ -19,4 +19,10 @@ public interface ITeamSlotCharacterRepository
 
     /// <summary>xmin 樂觀鎖改狀態（Invited→Confirmed / →Rejected）。false = 版本對不上。</summary>
     Task<bool> UpdateStatusAsync(int id, string status, string version);
+
+    /// <summary>取某隊「某玩家的 Confirmed 成員」列（含 xmin），供玩家自助退隊。一人一隊至多一個 Confirmed。</summary>
+    Task<TeamSlotCharacter?> GetConfirmedMemberAsync(int teamSlotId, ulong discordId);
+
+    /// <summary>玩家退隊：Confirmed→Left、寫 LeftAt=now()，xmin 樂觀鎖。false = 版本對不上。</summary>
+    Task<bool> LeaveAsync(int id, string version);
 }
