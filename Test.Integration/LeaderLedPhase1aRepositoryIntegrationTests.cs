@@ -52,6 +52,30 @@ public class LeaderLedPhase1aRepositoryIntegrationTests
     }
 
     [Fact]
+    public async Task LfgIntentCleanupJob_DeletesExpired_KeepsActive()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        await Seed.PlayerAsync(cs, 999, "P999");
+        await Seed.CharacterAsync(cs, "c999", 999, "C", "英雄", 900);
+        await using (var conn = new Npgsql.NpgsqlConnection(cs))
+        {
+            await conn.OpenAsync();
+            await Dapper.SqlMapper.ExecuteAsync(conn, """INSERT INTO "LfgIntent"("DiscordId","CharacterId","BossId","ExpiresAt") VALUES (999,'c999',NULL, now() - interval '1 hour'), (999,'c999',NULL, now() + interval '1 hour');""");
+        }
+
+        var job = new Infrastructure.BackgroundJobs.LfgIntentCleanupJob(
+            cs, Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.BackgroundJobs.LfgIntentCleanupJob>.Instance);
+        var deleted = await job.CleanupAsync(System.Threading.CancellationToken.None);
+
+        Assert.Equal(1, deleted); // 只刪過期那筆
+        await using var conn2 = new Npgsql.NpgsqlConnection(cs);
+        await conn2.OpenAsync();
+        var remaining = await Dapper.SqlMapper.QuerySingleAsync<int>(conn2, """SELECT COUNT(*)::int FROM "LfgIntent";""");
+        Assert.Equal(1, remaining); // 未過期那筆留著
+    }
+
+    [Fact]
     public async Task PlayerAvailabilityOverride_Create_Get_Delete_RoundTrips_And_IsIdorSafe()
     {
         await _fx.ResetAsync();
