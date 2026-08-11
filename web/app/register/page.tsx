@@ -1,103 +1,105 @@
-﻿"use client"
+"use client";
 
-import React, { useState } from "react";
-import { useRegisterForm } from "@/hooks/useRegisterForm";
-import { TimePicker } from "./components/TimePicker";
-import { CharacterBossList } from "./components/CharacterBossList";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { UserCog, Save, Swords, Zap, CalendarClock } from "lucide-react";
+import toast from "react-hot-toast";
+import { profileService, ProfileAvailability } from "@/services/profileService";
+import { ApiError } from "@/services/apiClient";
+import { AvailabilityStandingEditor } from "./components/AvailabilityStandingEditor";
 
-export default function Register() {
-    const {
-        period,
-        characters,
-        bosses,
-        form,
-        isRegisterLoading,
-        isRegistrationOpen,
-        quickFill,
-        copyDay,
-        toggleAvailability,
-        handleWeekdayAllCheck,
-        handleTimeslotAllCheck,
-        addCharacterRegister,
-        copyCharacterRegister,
-        removeCharacterRegister,
-        handleCharacterChange,
-        handleBossChange,
-        handleRoundsChange,
-        upsertCharacterRegister,
-        getTotalRounds,
-        getAvailableRounds,
-        quickFillBoss,
-        onSubmit,
-        cancelRegister,
-    } = useRegisterForm();
+export default function ProfilePage() {
+    const qc = useQueryClient();
+    const { data, isLoading } = useQuery({ queryKey: ["profile"], queryFn: () => profileService.getProfile() });
 
-    const [step, setStep] = useState<1 | 2>(1);
+    const [availabilities, setAvailabilities] = useState<ProfileAvailability[]>([]);
+    const [seeking, setSeeking] = useState<Set<string>>(new Set());
 
-    if (isRegisterLoading) {
-        return <div className="min-h-screen flex items-center justify-center">載入中...</div>;
-    }
+    // 載入後把伺服器狀態灌進本地編輯狀態
+    useEffect(() => {
+        if (!data) return;
+        setAvailabilities(data.availabilities);
+        setSeeking(new Set(data.characters.filter(c => c.isSeekingRaid).map(c => c.id)));
+    }, [data]);
+
+    const save = useMutation({
+        mutationFn: () => profileService.saveProfile({ availabilities, seekingCharacterIds: [...seeking] }),
+        onSuccess: () => {
+            toast.success("已儲存");
+            qc.invalidateQueries({ queryKey: ["profile"] });
+        },
+        onError: (e) => toast.error(e instanceof ApiError ? e.message : "儲存失敗，請稍後再試"),
+    });
+
+    const toggle = (id: string) => setSeeking(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+    });
 
     return (
-        <div className="min-h-screen flex items-start justify-center bg-[var(--background)] text-[var(--foreground)] p-6">
-            <div className="w-full max-w-4xl grid grid-cols-1 gap-6">
-                {period && (
-                    <div className="flex justify-between items-end border-b border-[var(--border-color)] pb-2 mb-2">
-                        <div>
-                            <h1 className="text-2xl font-bold">Boss 報名系統</h1>
-                            <p className="text-gray-500">
-                                週期: {period.startDate.toLocaleDateString()} ~ {period.endDate.toLocaleDateString()}
-                            </p>
-                        </div>
-                        {form.id && (
-                            <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-yellow-900 dark:text-yellow-300">
-                                修改現有報名
-                            </span>
-                        )}
-                    </div>
-                )}
-
-                {!isRegistrationOpen && (
-                    <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300">
-                        本期報名已截止，無法新增或修改報名。
-                    </div>
-                )}
-
-                {step === 1 && (
-                    <TimePicker
-                        form={form}
-                        quickFill={quickFill}
-                        copyDay={copyDay}
-                        toggleAvailability={toggleAvailability}
-                        handleWeekdayAllCheck={handleWeekdayAllCheck}
-                        handleTimeslotAllCheck={handleTimeslotAllCheck}
-                        onNext={() => setStep(2)}
-                        onCancel={cancelRegister}
-                        hasId={!!form.id}
-                    />
-                )}
-
-                {step === 2 && (
-                    <CharacterBossList
-                        form={form}
-                        characters={characters}
-                        bosses={bosses}
-                        onBack={() => setStep(1)}
-                        onAdd={addCharacterRegister}
-                        onCopyCharacter={copyCharacterRegister}
-                        onRemove={removeCharacterRegister}
-                        onCharacterChange={handleCharacterChange}
-                        onBossChange={handleBossChange}
-                        onRoundsChange={handleRoundsChange}
-                        onUpsertCharacterRegister={upsertCharacterRegister}
-                        onSubmit={onSubmit}
-                        submitDisabled={!isRegistrationOpen}
-                        getTotalRounds={getTotalRounds}
-                        getAvailableRounds={getAvailableRounds}
-                        quickFillBoss={quickFillBoss}
-                    />
-                )}
+        <div className="max-w-2xl mx-auto px-4 py-8">
+            <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg">
+                    <UserCog size={24} />
+                </div>
+                <div>
+                    <h1 className="text-2xl font-bold">我的資料</h1>
+                    <p className="text-sm text-muted-foreground">設定你的常設可用時段、選哪些角色要被揪團。隊長會依此挑候選。</p>
+                </div>
             </div>
+
+            {isLoading ? (
+                <p className="text-muted-foreground py-12 text-center">載入中…</p>
+            ) : (
+                <div className="flex flex-col gap-8">
+                    {/* 常設可用時段 */}
+                    <section>
+                        <div className="flex items-center justify-between mb-3">
+                            <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                                <CalendarClock size={16} /> 常設可用時段
+                            </h2>
+                            <Link href="/me/availability" className="text-xs text-sky-600 dark:text-sky-400 hover:underline">
+                                設定特定日期例外 →
+                            </Link>
+                        </div>
+                        <AvailabilityStandingEditor availabilities={availabilities} onChange={setAvailabilities} />
+                    </section>
+
+                    {/* 角色參戰 opt-in */}
+                    <section>
+                        <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mb-3">
+                            <Swords size={16} /> 參戰角色
+                        </h2>
+                        {(!data || data.characters.length === 0) ? (
+                            <div className="bg-card border border-border rounded-2xl p-6 text-center text-muted-foreground text-sm">
+                                你還沒有角色。到「<Link href="/character" className="text-sky-600 dark:text-sky-400 hover:underline">角色管理</Link>」新增。
+                            </div>
+                        ) : (
+                            <ul className="flex flex-col gap-2">
+                                {data.characters.map(c => (
+                                    <li key={c.id}
+                                        className={`flex items-center gap-3 border rounded-xl px-4 py-3 cursor-pointer transition-colors ${seeking.has(c.id) ? "border-green-500 bg-green-50 dark:bg-green-900/20" : "border-border"}`}
+                                        onClick={() => toggle(c.id)}>
+                                        <input type="checkbox" checked={seeking.has(c.id)} readOnly className="w-4 h-4 accent-green-600" />
+                                        <span className="font-medium">{c.name}</span>
+                                        <span className="text-sm text-muted-foreground">{c.job}</span>
+                                        <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
+                                            <Zap size={14} /> {c.attackPower}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+
+                    <button disabled={save.isPending} onClick={() => save.mutate()}
+                        className="self-end px-5 py-2.5 bg-amber-600 text-white rounded-xl hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1.5 font-medium">
+                        <Save size={16} /> 儲存
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

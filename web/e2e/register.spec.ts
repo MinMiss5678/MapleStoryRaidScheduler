@@ -1,31 +1,35 @@
 import { test, expect } from '@playwright/test';
 import { loginAs } from './helpers/auth';
 
-// leader-led（計畫 §7）：報名 = 只把「角色 + 時段」放進候選池，**不再觸發自動排團**。
-// 新玩家 P-New(2001) 走報名表單 → 送出成功 → 導回首頁；但因 auto-assign 已移除，
-// /scheduleResult 顯示「我的場次 (0)」（要等隊長 Pull 邀請才入隊）。
-// 驗：報名寫入整串仍通（表單 → proxy → API → DB），且確認不再自動分配（不入隊）。
-// 前置：compose.e2e backend + db/seed-e2e.sql（含 2001 有角色 c2001、未入隊）。
-test('新玩家報名成功、但 leader-led 下不再自動排入隊伍', async ({ page }) => {
+// period-less（報名 UX 大改）：報名頁改成「我的資料」profile——設常設可用時段 + 勾參戰角色，取代每期報名。
+// 驗寫入整串：profile 表單 → /api/Profile(PUT) → DB → 重載後仍在。
+// 前置：compose.e2e backend + db/seed-e2e.sql（含 2001 有角色 c2001）。
+test('玩家設定 profile：常設時段 + 參戰角色 → 儲存 → 重載仍在', async ({ page }) => {
   await loginAs(page, { discordId: 2001, name: 'P-New', role: 'user' });
 
   await page.goto('/register');
+  await expect(page.getByRole('heading', { name: '我的資料' })).toBeVisible();
 
-  // Step 1：一鍵填「平日晚上」→ 下一步
-  await page.getByRole('button', { name: /平日晚上/ }).click();
-  await page.getByRole('button', { name: '下一步' }).click();
+  // 常設時段：選「平日晚上」預設 → 套用到平日（一~五）
+  await page.getByRole('button', { name: '平日晚上' }).click();
+  await page.getByRole('button', { name: /套用到平日/ }).click();
+  // 週一列出現 19:00–22:00
+  const monRow = page.locator('li').filter({ hasText: '週一' });
+  await expect(monRow.getByText('19:00–22:00')).toBeVisible();
 
-  // Step 2：新增報名項目 → 選 boss + 角色 + 場數 → 送出（先選 boss，選角色會重新分組）
-  await page.getByRole('button', { name: '新增報名項目' }).click();
-  await page.locator('select').nth(1).selectOption({ index: 1 });      // boss E2E王
-  await page.locator('select').first().selectOption({ index: 1 });     // 角色 CNew
-  await page.getByRole('button', { name: '7', exact: true }).click();  // 7 場
-  await page.getByRole('button', { name: '送出報名' }).click();
+  // 勾參戰角色（CNew）
+  const charRow = page.locator('li').filter({ hasText: 'CNew' });
+  await charRow.click();
+  await expect(charRow.locator('input[type="checkbox"]')).toBeChecked();
 
-  // 報名成功 → toast +  router.push("/")；等導回首頁確認寫入已 commit
-  await page.waitForURL(u => new URL(u).pathname === '/');
+  // 儲存
+  await Promise.all([
+    page.waitForResponse(r => r.url().includes('/Profile') && r.request().method() === 'PUT' && r.ok()),
+    page.getByRole('button', { name: '儲存' }).click(),
+  ]);
 
-  // leader-led：報名不再自動排團 → 尚未被任何隊長邀請 → 我的場次 (0)
-  await page.goto('/scheduleResult');
-  await expect(page.getByRole('button', { name: /我的場次 \(0\)/ })).toBeVisible();
+  // 重載 → 常設時段與參戰角色都還在（讀 /api/Profile 回填）
+  await page.reload();
+  await expect(page.locator('li').filter({ hasText: '週一' }).getByText('19:00–22:00')).toBeVisible();
+  await expect(page.locator('li').filter({ hasText: 'CNew' }).locator('input[type="checkbox"]')).toBeChecked();
 });
