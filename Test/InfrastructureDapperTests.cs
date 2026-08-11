@@ -86,6 +86,45 @@ public class InfrastructureDapperTests
         mockParam.VerifySet(p => p.Value = It.IsAny<object>(), Times.Once);
     }
 
+    [Theory]
+    [InlineData(2026, 4, 8)]
+    [InlineData(2024, 1, 1)]
+    [InlineData(2026, 12, 31)]
+    public void DateOnlyTypeHandler_Parse_DateTime_ReturnsCorrectDateOnly(int y, int mo, int d)
+    {
+        var handler = new DateOnlyTypeHandler();
+        var result = handler.Parse(new DateTime(y, mo, d, 13, 0, 0));
+        Assert.Equal(new DateOnly(y, mo, d), result);
+    }
+
+    [Fact]
+    public void DateOnlyTypeHandler_Parse_DateOnly_ReturnsSame()
+    {
+        var handler = new DateOnlyTypeHandler();
+        Assert.Equal(new DateOnly(2026, 4, 8), handler.Parse(new DateOnly(2026, 4, 8)));
+    }
+
+    [Fact]
+    public void DateOnlyTypeHandler_Parse_String_ReturnsCorrectDateOnly()
+    {
+        var handler = new DateOnlyTypeHandler();
+        Assert.Equal(new DateOnly(2026, 4, 8), handler.Parse("2026-04-08"));
+    }
+
+    [Fact]
+    public void DateOnlyTypeHandler_SetValue_SetsDateDbTypeAndValue()
+    {
+        var handler = new DateOnlyTypeHandler();
+        var mockParam = new Mock<IDbDataParameter>();
+        mockParam.SetupSet(p => p.DbType = It.IsAny<DbType>()).Verifiable();
+        mockParam.SetupSet(p => p.Value = It.IsAny<object>()).Verifiable();
+
+        handler.SetValue(mockParam.Object, new DateOnly(2026, 4, 8));
+
+        mockParam.VerifySet(p => p.DbType = DbType.Date, Times.Once);
+        mockParam.VerifySet(p => p.Value = It.IsAny<object>(), Times.Once);
+    }
+
     // ========== DbContext ==========
 
     [Fact]
