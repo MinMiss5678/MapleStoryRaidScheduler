@@ -52,6 +52,40 @@ public class LeaderLedPhase1aRepositoryIntegrationTests
     }
 
     [Fact]
+    public async Task PlayerAvailabilityOverride_Create_Get_Delete_RoundTrips_And_IsIdorSafe()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        await Seed.PlayerAsync(cs, 999, "P999");
+        await Seed.PlayerAsync(cs, 888, "P888");
+        var repo = new PlayerAvailabilityOverrideRepository(_fx.CreateDbContext());
+
+        await repo.CreateAsync(new PlayerAvailabilityOverride
+        {
+            DiscordId = 999,
+            Date = new DateOnly(2026, 4, 8),
+            StartTime = new TimeOnly(19, 0),
+            EndTime = new TimeOnly(22, 0),
+            IsAvailable = false
+        });
+
+        var loaded = (await repo.GetByDiscordIdAsync(999)).ToList();
+        Assert.Single(loaded);
+        // DateOnly/TimeOnly 型別處理器 round-trip（寫 → 讀）
+        Assert.Equal(new DateOnly(2026, 4, 8), loaded[0].Date);
+        Assert.Equal(new TimeOnly(19, 0), loaded[0].StartTime);
+        Assert.False(loaded[0].IsAvailable);
+
+        // IDOR：別人（888）刪不掉 999 的 override
+        Assert.Equal(0, await repo.DeleteAsync(888, loaded[0].Id));
+        Assert.Single(await repo.GetByDiscordIdAsync(999));
+
+        // 本人刪得掉
+        Assert.Equal(1, await repo.DeleteAsync(999, loaded[0].Id));
+        Assert.Empty(await repo.GetByDiscordIdAsync(999));
+    }
+
+    [Fact]
     public async Task TeamSlotRequirement_DeleteByTeamSlotId_CascadesJobs()
     {
         await _fx.ResetAsync();
