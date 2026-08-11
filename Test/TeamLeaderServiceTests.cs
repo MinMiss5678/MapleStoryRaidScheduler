@@ -37,8 +37,11 @@ public class TeamLeaderServiceTests
             _registrationLockMock.Object,
             new Mock<Application.Interface.IOutbox>().Object,
             _membershipQueryMock.Object,
-            _systemConfigServiceMock.Object);
+            _systemConfigServiceMock.Object,
+            _lfgIntentRepositoryMock.Object);
     }
+
+    private readonly Mock<ILfgIntentRepository> _lfgIntentRepositoryMock = new();
 
     private CreateTeamCommand ValidCommand() => new()
     {
@@ -386,6 +389,52 @@ public class TeamLeaderServiceTests
         _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10)).ReturnsAsync(new HashSet<ulong> { 777 }); // 已在本隊 active → 去重
 
         Assert.Empty(await _service.GetCandidatesAsync(10));
+    }
+
+    // ── 即時團（§8 Phase 3）：候選來自 LfgIntent、跳過時段比對 ──
+    [Fact]
+    public async Task GetCandidatesAsync_UsesInstantPoolAndSkipsAvailability_WhenInstant()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10)).ReturnsAsync(new TeamSlot
+        {
+            Id = 10,
+            BossId = 1,
+            Kind = TeamSlotKind.Instant,
+            SlotDateTime = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero)
+        });
+        _requirementRepositoryMock.Setup(r => r.GetByTeamSlotIdAsync(10)).ReturnsAsync(new[]
+        {
+            new TeamSlotRequirement { Count = 1, MinClearCount = 0, Jobs = [new TeamSlotRequirementJob { Job = "英雄", MinAttackPower = 0 }] }
+        });
+        _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10)).ReturnsAsync(new HashSet<ulong>());
+        _memberRepositoryMock.Setup(r => r.GetConfirmedDiscordIdsAtAsync(It.IsAny<DateTimeOffset>())).ReturnsAsync(new HashSet<ulong>());
+        // 候選無常設時段（Availabilities 空）→ 若誤走排程比對會被濾掉；即時應忽略時段仍納入
+        _candidateQueryMock.Setup(q => q.GetInstantPoolAsync(1)).ReturnsAsync(new[]
+        {
+            new CandidatePoolItem { CharacterId = "c1", CharacterName = "C", DiscordId = 777, Job = "英雄", AttackPower = 900, Availabilities = [] }
+        });
+
+        var result = (await _service.GetCandidatesAsync(10)).ToList();
+
+        Assert.Single(result);
+        _candidateQueryMock.Verify(q => q.GetInstantPoolAsync(1), Times.Once);
+        _candidateQueryMock.Verify(q => q.GetPoolAsync(It.IsAny<int>()), Times.Never);
+        _candidateQueryMock.Verify(q => q.GetOverridesForDateAsync(It.IsAny<DateOnly>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AcceptInviteAsync_ClearsLfgIntent_OnConfirm()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember()); // DiscordId=999
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
+        _memberRepositoryMock.Setup(r => r.CountConfirmedAsync(10)).ReturnsAsync(0);
+        _memberRepositoryMock.Setup(r => r.UpdateStatusAsync(5, TeamSlotMemberStatus.Confirmed, "v1")).ReturnsAsync(true);
+
+        await _service.AcceptInviteAsync(5, 999);
+
+        _lfgIntentRepositoryMock.Verify(r => r.DeleteByDiscordIdAsync(999UL), Times.Once);
     }
 
     // ── 日期 override（§8 Phase 2b）：override 勝過常設 ──

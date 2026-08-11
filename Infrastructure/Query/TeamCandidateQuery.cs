@@ -74,6 +74,54 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             .ToList();
     }
 
+    public async Task<IEnumerable<CandidatePoolItem>> GetInstantPoolAsync(int bossId)
+    {
+        // 即時團候選 = 未過期的找隊意圖（該王或任意王）。無常設時段（他們是「現在」要打）。
+        const string sql = """
+            WITH clear_total AS (
+                SELECT ch."DiscordId", SUM(cbc."ClearCount") AS total
+                FROM "CharacterBossClear" cbc
+                JOIN "Character" ch ON ch."Id" = cbc."CharacterId"
+                WHERE cbc."BossId" = @bossId
+                GROUP BY ch."DiscordId"
+            )
+            SELECT DISTINCT
+                c."Id"                       AS "CharacterId",
+                c."Name"                     AS "CharacterName",
+                c."DiscordId"                AS "DiscordId",
+                p."DiscordName"              AS "DiscordName",
+                c."Job"                      AS "Job",
+                c."AttackPower"              AS "AttackPower",
+                c."MapleBlessingLevel"       AS "MapleBlessingLevel",
+                COALESCE(ct.total, 0)::int   AS "BossClearCount"
+            FROM "LfgIntent" li
+            JOIN "Character" c       ON c."Id" = li."CharacterId"
+            JOIN "Player" p          ON p."DiscordId" = c."DiscordId"
+            LEFT JOIN clear_total ct ON ct."DiscordId" = c."DiscordId"
+            WHERE li."ExpiresAt" > now() AND (li."BossId" IS NULL OR li."BossId" = @bossId);
+            """;
+        var rows = await _dbContext.QueryAsync<PoolRow>(sql, new { bossId });
+        return rows
+            .GroupBy(r => r.CharacterId)
+            .Select(g =>
+            {
+                var first = g.First();
+                return new CandidatePoolItem
+                {
+                    CharacterId = first.CharacterId,
+                    CharacterName = first.CharacterName,
+                    DiscordId = (ulong)first.DiscordId,
+                    DiscordName = first.DiscordName,
+                    Job = first.Job,
+                    AttackPower = first.AttackPower,
+                    MapleBlessingLevel = first.MapleBlessingLevel,
+                    BossClearCount = first.BossClearCount,
+                    Availabilities = [] // 即時：不看常設時段
+                };
+            })
+            .ToList();
+    }
+
     public async Task<IEnumerable<AvailabilityOverrideItem>> GetOverridesForDateAsync(DateOnly date)
     {
         const string sql = """

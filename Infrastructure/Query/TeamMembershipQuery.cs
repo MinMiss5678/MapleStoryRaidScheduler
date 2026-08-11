@@ -62,7 +62,8 @@ public class TeamMembershipQuery : ITeamMembershipQuery
                     WHERE c."TeamSlotId" = ts."Id" AND c."Status" = 'Confirmed' AND c."DiscordId" <> 0)::int AS "ConfirmedCount"
             FROM "TeamSlot" ts
             JOIN "Boss" b ON b."Id" = ts."BossId"
-            WHERE ts."Source" = 'leader' AND ts."PeriodId" = @periodId
+            WHERE ts."Source" = 'leader'
+              AND (ts."PeriodId" = @periodId OR (ts."Kind" = 'Instant' AND ts."ExpiresAt" > now()))
             ORDER BY ts."SlotDateTime";
             """;
         var teams = (await _dbContext.QueryAsync<OpenTeamDto>(teamsSql, new { periodId }))
@@ -114,7 +115,8 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             FROM "TeamSlot" ts
             JOIN "Boss" b ON b."Id" = ts."BossId"
             LEFT JOIN "TeamSlotCharacter" tsc ON tsc."TeamSlotId" = ts."Id"
-            WHERE ts."LeaderDiscordId" = @leaderDiscordId AND ts."PeriodId" = @periodId
+            WHERE ts."LeaderDiscordId" = @leaderDiscordId
+              AND (ts."PeriodId" = @periodId OR (ts."Kind" = 'Instant' AND ts."ExpiresAt" > now()))
             GROUP BY ts."Id", ts."BossId", b."Name", ts."SlotDateTime", b."RequireMembers", ts."Description"
             ORDER BY ts."SlotDateTime";
             """;

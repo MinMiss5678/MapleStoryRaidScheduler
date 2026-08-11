@@ -23,6 +23,7 @@ public class TeamLeaderService : ITeamLeaderService
     private readonly IOutbox _outbox;
     private readonly ITeamMembershipQuery _membershipQuery;
     private readonly ISystemConfigService _systemConfigService;
+    private readonly ILfgIntentRepository _lfgIntentRepository;
 
     public TeamLeaderService(
         IBossRepository bossRepository,
@@ -35,7 +36,8 @@ public class TeamLeaderService : ITeamLeaderService
         IRegistrationLock registrationLock,
         IOutbox outbox,
         ITeamMembershipQuery membershipQuery,
-        ISystemConfigService systemConfigService)
+        ISystemConfigService systemConfigService,
+        ILfgIntentRepository lfgIntentRepository)
     {
         _bossRepository = bossRepository;
         _periodQuery = periodQuery;
@@ -48,6 +50,7 @@ public class TeamLeaderService : ITeamLeaderService
         _outbox = outbox;
         _membershipQuery = membershipQuery;
         _systemConfigService = systemConfigService;
+        _lfgIntentRepository = lfgIntentRepository;
     }
 
     // leader-led §11 通知：與狀態改動同交易 enqueue 一則 outbox（原子，崩了不遺失）→ bot handler 發 Discord DM。
@@ -68,18 +71,26 @@ public class TeamLeaderService : ITeamLeaderService
         if (await _bossRepository.GetByIdAsync(command.BossId) == null)
             throw new NotFoundException($"Boss {command.BossId} not found");
 
-        // 週期權威歸屬：由 SlotDateTime 落點解析 PeriodId，守 §3 硬綁不變式「SlotDateTime ∈ 該 Period 區間」。
-        // 查無（回 0）＝開隊時間不在任何開放週期 → 400。
-        var periodId = await _periodQuery.GetPeriodIdByDateAsync(command.SlotDateTime);
-        if (periodId == 0)
-            throw new BusinessException("開隊時間不在任何開放週期內。");
+        // period-less §8 Phase 3：即時團(Instant)不綁 period、帶 TTL、候選來自 LfgIntent 看板；
+        // 排程團(Scheduled)維持 §3 硬綁不變式「SlotDateTime ∈ 開放 Period」。
+        var isInstant = command.Kind == TeamSlotKind.Instant;
+        int? periodId = null;
+        if (!isInstant)
+        {
+            var pid = await _periodQuery.GetPeriodIdByDateAsync(command.SlotDateTime);
+            if (pid == 0)
+                throw new BusinessException("開隊時間不在任何開放週期內。");
+            periodId = pid;
+        }
 
         var teamSlotId = await _teamSlotRepository.CreateAsync(new TeamSlot
         {
             BossId = command.BossId,
-            PeriodId = periodId,
+            PeriodId = periodId ?? 0, // repo：>0 才寫、否則 NULL（即時團無 period）
             SlotDateTime = command.SlotDateTime,
             Source = TeamSlotSource.Leader,
+            Kind = command.Kind,
+            ExpiresAt = isInstant ? DateTimeOffset.UtcNow.AddHours(3) : null,
             LeaderDiscordId = command.LeaderDiscordId,
             Description = command.Description
         });
@@ -107,8 +118,11 @@ public class TeamLeaderService : ITeamLeaderService
             throw new NotFoundException($"TeamSlot {teamSlotId} not found");
 
         var requirements = (await _requirementRepository.GetByTeamSlotIdAsync(teamSlotId)).ToList();
-        // period-less（§8 Phase 2）：候選 = 參戰中角色 × 常設可用時段，不再吃 period。
-        var pool = await _candidateQuery.GetPoolAsync(team.BossId);
+        // period-less：即時團(§8 Phase 3)候選來自 LfgIntent 看板（現在要打）；排程團候選 = 參戰中角色 × 常設可用時段。
+        var isInstant = team.Kind == TeamSlotKind.Instant;
+        var pool = isInstant
+            ? await _candidateQuery.GetInstantPoolAsync(team.BossId)
+            : await _candidateQuery.GetPoolAsync(team.BossId);
         // 狀態感知去重：排除「其玩家已在本隊 active（Confirmed/Invited/Applied）」者——避免重列已入隊/待處理、再邀撞 409。
         // 以 DiscordId 為準（active-membership 一人一隊一個）；保留 Rejected/Left → 位子重開時可重邀。
         var activeIds = await _memberRepository.GetActiveMemberDiscordIdsAsync(teamSlotId);
@@ -120,10 +134,12 @@ public class TeamLeaderService : ITeamLeaderService
         int teamWeekday = SlotDateCalculator.ToIsoWeekday(twTime.DayOfWeek);
         var teamTime = TimeOnly.FromDateTime(twTime.DateTime);
         var teamDate = DateOnly.FromDateTime(twTime.DateTime);
-        // 日期 override（§8 Phase 2b）：疊在常設上。override 勝過常設——不行的蓋掉、額外加開的補上。
-        var overridesByDiscord = (await _candidateQuery.GetOverridesForDateAsync(teamDate))
-            .GroupBy(o => o.DiscordId)
-            .ToDictionary(g => g.Key, g => g.ToList());
+        // 日期 override（§8 Phase 2b）：僅排程團需要（即時團不看時段）。
+        var overridesByDiscord = isInstant
+            ? new Dictionary<ulong, List<AvailabilityOverrideItem>>()
+            : (await _candidateQuery.GetOverridesForDateAsync(teamDate))
+                .GroupBy(o => o.DiscordId)
+                .ToDictionary(g => g.Key, g => g.ToList());
 
         var matched = pool
             .Where(item =>
@@ -131,8 +147,8 @@ public class TeamLeaderService : ITeamLeaderService
                 !activeIds.Contains(item.DiscordId)
                 // 排除已在該時刻別隊 Confirmed（不可分身）
                 && !bookedIds.Contains(item.DiscordId)
-                // 時段重疊（常設 + 日期 override）：override 勝過常設
-                && IsAvailableAt(item, teamWeekday, teamTime, overridesByDiscord)
+                // 排程團看時段重疊（常設 + override）；即時團跳過（他們現在就要打）
+                && (isInstant || IsAvailableAt(item, teamWeekday, teamTime, overridesByDiscord))
                 // 且符合至少一需求列：某可接受職業==角色職業 且 攻擊≥該職下限 且 本王通關≥該列門檻。
                 // 無需求列 → 無候選（隊長須先定義條件才看得到候選）。
                 && requirements.Any(r =>
@@ -268,6 +284,9 @@ public class TeamLeaderService : ITeamLeaderService
         var ok = await _memberRepository.UpdateStatusAsync(member.Id!.Value, TeamSlotMemberStatus.Confirmed, member.Version!);
         if (!ok)
             throw new BusinessException("狀態已被更新，請重新整理。");
+
+        // period-less §8 Phase 3：入隊後清掉該玩家的找隊意圖（已找到隊、不再掛看板）。scheduled accept 無意圖 → no-op。
+        await _lfgIntentRepository.DeleteByDiscordIdAsync(member.DiscordId);
 
         // mutation-ux Tier 3：本次定案若使隊伍額滿 → 自動撤銷其餘待接受邀請（否則玩家端只剩無法按的死按鈕、隊長邀請數也虛掛）。
         // 仍在 per-team advisory lock 內，與其他 confirm 序列化，不會與「同時另一人接受」競態。

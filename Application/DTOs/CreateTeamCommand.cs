@@ -15,6 +15,9 @@ public class CreateTeamCommand
 
     public DateTimeOffset SlotDateTime { get; set; }
 
+    /// <summary>隊伍種類（period-less §8）：Scheduled=排程 / Instant=即時。預設 Scheduled。</summary>
+    public string Kind { get; set; } = "Scheduled";
+
     [MaxLength(500)]
     public string? Description { get; set; }
 
