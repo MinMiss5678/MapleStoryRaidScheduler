@@ -167,4 +167,14 @@ BEGIN
     RAISE NOTICE 'E2E seed 就緒 → periodId=%, bossId=%, teamId=%', v_period_id, v_boss_id, v_team_id;
 END $$;
 
+-- period-less Phase 2a：候選池改讀「常設可用時段 + 角色 IsSeekingRaid」（不再吃 period 報名）。
+-- 把上面 seed 的報名資料鏡射過去，讓候選相關 e2e 在新查詢下維持同一候選集。
+INSERT INTO "PlayerAvailabilityStanding"("DiscordId","Weekday","StartTime","EndTime")
+SELECT pr."DiscordId", pa."Weekday", pa."StartTime", pa."EndTime"
+FROM "PlayerAvailability" pa
+JOIN "PlayerRegister" pr ON pr."Id" = pa."PlayerRegisterId";
+
+UPDATE "Character" SET "IsSeekingRaid" = true
+WHERE "Id" IN (SELECT DISTINCT "CharacterId" FROM "CharacterRegister");
+
 COMMIT;

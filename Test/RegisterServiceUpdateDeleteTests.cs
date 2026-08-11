@@ -44,7 +44,9 @@ public class RegisterServiceUpdateDeleteTests
             _teamSlotCharacterRepositoryMock.Object,
             _systemConfigServiceMock.Object,
             _bossRepositoryMock.Object,
-            _characterQueryMock.Object
+            _characterQueryMock.Object,
+            new Mock<IPlayerAvailabilityStandingRepository>().Object,
+            new Mock<ICharacterRepository>().Object
         );
     }
 

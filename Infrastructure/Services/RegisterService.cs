@@ -18,6 +18,8 @@ public class RegisterService : IRegisterService
     private readonly ISystemConfigService _systemConfigService;
     private readonly IBossRepository _bossRepository;
     private readonly ICharacterQuery _characterQuery;
+    private readonly IPlayerAvailabilityStandingRepository _standingRepository;
+    private readonly ICharacterRepository _characterRepository;
 
     public RegisterService(
         IPeriodQuery periodQuery,
@@ -27,7 +29,9 @@ public class RegisterService : IRegisterService
         ITeamSlotCharacterRepository teamSlotCharacterRepository,
         ISystemConfigService systemConfigService,
         IBossRepository bossRepository,
-        ICharacterQuery characterQuery)
+        ICharacterQuery characterQuery,
+        IPlayerAvailabilityStandingRepository standingRepository,
+        ICharacterRepository characterRepository)
     {
         _periodQuery = periodQuery;
         _playerRegisterRepository = playerRegisterRepository;
@@ -37,6 +41,28 @@ public class RegisterService : IRegisterService
         _systemConfigService = systemConfigService;
         _bossRepository = bossRepository;
         _characterQuery = characterQuery;
+        _standingRepository = standingRepository;
+        _characterRepository = characterRepository;
+    }
+
+    // period-less（§8 Phase 2）：把報名的「可用時段 + 參戰角色」鏡射進常設 profile（候選池讀這裡）。
+    // replace 語意：清掉該玩家舊常設時段再重寫、opt-in 依本次角色重設。舊 per-register 表 Phase 4 退場。
+    private async Task MirrorToStandingProfileAsync(Register register)
+    {
+        await _standingRepository.DeleteByDiscordIdAsync(register.DiscordId);
+        foreach (var a in register.Availabilities)
+        {
+            await _standingRepository.CreateAsync(new PlayerAvailability
+            {
+                DiscordId = register.DiscordId,
+                Weekday = a.Weekday,
+                StartTime = a.StartTime,
+                EndTime = a.EndTime
+            });
+        }
+        await _characterRepository.SetSeekingRaidForDiscordAsync(
+            register.DiscordId,
+            register.CharacterRegisters.Select(c => c.CharacterId).ToList());
     }
 
     // CharacterRegister.CharacterId 的 FK（+擁有權）前線檢查：報名的角色必須是呼叫者本人的角色，
@@ -121,6 +147,9 @@ public class RegisterService : IRegisterService
             await _characterRegisterRepository.CreateAsync(characterRegister);
         }
 
+        // period-less（§8 Phase 2）：鏡射成常設 profile（候選池讀常設時段 + IsSeekingRaid）。
+        await MirrorToStandingProfileAsync(register);
+
         // leader-led（§7）：報名不再觸發自動排團——報名 = 只把角色+時段放進候選池，
         // 由隊長開隊後對候選池挑人（Pull）。自動排團引擎降級為隊長 auto-fill（Phase 3）。
     }
@@ -192,6 +221,10 @@ public class RegisterService : IRegisterService
                 await _characterRegisterRepository.CreateAsync(characterRegister);
             }
         }
+
+        // command.CharacterRegisters 為本次「保留」的完整角色集（既有帶 Id、新增無 Id；移除走 DeleteCharacterRegisterIds），
+        // 故可直接當 opt-in 全集鏡射（同 Availabilities 的 replace-all 慣例）。
+        await MirrorToStandingProfileAsync(register);
     }
 
     private async Task EnsureRegistrationOpen()

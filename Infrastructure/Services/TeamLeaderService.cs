@@ -106,17 +106,14 @@ public class TeamLeaderService : ITeamLeaderService
         if (team == null)
             throw new NotFoundException($"TeamSlot {teamSlotId} not found");
 
-        // period 由 SlotDateTime 解析（免讀 TeamSlot.PeriodId；§3 不變式保證兩者一致）。查無 → 無候選。
-        var periodId = await _periodQuery.GetPeriodIdByDateAsync(team.SlotDateTime);
-        var period = periodId == 0 ? null : await _periodQuery.GetByIdAsync(periodId);
-        if (period == null)
-            return [];
-
         var requirements = (await _requirementRepository.GetByTeamSlotIdAsync(teamSlotId)).ToList();
-        var pool = await _candidateQuery.GetPoolAsync(periodId, team.BossId);
+        // period-less（§8 Phase 2）：候選 = 參戰中角色 × 常設可用時段，不再吃 period。
+        var pool = await _candidateQuery.GetPoolAsync(team.BossId);
         // 狀態感知去重：排除「其玩家已在本隊 active（Confirmed/Invited/Applied）」者——避免重列已入隊/待處理、再邀撞 409。
         // 以 DiscordId 為準（active-membership 一人一隊一個）；保留 Rejected/Left → 位子重開時可重邀。
         var activeIds = await _memberRepository.GetActiveMemberDiscordIdsAsync(teamSlotId);
+        // 不可分身：排除「已在該開團時刻別隊 Confirmed」者（對齊 uq_tsc_confirmed_overlap；否則邀了也接受不了）。
+        var bookedIds = await _memberRepository.GetConfirmedDiscordIdsAtAsync(team.SlotDateTime);
 
         // 團時間 → weekday/time（TPE），比照 TeamSlotAutoAssignService 慣例
         var twTime = team.SlotDateTime.ToOffset(TimeSpan.FromHours(8));
@@ -127,8 +124,10 @@ public class TeamLeaderService : ITeamLeaderService
             .Where(item =>
                 // 排除已在本隊 active 的玩家（去重）
                 !activeIds.Contains(item.DiscordId)
+                // 排除已在該時刻別隊 Confirmed（不可分身）
+                && !bookedIds.Contains(item.DiscordId)
                 // 時段重疊：任一時段涵蓋團時間
-                && item.Availabilities.Any(a => SlotDateCalculator.IsTimeInAvailability(teamWeekday, teamTime, a, period))
+                && item.Availabilities.Any(a => SlotDateCalculator.IsTimeInAvailability(teamWeekday, teamTime, a))
                 // 且符合至少一需求列：某可接受職業==角色職業 且 攻擊≥該職下限 且 本王通關≥該列門檻。
                 // 無需求列 → 無候選（隊長須先定義條件才看得到候選）。
                 && requirements.Any(r =>

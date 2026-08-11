@@ -30,6 +30,12 @@ public interface ITeamSlotCharacterRepository
     Task<IReadOnlyCollection<ulong>> GetActiveMemberDiscordIdsAsync(int teamSlotId);
 
     /// <summary>
+    /// 已在某開團時刻（精確 SlotDateTime）別隊 Confirmed 的 DiscordId 集合——供候選排除「不可分身」者
+    /// （對齊 uq_tsc_confirmed_overlap；period-less §8 Phase 2）。
+    /// </summary>
+    Task<IReadOnlyCollection<ulong>> GetConfirmedDiscordIdsAtAsync(DateTimeOffset slotDateTime);
+
+    /// <summary>
     /// 隊伍額滿時，把該隊其餘「待接受邀請（Invited）」一次撤銷為 Rejected；回傳被撤銷者的被邀玩家 DiscordId（供通知）。
     /// 只動 Invited（隊長選定卻搶不到位）；不動 Applied（保留為候補，位子重開後隊長可再核准）。
     /// </summary>
