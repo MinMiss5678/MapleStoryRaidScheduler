@@ -65,6 +65,7 @@ export type CreateTeamRequirementInput = { count: number; minClearCount: number;
 export type CreateTeamCommand = {
     bossId: number;
     slotDateTime: string;
+    kind?: "Scheduled" | "Instant";   // period-less §8 Phase 3：即時團=Instant
     description?: string;
     requirements: CreateTeamRequirementInput[];
 };
