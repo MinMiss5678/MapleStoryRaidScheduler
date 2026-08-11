@@ -37,6 +37,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRegisterService, RegisterService>();
         services.AddScoped<IAvailabilityOverrideService, AvailabilityOverrideService>();
         services.AddScoped<IProfileService, ProfileService>();
+        services.AddScoped<ILfgIntentRepository, LfgIntentRepository>();
+        services.AddScoped<ILfgQuery, LfgQuery>();
+        services.AddScoped<ILfgService, LfgService>();
         services.AddScoped<IRegisterQueryService, RegisterQueryService>();
         services.AddScoped<IPeriodService, PeriodService>();
         services.AddScoped<ISystemConfigService, SystemConfigService>();
