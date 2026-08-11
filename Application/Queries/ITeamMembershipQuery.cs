@@ -12,10 +12,10 @@ public interface ITeamMembershipQuery
     Task<IEnumerable<MembershipDto>> GetApplicationsAsync(int teamSlotId);
 
     /// <summary>某週期內尚有空位的 leader 開放隊（含條件）——玩家 Push 發現用。</summary>
-    Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync(int periodId);
+    Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync();
 
     /// <summary>某隊長某週期開的隊（含 confirmed/applied/invited 計數）——隊長 hub 導覽用。</summary>
-    Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId, int periodId);
+    Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId);
 
     /// <summary>玩家收到的待處理隊長轉讓（PendingLeaderDiscordId=本人）。</summary>
     Task<IEnumerable<LeaderTransferDto>> GetPendingLeaderTransfersAsync(ulong discordId);

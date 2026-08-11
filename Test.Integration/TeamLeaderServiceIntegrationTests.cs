@@ -406,15 +406,17 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        var periodId = await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
+        // period-less §8 Phase 4a：GetOpenTeams 改時間窗（SlotDateTime > now()-1天）→ 用相對現在的日期，
+        // 既滿足排程開隊的 period 檢查、又落在時間窗。
+        var now = DateTimeOffset.UtcNow;
+        await Seed.PeriodAsync(cs, now.AddDays(-1), now.AddDays(7)); // 排程開隊仍需 period 存在
         await Seed.PlayerAsync(cs, 999, "隊長");
         await Seed.PlayerAsync(cs, 101, "P101");
         await Seed.CharacterAsync(cs, "archer", 101, "C1", "箭神", 950);
         await Seed.PlayerAsync(cs, 102, "P102");
         await Seed.CharacterAsync(cs, "mage", 102, "C2", "主教", 800);
 
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var slot = now.AddDays(1);
         var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
@@ -440,7 +442,7 @@ public class TeamLeaderServiceIntegrationTests
         Assert.Equal("主教", apps[0].Job);
 
         // 開放隊（尚有空位）+ 條件
-        var open = (await q.GetOpenTeamsAsync(periodId)).ToList();
+        var open = (await q.GetOpenTeamsAsync()).ToList();
         Assert.Single(open);
         Assert.Equal(teamId, open[0].TeamSlotId);
         Assert.Equal(0, open[0].ConfirmedCount);

@@ -51,9 +51,10 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         return await _dbContext.QueryAsync<MembershipDto>(sql, new { teamSlotId });
     }
 
-    public async Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync(int periodId)
+    public async Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync()
     {
-        // leader 開放隊：本期、Confirmed 真實成員 < RequireMembers
+        // leader 開放隊：Confirmed 真實成員 < RequireMembers。period-less §8 Phase 4a：時間窗取代 period——
+        // 未來/近期排程(SlotDateTime > now()-1天) + 未過期即時。
         const string teamsSql = """
             SELECT ts."Id" AS "TeamSlotId", ts."BossId" AS "BossId", b."Name" AS "BossName",
                    ts."SlotDateTime" AS "SlotDateTime", b."RequireMembers" AS "RequireMembers",
@@ -63,10 +64,11 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             FROM "TeamSlot" ts
             JOIN "Boss" b ON b."Id" = ts."BossId"
             WHERE ts."Source" = 'leader'
-              AND (ts."PeriodId" = @periodId OR (ts."Kind" = 'Instant' AND ts."ExpiresAt" > now()))
+              AND ( (ts."Kind" = 'Scheduled' AND ts."SlotDateTime" > now() - interval '1 day')
+                 OR (ts."Kind" = 'Instant'   AND ts."ExpiresAt"   > now()) )
             ORDER BY ts."SlotDateTime";
             """;
-        var teams = (await _dbContext.QueryAsync<OpenTeamDto>(teamsSql, new { periodId }))
+        var teams = (await _dbContext.QueryAsync<OpenTeamDto>(teamsSql, new { }))
             .Where(t => t.ConfirmedCount < t.RequireMembers)   // 只回尚有空位的
             .ToList();
         if (teams.Count == 0) return teams;
@@ -102,9 +104,9 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         return teams;
     }
 
-    public async Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId, int periodId)
+    public async Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId)
     {
-        // 本期、LeaderDiscordId=本人 的隊；LEFT JOIN 成員一次算三種狀態計數（避免 N+1）。
+        // LeaderDiscordId=本人 的隊；LEFT JOIN 成員一次算三種狀態計數（避免 N+1）。period-less §8 Phase 4a：時間窗取代 period。
         const string sql = """
             SELECT ts."Id" AS "TeamSlotId", ts."BossId" AS "BossId", b."Name" AS "BossName",
                    ts."SlotDateTime" AS "SlotDateTime", b."RequireMembers" AS "RequireMembers",
@@ -116,11 +118,12 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             JOIN "Boss" b ON b."Id" = ts."BossId"
             LEFT JOIN "TeamSlotCharacter" tsc ON tsc."TeamSlotId" = ts."Id"
             WHERE ts."LeaderDiscordId" = @leaderDiscordId
-              AND (ts."PeriodId" = @periodId OR (ts."Kind" = 'Instant' AND ts."ExpiresAt" > now()))
+              AND ( (ts."Kind" = 'Scheduled' AND ts."SlotDateTime" > now() - interval '1 day')
+                 OR (ts."Kind" = 'Instant'   AND ts."ExpiresAt"   > now()) )
             GROUP BY ts."Id", ts."BossId", b."Name", ts."SlotDateTime", b."RequireMembers", ts."Description"
             ORDER BY ts."SlotDateTime";
             """;
-        return await _dbContext.QueryAsync<LedTeamDto>(sql, new { leaderDiscordId = (long)leaderDiscordId, periodId });
+        return await _dbContext.QueryAsync<LedTeamDto>(sql, new { leaderDiscordId = (long)leaderDiscordId });
     }
 
     public async Task<IEnumerable<LeaderTransferDto>> GetPendingLeaderTransfersAsync(ulong discordId)
