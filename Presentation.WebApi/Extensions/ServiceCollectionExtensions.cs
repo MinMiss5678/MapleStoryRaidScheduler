@@ -35,6 +35,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDiscordOAuthClient, DiscordOAuthClient>();
         services.AddScoped<IBossService, BossService>();
         services.AddScoped<IRegisterService, RegisterService>();
+        services.AddScoped<IAvailabilityOverrideService, AvailabilityOverrideService>();
         services.AddScoped<IRegisterQueryService, RegisterQueryService>();
         services.AddScoped<IPeriodService, PeriodService>();
         services.AddScoped<ISystemConfigService, SystemConfigService>();
@@ -58,6 +59,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPlayerRegisterRepository, PlayerRegisterRepository>();
         services.AddScoped<IPlayerAvailabilityRepository, PlayerAvailabilityRepository>();
         services.AddScoped<IPlayerAvailabilityStandingRepository, PlayerAvailabilityStandingRepository>();
+        services.AddScoped<IPlayerAvailabilityOverrideRepository, PlayerAvailabilityOverrideRepository>();
         services.AddScoped<ICharacterRegisterRepository, CharacterRegisterRepository>();
         services.AddScoped<IPeriodRepository, PeriodRepository>();
         services.AddScoped<IPeriodQuery, PeriodQuery>();
