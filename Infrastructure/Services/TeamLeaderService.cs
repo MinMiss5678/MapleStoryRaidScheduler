@@ -409,18 +409,12 @@ public class TeamLeaderService : ITeamLeaderService
     }
 
     public async Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync()
-    {
-        var periodId = await _periodQuery.GetActivePeriodIdAsync();
-        if (periodId == 0) return [];
-        return await _membershipQuery.GetOpenTeamsAsync(periodId);
-    }
+        // period-less §8 Phase 4a：時間窗取代 period（未來排程 + 未過期即時），不再吃 active period。
+        => await _membershipQuery.GetOpenTeamsAsync();
 
     public async Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId)
-    {
-        var periodId = await _periodQuery.GetActivePeriodIdAsync();
-        if (periodId == 0) return [];
-        return await _membershipQuery.GetLedTeamsAsync(leaderDiscordId, periodId);
-    }
+        // period-less §8 Phase 4a：時間窗取代 period。
+        => await _membershipQuery.GetLedTeamsAsync(leaderDiscordId);
 
     public async Task LeaveTeamAsync(int teamSlotId, ulong currentDiscordId)
     {
