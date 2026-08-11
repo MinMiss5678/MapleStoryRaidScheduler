@@ -33,4 +33,16 @@ public class PlayerAvailabilityStandingRepository : IPlayerAvailabilityStandingR
         sql.Where(x => x.DiscordId == (long)discordId);
         await _dbContext.ExecuteAsync(sql);
     }
+
+    public async Task<IEnumerable<PlayerAvailability>> GetByDiscordIdAsync(ulong discordId)
+    {
+        // 不 SELECT DiscordId（呼叫者已知）→ 免 bigint→ulong 映射；TimeOnly 由型別處理器轉。
+        const string sql = """
+            SELECT "Weekday", "StartTime", "EndTime"
+            FROM "PlayerAvailabilityStanding"
+            WHERE "DiscordId" = @discordId
+            ORDER BY "Weekday", "StartTime";
+            """;
+        return await _dbContext.QueryAsync<PlayerAvailability>(sql, new { discordId = (long)discordId });
+    }
 }

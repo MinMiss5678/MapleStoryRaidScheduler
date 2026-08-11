@@ -14,4 +14,5 @@ public class CharacterDbModel
     public required string Name { get; set; }
     public required string Job { get; set; }
     public int AttackPower { get; set; }
+    public bool IsSeekingRaid { get; set; }   // period-less §8 Phase 2：參戰 opt-in
 }

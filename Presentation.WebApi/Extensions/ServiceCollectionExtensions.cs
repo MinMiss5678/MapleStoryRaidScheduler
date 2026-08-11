@@ -36,6 +36,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBossService, BossService>();
         services.AddScoped<IRegisterService, RegisterService>();
         services.AddScoped<IAvailabilityOverrideService, AvailabilityOverrideService>();
+        services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<IRegisterQueryService, RegisterQueryService>();
         services.AddScoped<IPeriodService, PeriodService>();
         services.AddScoped<ISystemConfigService, SystemConfigService>();

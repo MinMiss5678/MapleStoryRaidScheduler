@@ -27,7 +27,8 @@ public class CharacterQuery : ICharacterQuery
             x.DiscordId,
             x.Name,
             x.Job,
-            x.AttackPower
+            x.AttackPower,
+            x.IsSeekingRaid
         })
             .From<CharacterDbModel>()
             .Where<CharacterDbModel>(x => x.DiscordId == (long)discordId);
