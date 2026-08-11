@@ -3,7 +3,9 @@
 狀態：**規劃中（方向已定：全面 period-less 重構）**。2026-08-11 定案——不走延伸/額外車道，直接把 `Period` 從承重實體拔掉，改成**時間軸驅動**；「排程團」與「即時團」用 `Kind` 區分；可用時段從「每週重報」解耦成「掛玩家的常設 + 日期 override」。
 關聯：`plans/2026-08-05-leader-led-team-formation.md`（現行 leader-led 狀態機，全數重用）、報名截止/Period 現況討論。
 
-> 這是跨 **3 表 + 全部 scoping 查詢 + 可用時段模型 + 清理策略 + 報名截止/boss 場數重定義** 的大重構。原則：**分階段、每階段可獨立上線且可回退（feature flag / 欄位相容過渡）**，別一次翻。遇到 2~3 個「計畫沒想到」的設計坑 → 停手、回修計畫、再跑。
+> 這是跨 **3 表 + 全部 scoping 查詢 + 可用時段模型 + 清理策略 + 報名截止/boss 場數重定義** 的大重構。
+> **系統 pre-launch、無正式資料** → migration 可**硬切**：改 schema + 改 code、dev 資料 reset+re-seed、靠 unit+e2e 把關、壞了 fix-forward。**不需雙寫/回填/影子讀等線上搬遷鷹架**（那是為了保護服務中的真實資料，這裡沒有）。
+> 分階段仍保留（為了可審查、CI、踩坑就停），但省掉資料保護的過渡程式碼。遇到 2~3 個「計畫沒想到」的設計坑 → 停手、回修計畫、再跑。
 
 ## 1. 目標
 
@@ -105,10 +107,14 @@
 1. **Phase 1 — `TeamSlot` 加 `Kind`/`ExpiresAt`、`PeriodId` 改可空（非破壞）**
    - 加欄位、預設 `Kind=Scheduled`；新增「時間窗」查詢路徑與既有 period 查詢**並存**。
    - `CreateTeam` 加一條不查 period 的路徑（feature flag 後可切）。可回退＝不切 flag。
-2. **Phase 2 — 可用時段解耦成常設 + override**
-   - 新 `PlayerAvailabilityStanding` + `PlayerAvailabilityOverride`；把現有 per-register 可用時段**回填**成常設（best-effort）。
-   - 候選池查詢從 `WHERE pr.PeriodId` 切成「常設/override overlap SlotDateTime」。
-   - 報名寫入端改寫常設 profile。**雙寫過渡**（同時寫舊 register 與新常設）確保可回退。
+2. **Phase 2 — 可用時段解耦成常設 + 角色 opt-in（pre-launch 硬切；定案 2026-08-11）**
+   候選池定義改為（**B 案**）：**「參戰中」的角色 × 其玩家的常設可用時段 overlap 開團時間**。
+   - **新 `PlayerAvailabilityStanding(DiscordId, Weekday, StartTime, EndTime)`**：掛玩家、常設，取代掛 `PlayerRegisterId` 的舊 `PlayerAvailability`。
+   - **角色參戰 opt-in（B 案）**：加 `Character."IsSeekingRaid" boolean`（逐角色標「這隻要被揪」；多角色玩家可只放主號）。boss 偏好目前不篩 → 先不做（YAGNI）。
+   - **候選查詢重寫**（`TeamCandidateQuery.GetPoolAsync`）：來源改 `Character(IsSeekingRaid) × PlayerAvailabilityStanding(by DiscordId)`，**丟掉 `PlayerRegister`/`CharacterRegister`/`PeriodId`**；bossId 仍算 `BossClearCount`。三層排除：①本隊已 active（現有）②**新增：已在該開團時刻(精確 SlotDateTime)別隊 Confirmed**（不可分身，跟 `uq_tsc_confirmed_overlap` 一致，精確同刻非區間）③時段 overlap 不到。
+   - **報名寫入端**：`RegisterService` 改寫「常設可用時段 + 角色 opt-in」（＝決策 #3 的 profile）；舊 `PlayerRegister`/`CharacterRegister`/per-register 可用時段**直接淘汰**（無正式資料→不回填、不雙寫，dev 用新 seed）。
+   - **override（日期例外）留 Phase 2b**：2a 先只做常設 pattern，先讓主幹動起來、e2e 綠，再加 override。
+   - 子步驟：2a-i migration+實體/repo → 2a-ii 候選查詢切換+排除 → 2a-iii 報名寫入改寫 → 2a-iv seed+e2e。
 3. **Phase 3 — 即時車道**：`LfgIntent` + 即時看板 + `Kind=Instant` 開團（繞過 period 不變式）+ 重用狀態機 + 輪詢刷新。
 4. **Phase 4 — 拔 Period 承重**
    - 開放隊/我開的隊查詢改時間窗；`WeeklyPeriodJob` 換 TTL/歸檔 job；移除報名截止硬鎖；拿掉系統 rounds/場數追蹤（改隊長 per-team 自訂）。
@@ -120,7 +126,6 @@
 - **新造**：`TeamSlot.Kind`/`ExpiresAt`、`PlayerAvailabilityStanding`/`Override`、`LfgIntent`、時間窗查詢、TTL/歸檔 job、可用時段輸入 UI、候選日期/時段 filter。
 
 ## 10. 待驗風險
-- 回填舊 per-week 可用時段 → 常設的**語意落差**（舊資料是「那週的」，回填成常設可能失真）→ 回填策略要保守 + 提示玩家確認。
-- Phase 2 雙寫過渡的一致性與切換時機。
+- （pre-launch 免了：舊可用時段回填語意落差、雙寫一致性——直接淘汰舊資料、reset+re-seed。）
 - 即時團與排程團同一人同時段撞（`uq_tsc_confirmed_overlap` 已擋 Confirmed 跨隊重疊 → 天然共存，需 e2e 驗）。
 - boss 場數改為玩家自管（系統不擋）＝**刻意的設計取捨**，非風險：符合 leader-led「規則交給人、系統不硬管」精神。若日後想要軟性提示（如「你這王本週好像打很多次了」），另議、非本重構範圍。
