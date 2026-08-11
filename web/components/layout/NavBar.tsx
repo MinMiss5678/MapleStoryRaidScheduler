@@ -12,7 +12,7 @@ export default function NavBar() {
     const commonItems = [
         {label: "首頁", href: "/", roles: ["", "user", "admin"]},
         {label: "角色管理", href: "/character", roles: ["user", "admin"]},
-        {label: "報名", href: "/register", roles: ["user", "admin"]},
+        {label: "我的資料", href: "/register", roles: ["user", "admin"]},
         {label: "尋隊", href: "/teams/open", roles: ["user", "admin"]},
         {label: "隊伍列表", href: "/me/teams", roles: ["user", "admin"]},
         {label: "帶隊", href: "/me/led-teams", roles: ["user", "admin"]},
