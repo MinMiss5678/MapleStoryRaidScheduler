@@ -48,4 +48,15 @@ public class CharacterRepository : ICharacterRepository
 
         return await _dbContext.ExecuteAsync(sql);
     }
+
+    public async Task SetSeekingRaidForDiscordAsync(ulong discordId, IReadOnlyCollection<string> seekingCharacterIds)
+    {
+        // replace 語意：該玩家全部角色先設 false，listed 的再設 true（對齊一次報名/編輯的 opt-in 狀態）。
+        const string reset = """UPDATE "Character" SET "IsSeekingRaid" = false WHERE "DiscordId" = @discordId""";
+        await _dbContext.ExecuteAsync(reset, new { discordId = (long)discordId });
+
+        if (seekingCharacterIds.Count == 0) return;
+        const string set = """UPDATE "Character" SET "IsSeekingRaid" = true WHERE "DiscordId" = @discordId AND "Id" = ANY(@ids)""";
+        await _dbContext.ExecuteAsync(set, new { discordId = (long)discordId, ids = seekingCharacterIds.ToArray() });
+    }
 }

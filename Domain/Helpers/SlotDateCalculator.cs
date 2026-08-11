@@ -75,6 +75,10 @@ public static class SlotDateCalculator
         return slotDate;
     }
 
+    /// <summary>period-less 重疊判定：純 weekday+time（period 參數本就未用，見 4-arg 多載）。</summary>
+    public static bool IsTimeInAvailability(int teamWeekday, TimeOnly teamTime, PlayerAvailability avail)
+        => IsTimeInAvailability(teamWeekday, teamTime, avail, null!);
+
     public static bool IsTimeInAvailability(int teamWeekday, TimeOnly teamTime, PlayerAvailability avail, Period period)
     {
         int Next(int isoWeekday) => isoWeekday == 7 ? 1 : isoWeekday + 1;

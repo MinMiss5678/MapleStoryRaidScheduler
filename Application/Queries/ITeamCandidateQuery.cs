@@ -9,7 +9,7 @@ namespace Application.Queries;
 /// </summary>
 public interface ITeamCandidateQuery
 {
-    Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int periodId, int bossId);
+    Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int bossId);
 
     /// <summary>
     /// 候選「退團率偏高」的 DiscordId 集合（Feature 1b）：窗內（SlotDateTime ≥ windowStart）以 DiscordId 聚合，

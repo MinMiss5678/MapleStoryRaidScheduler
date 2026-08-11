@@ -192,7 +192,8 @@ public class TeamLeaderServiceTests
             new TeamSlotRequirement { Count = 1, MinClearCount = 0, Jobs = [new TeamSlotRequirementJob { Job = "英雄", MinAttackPower = 0 }] }
         });
         _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10)).ReturnsAsync(new HashSet<ulong>());
-        _candidateQueryMock.Setup(q => q.GetPoolAsync(1, 1)).ReturnsAsync(new[] { item });
+        _memberRepositoryMock.Setup(r => r.GetConfirmedDiscordIdsAtAsync(It.IsAny<DateTimeOffset>())).ReturnsAsync(new HashSet<ulong>());
+        _candidateQueryMock.Setup(q => q.GetPoolAsync(1)).ReturnsAsync(new[] { item });
     }
 
     private static CandidatePoolItem WarnCandidate() => new()

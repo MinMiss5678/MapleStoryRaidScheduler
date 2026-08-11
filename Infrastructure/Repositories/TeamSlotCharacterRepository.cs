@@ -126,6 +126,17 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         return ids.Select(x => (ulong)x).ToHashSet();
     }
 
+    public async Task<IReadOnlyCollection<ulong>> GetConfirmedDiscordIdsAtAsync(DateTimeOffset slotDateTime)
+    {
+        // 已在該精確開團時刻別隊 Confirmed 者（對齊 uq_tsc_confirmed_overlap）→ 候選排除「不可分身」。
+        const string sql = """
+            SELECT DISTINCT "DiscordId" FROM "TeamSlotCharacter"
+            WHERE "Status" = 'Confirmed' AND "SlotDateTime" = @slot AND "DiscordId" <> 0;
+            """;
+        var ids = await _dbContext.QueryAsync<long>(sql, new { slot = slotDateTime.ToUniversalTime() });
+        return ids.Select(x => (ulong)x).ToHashSet();
+    }
+
     public async Task<IReadOnlyCollection<ulong>> RevokePendingInvitesAsync(int teamSlotId)
     {
         // 額滿後其餘 Invited 已無法接受 → 一次撤銷為 Rejected，RETURNING 回被邀玩家 DiscordId 供通知。

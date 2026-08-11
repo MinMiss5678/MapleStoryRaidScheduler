@@ -13,10 +13,10 @@ public class TeamCandidateQuery : ITeamCandidateQuery
         _dbContext = dbContext;
     }
 
-    public async Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int periodId, int bossId)
+    public async Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int bossId)
     {
-        // boss-agnostic：撈該週期報名池所有角色 × 其玩家的時段；bossId 只用來算「本王總通關」（跨該玩家角色加總）。
-        // 同角色若報名多王 → CharacterRegister 多列 → char×avail 會重複，用 DISTINCT 收斂。
+        // period-less（§8 Phase 2，B 案）：候選 = 參戰中(IsSeekingRaid)角色 × 其玩家的常設可用時段。
+        // 不再吃 period/報名；bossId 只用來算「本王總通關」（跨該玩家角色加總）。同人多時段 → 多列，下面 group 收斂。
         const string sql = """
             WITH clear_total AS (
                 SELECT ch."DiscordId", SUM(cbc."ClearCount") AS total
@@ -37,16 +37,14 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                 a."Weekday"                  AS "Weekday",
                 a."StartTime"                AS "StartTime",
                 a."EndTime"                  AS "EndTime"
-            FROM "PlayerRegister" pr
-            JOIN "CharacterRegister" cr ON cr."PlayerRegisterId" = pr."Id"
-            JOIN "Character" c          ON c."Id" = cr."CharacterId"
-            JOIN "Player" p             ON p."DiscordId" = c."DiscordId"
-            JOIN "PlayerAvailability" a ON a."PlayerRegisterId" = pr."Id"
-            LEFT JOIN clear_total ct    ON ct."DiscordId" = c."DiscordId"
-            WHERE pr."PeriodId" = @periodId;
+            FROM "Character" c
+            JOIN "Player" p                     ON p."DiscordId" = c."DiscordId"
+            JOIN "PlayerAvailabilityStanding" a ON a."DiscordId" = c."DiscordId"
+            LEFT JOIN clear_total ct            ON ct."DiscordId" = c."DiscordId"
+            WHERE c."IsSeekingRaid";
             """;
 
-        var rows = await _dbContext.QueryAsync<PoolRow>(sql, new { periodId, bossId });
+        var rows = await _dbContext.QueryAsync<PoolRow>(sql, new { bossId });
 
         // 同角色多時段 → 多列，group 回一筆 CandidatePoolItem（帶其時段清單）
         return rows

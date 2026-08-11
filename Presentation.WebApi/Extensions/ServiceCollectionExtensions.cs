@@ -57,6 +57,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBossRepository, BossRepository>();
         services.AddScoped<IPlayerRegisterRepository, PlayerRegisterRepository>();
         services.AddScoped<IPlayerAvailabilityRepository, PlayerAvailabilityRepository>();
+        services.AddScoped<IPlayerAvailabilityStandingRepository, PlayerAvailabilityStandingRepository>();
         services.AddScoped<ICharacterRegisterRepository, CharacterRegisterRepository>();
         services.AddScoped<IPeriodRepository, PeriodRepository>();
         services.AddScoped<IPeriodQuery, PeriodQuery>();
