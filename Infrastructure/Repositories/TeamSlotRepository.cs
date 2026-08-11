@@ -27,6 +27,11 @@ public class TeamSlotRepository : ITeamSlotRepository
             .Set(x => x.PeriodId, teamSlot.PeriodId > 0 ? (int?)teamSlot.PeriodId : null)
             .Set(x => x.LeaderDiscordId, teamSlot.LeaderDiscordId.HasValue ? (long?)teamSlot.LeaderDiscordId.Value : null)
             .Set(x => x.Description, teamSlot.Description)
+            // period-less（§3.1）：Kind 預設 Scheduled（DB 亦有 DEFAULT），即時團才帶 ExpiresAt；場數範圍選填
+            .Set(x => x.Kind, teamSlot.Kind)
+            .Set(x => x.ExpiresAt, teamSlot.ExpiresAt?.ToUniversalTime())
+            .Set(x => x.RunsMin, teamSlot.RunsMin)
+            .Set(x => x.RunsMax, teamSlot.RunsMax)
             .ReturnId();
 
         return await _dbContext.ExecuteScalarAsync(sql);
@@ -46,7 +51,7 @@ public class TeamSlotRepository : ITeamSlotRepository
         // 原本是「查 TeamSlot」+「查 Characters」兩次往返，合併成一次 LEFT JOIN：
         // 併發控制迴圈裡每個既有隊伍都會呼叫一次，逐隊各打兩次是可避免的 N+1（見 architecture.md）。
         var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId, x.LeaderDiscordId, x.PendingLeaderDiscordId })
+            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId, x.LeaderDiscordId, x.PendingLeaderDiscordId, x.Kind, x.ExpiresAt, x.RunsMin, x.RunsMax })
             .Select<TeamSlotCharacterDbModel>(x => new
             {
                 CharacterRowId = x.Id,
@@ -94,6 +99,10 @@ public class TeamSlotRepository : ITeamSlotRepository
             TemplateId = first.TemplateId,
             LeaderDiscordId = first.LeaderDiscordId.HasValue ? (ulong?)first.LeaderDiscordId.Value : null,
             PendingLeaderDiscordId = first.PendingLeaderDiscordId.HasValue ? (ulong?)first.PendingLeaderDiscordId.Value : null,
+            Kind = first.Kind,
+            ExpiresAt = first.ExpiresAt,
+            RunsMin = first.RunsMin,
+            RunsMax = first.RunsMax,
             Characters = characters
         };
     }
@@ -121,6 +130,10 @@ public class TeamSlotRepository : ITeamSlotRepository
         public int? TemplateId { get; set; }
         public long? LeaderDiscordId { get; set; }
         public long? PendingLeaderDiscordId { get; set; }
+        public string Kind { get; set; } = "Scheduled";
+        public DateTimeOffset? ExpiresAt { get; set; }
+        public int? RunsMin { get; set; }
+        public int? RunsMax { get; set; }
         public int CharacterRowId { get; set; }
         public long DiscordId { get; set; }
         public string? DiscordName { get; set; }

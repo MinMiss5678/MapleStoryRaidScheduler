@@ -22,6 +22,16 @@ public class TeamSlot
     /// <summary>隊伍說明/公告（leader-led，§3 吸收非結構化招募需求）。Phase 1a 先實作屬性，repo 映射待 1b/1c。</summary>
     public string? Description { get; set; }
 
+    /// <summary>隊伍種類（period-less 重構，§3.1）：Scheduled=排程 / Instant=即時。預設 Scheduled，舊路徑不變。</summary>
+    public string Kind { get; set; } = TeamSlotKind.Scheduled;
+
+    /// <summary>即時團 TTL 到期時刻（Instant 專用）；Scheduled 為 null，用 SlotDateTime 自然到期。</summary>
+    public DateTimeOffset? ExpiresAt { get; set; }
+
+    /// <summary>場數範圍（選填、僅告示不強制，§3.1）：隊長公告這團打幾場。1~3 都可＝(1,3)、固定 2＝(2,2)、null=隨意。</summary>
+    public int? RunsMin { get; set; }
+    public int? RunsMax { get; set; }
+
     // 容量 = Boss.RequireMembers（由 service 載入/建立時填；不變式需要它才守得住）
     public int Capacity { get; set; }
 
