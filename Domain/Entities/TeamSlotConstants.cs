@@ -12,6 +12,16 @@ public static class TeamSlotSource
 }
 
 /// <summary>
+/// 隊伍種類（period-less 重構）：排程（提前規劃）vs 即時（現揪現打）。同一張 TeamSlot 用此欄區分，非兩套系統。
+/// 建立時明選、不靠「SlotDateTime 距現在多久」硬猜。見 plans/2026-08-11-realtime-team-formation.md §3.1。
+/// </summary>
+public static class TeamSlotKind
+{
+    public const string Scheduled = "Scheduled"; // 排程團：未來固定 SlotDateTime、常設可用時段配對
+    public const string Instant = "Instant";     // 即時團：≈now、ExpiresAt(TTL)、LfgIntent 配對
+}
+
+/// <summary>
 /// 成員入隊狀態（leader-led）。只有 <see cref="Confirmed"/> 占容量；<see cref="Applied"/>/<see cref="Invited"/> 皆不占。
 /// 見計畫 §9.4。舊模型的既有成員一律視為 Confirmed（migration 000009 DEFAULT）。
 /// </summary>
