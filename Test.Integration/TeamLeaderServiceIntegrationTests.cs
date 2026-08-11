@@ -405,10 +405,17 @@ public class TeamLeaderServiceIntegrationTests
         var prId = await Seed.PlayerRegisterAsync(cs, discordId, periodId);
         await Seed.CharacterRegisterAsync(cs, prId, charId, bossId, rounds: 1);
         await Seed.AvailabilityAsync(cs, prId, weekday, new TimeOnly(19, 0), new TimeOnly(22, 0));
+
+        // period-less（§8 Phase 2）：候選池改讀常設可用時段 + 角色 IsSeekingRaid → 寫進新模型
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await conn.ExecuteAsync(
+            """INSERT INTO "PlayerAvailabilityStanding"("DiscordId","Weekday","StartTime","EndTime") VALUES (@discordId,@weekday,@s,@e);""",
+            new { discordId, weekday, s = new TimeOnly(19, 0), e = new TimeOnly(22, 0) });
+        await conn.ExecuteAsync(
+            """UPDATE "Character" SET "IsSeekingRaid"=true WHERE "Id"=@charId;""", new { charId });
         if (clears > 0)
         {
-            await using var conn = new NpgsqlConnection(cs);
-            await conn.OpenAsync();
             await conn.ExecuteAsync(
                 """INSERT INTO "CharacterBossClear"("CharacterId","BossId","ClearCount") VALUES (@charId,@bossId,@clears);""",
                 new { charId, bossId, clears });
