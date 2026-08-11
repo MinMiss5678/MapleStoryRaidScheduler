@@ -35,6 +35,7 @@ export default function NewTeamPage() {
 
     const [bossId, setBossId] = useState(0);
     const [slotDateTime, setSlotDateTime] = useState("");
+    const [isInstant, setIsInstant] = useState(false);   // period-less §8 Phase 3：即時團
     const [description, setDescription] = useState("");
     const [rows, setRows] = useState<CreateTeamRequirementInput[]>([emptyRow()]);
 
@@ -76,15 +77,17 @@ export default function NewTeamPage() {
         mutationFn: () =>
             leaderService.createTeam({
                 bossId,
-                slotDateTime: new Date(slotDateTime).toISOString(),
+                // 即時團：時間＝現在、不綁 period；排程團用選的時段
+                slotDateTime: isInstant ? new Date().toISOString() : new Date(slotDateTime).toISOString(),
+                kind: isInstant ? "Instant" : "Scheduled",
                 description: description.trim() || undefined,
                 requirements: rows,
             }),
-        onSuccess: () => router.push("/me/led-teams"),
+        onSuccess: () => router.push(isInstant ? "/me/led-teams" : "/me/led-teams"),
         onError: (e) => toast.error(e instanceof ApiError ? e.message : "開隊失敗，請稍後再試"),
     });
 
-    const canSubmit = bossId > 0 && slotDateTime !== "" && rows.every((r) => r.count >= 1);
+    const canSubmit = bossId > 0 && (isInstant || slotDateTime !== "") && rows.every((r) => r.count >= 1);
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-8">
@@ -101,6 +104,18 @@ export default function NewTeamPage() {
             <div className="flex flex-col gap-5">
                 {/* 王 + 時段 */}
                 <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-4">
+                    {/* 隊伍種類：排程 vs 即時 */}
+                    <div className="flex gap-2">
+                        <button type="button" onClick={() => setIsInstant(false)}
+                            className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${!isInstant ? "bg-amber-600 text-white" : "bg-muted text-foreground"}`}>
+                            排程團（約好時間）
+                        </button>
+                        <button type="button" onClick={() => setIsInstant(true)}
+                            className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${isInstant ? "bg-rose-600 text-white" : "bg-muted text-foreground"}`}>
+                            即時團（現在就打）
+                        </button>
+                    </div>
+
                     <label className="flex flex-col gap-1.5">
                         <span className="text-sm font-medium flex items-center gap-1.5"><Swords size={14} /> 王</span>
                         <select
@@ -115,22 +130,26 @@ export default function NewTeamPage() {
                         </select>
                     </label>
 
-                    <label className="flex flex-col gap-1.5">
-                        <span className="text-sm font-medium">打王時段</span>
-                        <input
-                            type="datetime-local"
-                            value={slotDateTime}
-                            min={period ? toLocalInput(period.startDate) : undefined}
-                            max={period ? toLocalInput(period.endDate) : undefined}
-                            onChange={(e) => setSlotDateTime(e.target.value)}
-                            className="px-3 py-2 bg-background border border-border rounded-xl text-sm"
-                        />
-                        {period && (
-                            <span className="text-xs text-muted-foreground">
-                                須落在本期：{period.startDate.toLocaleDateString("zh-TW")} ~ {period.endDate.toLocaleDateString("zh-TW")}
-                            </span>
-                        )}
-                    </label>
+                    {isInstant ? (
+                        <p className="text-sm text-muted-foreground">即時團：時間為「現在」，候選來自即時揪團看板。</p>
+                    ) : (
+                        <label className="flex flex-col gap-1.5">
+                            <span className="text-sm font-medium">打王時段</span>
+                            <input
+                                type="datetime-local"
+                                value={slotDateTime}
+                                min={period ? toLocalInput(period.startDate) : undefined}
+                                max={period ? toLocalInput(period.endDate) : undefined}
+                                onChange={(e) => setSlotDateTime(e.target.value)}
+                                className="px-3 py-2 bg-background border border-border rounded-xl text-sm"
+                            />
+                            {period && (
+                                <span className="text-xs text-muted-foreground">
+                                    須落在本期：{period.startDate.toLocaleDateString("zh-TW")} ~ {period.endDate.toLocaleDateString("zh-TW")}
+                                </span>
+                            )}
+                        </label>
+                    )}
 
                     <label className="flex flex-col gap-1.5">
                         <span className="text-sm font-medium">隊伍說明（選填）</span>

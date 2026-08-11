@@ -167,6 +167,11 @@ BEGIN
     RAISE NOTICE 'E2E seed 就緒 → periodId=%, bossId=%, teamId=%', v_period_id, v_boss_id, v_team_id;
 END $$;
 
+-- period-less Phase 3 即時揪團 e2e：P-Lfg(8101) + 角色 c8101（夜使者）→ 發找隊 → 被即時團邀請 → 接受。
+-- 隊長 8102 由 test-login 自建。即時候選走 LfgIntent（不需常設時段/IsSeekingRaid）。
+INSERT INTO "Player"("DiscordId","DiscordName","Role") VALUES (8101, 'P-Lfg', 'user');
+INSERT INTO "Character"("Id","DiscordId","Name","Job","AttackPower") VALUES ('c8101', 8101, 'C-Lfg', '夜使者', 950);
+
 -- period-less Phase 2a：候選池改讀「常設可用時段 + 角色 IsSeekingRaid」（不再吃 period 報名）。
 -- 把上面 seed 的報名資料鏡射過去，讓候選相關 e2e 在新查詢下維持同一候選集。
 INSERT INTO "PlayerAvailabilityStanding"("DiscordId","Weekday","StartTime","EndTime")
