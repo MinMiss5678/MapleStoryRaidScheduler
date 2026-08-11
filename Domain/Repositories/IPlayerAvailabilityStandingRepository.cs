@@ -12,4 +12,7 @@ public interface IPlayerAvailabilityStandingRepository
 
     /// <summary>清掉某玩家全部常設時段（報名/編輯採 replace-all 語意）。</summary>
     Task DeleteByDiscordIdAsync(ulong discordId);
+
+    /// <summary>某玩家的常設時段（供 profile 顯示）。</summary>
+    Task<IEnumerable<PlayerAvailability>> GetByDiscordIdAsync(ulong discordId);
 }
