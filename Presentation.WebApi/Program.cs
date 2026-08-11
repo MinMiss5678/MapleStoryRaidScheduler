@@ -222,6 +222,7 @@ builder.Services.AddControllers()
 
 // Dapper TimeOnly support
 SqlMapper.AddTypeHandler(new TimeOnlyTypeHandler());
+SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
 
 builder.Services.AddOptions<JwtOptions>()
     .Bind(builder.Configuration.GetSection("Jwt"))

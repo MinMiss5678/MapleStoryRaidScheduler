@@ -26,6 +26,7 @@ public class PostgresFixture : IAsyncLifetime
     {
         // 自訂 TimeOnly handler（PlayerAvailability 的 time 欄位會用到）
         SqlMapper.AddTypeHandler(new TimeOnlyTypeHandler());
+        SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
         await _container.StartAsync();
         await ApplyMigrationsAsync();
     }
