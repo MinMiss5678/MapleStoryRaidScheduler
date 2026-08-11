@@ -137,6 +137,39 @@ public class TeamLeaderServiceIntegrationTests
     }
 
     [Fact]
+    public async Task GetCandidatesAsync_DateOverride_Unavailable_ExcludesOtherwiseMatchingCandidate()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs, requireMembers: 6);
+        var periodId = await Seed.PeriodAsync(cs,
+            new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
+        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero); // 週三 20:00 TPE，日期 2026-04-08
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        var teamSlotId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        {
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
+            Requirements = [new CreateTeamRequirementDto { Count = 1, MinClearCount = 0,
+                Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 0 }] }]
+        });
+        // 常設週三 19–22 可 → 本會命中
+        await SeedCandidate(cs, periodId, bossId, 101, "archer", "箭神", 950, weekday: 3, clears: 0);
+
+        // 該日整天不行 override → 蓋掉常設 → 撈不到
+        await using (var conn = new NpgsqlConnection(cs))
+        {
+            await conn.OpenAsync();
+            await conn.ExecuteAsync(
+                """INSERT INTO "PlayerAvailabilityOverride"("DiscordId","Date","StartTime","EndTime","IsAvailable") VALUES (101, DATE '2026-04-08', TIME '00:00', TIME '00:00', false);""");
+        }
+
+        Assert.Empty(await CreateService().GetCandidatesAsync(teamSlotId));
+    }
+
+    [Fact]
     public async Task Invite_Then_Accept_ConfirmsMember()
     {
         await _fx.ResetAsync();

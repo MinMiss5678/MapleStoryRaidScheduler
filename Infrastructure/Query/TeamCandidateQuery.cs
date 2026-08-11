@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Application.Queries;
 using Domain.Entities;
 using Infrastructure.Dapper;
@@ -73,6 +74,23 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             .ToList();
     }
 
+    public async Task<IEnumerable<AvailabilityOverrideItem>> GetOverridesForDateAsync(DateOnly date)
+    {
+        const string sql = """
+            SELECT "DiscordId", "StartTime", "EndTime", "IsAvailable"
+            FROM "PlayerAvailabilityOverride"
+            WHERE "Date" = @date;
+            """;
+        var rows = await _dbContext.QueryAsync<OverrideRow>(sql, new { date });
+        return rows.Select(r => new AvailabilityOverrideItem
+        {
+            DiscordId = (ulong)r.DiscordId,
+            StartTime = r.StartTime,
+            EndTime = r.EndTime,
+            IsAvailable = r.IsAvailable
+        }).ToList();
+    }
+
     public async Task<IReadOnlyCollection<ulong>> GetHighLeaveRateDiscordIdsAsync(
         IEnumerable<ulong> discordIds, DateTimeOffset windowStart, int minSample, int thresholdPercent)
     {
@@ -92,6 +110,14 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             """;
         var result = await _dbContext.QueryAsync<long>(sql, new { ids, windowStart, minSample, thresholdPercent });
         return result.Select(x => (ulong)x).ToHashSet();
+    }
+
+    private class OverrideRow
+    {
+        public long DiscordId { get; set; }
+        public TimeOnly StartTime { get; set; }
+        public TimeOnly EndTime { get; set; }
+        public bool IsAvailable { get; set; }
     }
 
     private class PoolRow

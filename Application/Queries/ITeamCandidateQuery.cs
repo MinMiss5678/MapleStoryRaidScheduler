@@ -1,3 +1,4 @@
+using Application.DTOs;
 using Domain.Entities;
 
 namespace Application.Queries;
@@ -10,6 +11,9 @@ namespace Application.Queries;
 public interface ITeamCandidateQuery
 {
     Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int bossId);
+
+    /// <summary>某日期全部玩家的可用時段 override（period-less §8 Phase 2b）——供候選比對疊在常設上。</summary>
+    Task<IEnumerable<AvailabilityOverrideItem>> GetOverridesForDateAsync(DateOnly date);
 
     /// <summary>
     /// 候選「退團率偏高」的 DiscordId 集合（Feature 1b）：窗內（SlotDateTime ≥ windowStart）以 DiscordId 聚合，
