@@ -123,6 +123,9 @@ public class Program
                  services.AddHostedService(sp => new OutboxRetentionJob(
                      connectionString,
                      sp.GetRequiredService<ILogger<OutboxRetentionJob>>()));
+                 services.AddHostedService(sp => new LfgIntentCleanupJob(
+                     connectionString,
+                     sp.GetRequiredService<ILogger<LfgIntentCleanupJob>>()));
 
                  // 註冊自動執行的 Background Services
                  services.AddHostedService<DiscordBotService>();       // Discord 啟動管理
