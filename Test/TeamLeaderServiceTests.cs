@@ -193,6 +193,7 @@ public class TeamLeaderServiceTests
         });
         _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10)).ReturnsAsync(new HashSet<ulong>());
         _memberRepositoryMock.Setup(r => r.GetConfirmedDiscordIdsAtAsync(It.IsAny<DateTimeOffset>())).ReturnsAsync(new HashSet<ulong>());
+        _candidateQueryMock.Setup(q => q.GetOverridesForDateAsync(It.IsAny<DateOnly>())).ReturnsAsync(Array.Empty<AvailabilityOverrideItem>());
         _candidateQueryMock.Setup(q => q.GetPoolAsync(1)).ReturnsAsync(new[] { item });
     }
 
@@ -385,6 +386,30 @@ public class TeamLeaderServiceTests
         _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10)).ReturnsAsync(new HashSet<ulong> { 777 }); // 已在本隊 active → 去重
 
         Assert.Empty(await _service.GetCandidatesAsync(10));
+    }
+
+    // ── 日期 override（§8 Phase 2b）：override 勝過常設 ──
+    [Fact]
+    public async Task GetCandidatesAsync_ExcludesCandidate_WhenDateOverrideMarksUnavailable()
+    {
+        SetupCandidatesPipeline(WarnCandidate()); // 常設週三整天可用 → 本會命中
+        _candidateQueryMock.Setup(q => q.GetOverridesForDateAsync(It.IsAny<DateOnly>()))
+            .ReturnsAsync(new[] { new AvailabilityOverrideItem { DiscordId = 777, StartTime = new TimeOnly(0, 0), EndTime = new TimeOnly(0, 0), IsAvailable = false } }); // 該日整天不行 → 蓋掉常設
+
+        Assert.Empty(await _service.GetCandidatesAsync(10));
+    }
+
+    [Fact]
+    public async Task GetCandidatesAsync_IncludesCandidate_WhenDateOverrideAddsAvailability()
+    {
+        // 常設落在週一（團在週三 20:00）→ 常設不命中；但該日 override 額外加開 19–22 → 命中
+        var cand = WarnCandidate();
+        cand.Availabilities = [new PlayerAvailability { Weekday = 1, StartTime = new TimeOnly(19, 0), EndTime = new TimeOnly(22, 0) }];
+        SetupCandidatesPipeline(cand);
+        _candidateQueryMock.Setup(q => q.GetOverridesForDateAsync(It.IsAny<DateOnly>()))
+            .ReturnsAsync(new[] { new AvailabilityOverrideItem { DiscordId = 777, StartTime = new TimeOnly(19, 0), EndTime = new TimeOnly(22, 0), IsAvailable = true } });
+
+        Assert.Single(await _service.GetCandidatesAsync(10));
     }
 
     [Fact]

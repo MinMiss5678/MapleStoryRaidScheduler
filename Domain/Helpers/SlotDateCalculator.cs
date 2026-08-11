@@ -102,6 +102,18 @@ public static class SlotDateCalculator
         return isInRange;
     }
 
+    /// <summary>
+    /// 團時間是否落在某時段窗內（不看星期，供日期 override 用；period-less §8 Phase 2b）。
+    /// EndTime 00:00 視為當日 24:00（整天）。不處理跨日 wrap（override 為同日窗）。
+    /// </summary>
+    public static bool IsTimeInWindow(TimeOnly teamTime, TimeOnly start, TimeOnly end)
+    {
+        int t = teamTime.Hour * 60 + teamTime.Minute;
+        int s = start.Hour * 60 + start.Minute;
+        int e = (end.Hour == 0 && end.Minute == 0) ? 24 * 60 : end.Hour * 60 + end.Minute;
+        return t >= s && t < e;
+    }
+
     public static int ToIsoWeekday(DayOfWeek day)
     {
         return day == DayOfWeek.Sunday ? 7 : (int)day;

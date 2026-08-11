@@ -115,10 +115,15 @@ public class TeamLeaderService : ITeamLeaderService
         // 不可分身：排除「已在該開團時刻別隊 Confirmed」者（對齊 uq_tsc_confirmed_overlap；否則邀了也接受不了）。
         var bookedIds = await _memberRepository.GetConfirmedDiscordIdsAtAsync(team.SlotDateTime);
 
-        // 團時間 → weekday/time（TPE），比照 TeamSlotAutoAssignService 慣例
+        // 團時間 → weekday/time/date（TPE），比照 TeamSlotAutoAssignService 慣例
         var twTime = team.SlotDateTime.ToOffset(TimeSpan.FromHours(8));
         int teamWeekday = SlotDateCalculator.ToIsoWeekday(twTime.DayOfWeek);
         var teamTime = TimeOnly.FromDateTime(twTime.DateTime);
+        var teamDate = DateOnly.FromDateTime(twTime.DateTime);
+        // 日期 override（§8 Phase 2b）：疊在常設上。override 勝過常設——不行的蓋掉、額外加開的補上。
+        var overridesByDiscord = (await _candidateQuery.GetOverridesForDateAsync(teamDate))
+            .GroupBy(o => o.DiscordId)
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         var matched = pool
             .Where(item =>
@@ -126,8 +131,8 @@ public class TeamLeaderService : ITeamLeaderService
                 !activeIds.Contains(item.DiscordId)
                 // 排除已在該時刻別隊 Confirmed（不可分身）
                 && !bookedIds.Contains(item.DiscordId)
-                // 時段重疊：任一時段涵蓋團時間
-                && item.Availabilities.Any(a => SlotDateCalculator.IsTimeInAvailability(teamWeekday, teamTime, a))
+                // 時段重疊（常設 + 日期 override）：override 勝過常設
+                && IsAvailableAt(item, teamWeekday, teamTime, overridesByDiscord)
                 // 且符合至少一需求列：某可接受職業==角色職業 且 攻擊≥該職下限 且 本王通關≥該列門檻。
                 // 無需求列 → 無候選（隊長須先定義條件才看得到候選）。
                 && requirements.Any(r =>
@@ -158,6 +163,20 @@ public class TeamLeaderService : ITeamLeaderService
                 LeaveRateWarn = warnIds.Contains(item.DiscordId)
             })
             .ToList();
+    }
+
+    // override-aware 可用判定（§8 Phase 2b）：override 勝過常設——該時段有「不行」→ false；有「加開」→ true；否則看常設 pattern。
+    private static bool IsAvailableAt(CandidatePoolItem item, int teamWeekday, TimeOnly teamTime,
+        IReadOnlyDictionary<ulong, List<AvailabilityOverrideItem>> overridesByDiscord)
+    {
+        if (overridesByDiscord.TryGetValue(item.DiscordId, out var ovs))
+        {
+            if (ovs.Any(o => !o.IsAvailable && SlotDateCalculator.IsTimeInWindow(teamTime, o.StartTime, o.EndTime)))
+                return false;
+            if (ovs.Any(o => o.IsAvailable && SlotDateCalculator.IsTimeInWindow(teamTime, o.StartTime, o.EndTime)))
+                return true;
+        }
+        return item.Availabilities.Any(a => SlotDateCalculator.IsTimeInAvailability(teamWeekday, teamTime, a));
     }
 
     public async Task InviteMemberAsync(int teamSlotId, string characterId, ulong leaderDiscordId)
