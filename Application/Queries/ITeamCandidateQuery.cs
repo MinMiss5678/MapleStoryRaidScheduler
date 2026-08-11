@@ -12,6 +12,9 @@ public interface ITeamCandidateQuery
 {
     Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int bossId);
 
+    /// <summary>即時團候選池（period-less §8 Phase 3）：未過期的 LfgIntent（BossId 為 null 或 = 該王），非常設時段。</summary>
+    Task<IEnumerable<CandidatePoolItem>> GetInstantPoolAsync(int bossId);
+
     /// <summary>某日期全部玩家的可用時段 override（period-less §8 Phase 2b）——供候選比對疊在常設上。</summary>
     Task<IEnumerable<AvailabilityOverrideItem>> GetOverridesForDateAsync(DateOnly date);
 

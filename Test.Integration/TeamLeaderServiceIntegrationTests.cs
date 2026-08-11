@@ -34,7 +34,8 @@ public class TeamLeaderServiceIntegrationTests
             new RegistrationLock(db),
             new Outbox(db),
             new TeamMembershipQuery(db),
-            new SystemConfigService(db, new Outbox(db)));
+            new SystemConfigService(db, new Outbox(db)),
+            new LfgIntentRepository(db));
     }
 
     [Fact]
@@ -167,6 +168,41 @@ public class TeamLeaderServiceIntegrationTests
         }
 
         Assert.Empty(await CreateService().GetCandidatesAsync(teamSlotId));
+    }
+
+    [Fact]
+    public async Task Instant_GetCandidates_FromLfgIntent_NoPeriodNoAvailabilityNeeded()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs, requireMembers: 6);
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        // 候選 101：只有角色（無報名/無常設時段），發了 LfgIntent
+        await Seed.PlayerAsync(cs, 101, "P101");
+        await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
+        await using (var conn = new NpgsqlConnection(cs))
+        {
+            await conn.OpenAsync();
+            await conn.ExecuteAsync(
+                """INSERT INTO "LfgIntent"("DiscordId","CharacterId","BossId","ExpiresAt") VALUES (101, 'archer', @bossId, now() + interval '1 hour');""",
+                new { bossId });
+        }
+
+        // 即時團：Kind=Instant → 繞過 period（沒 seed period 也能開）
+        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        {
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            Kind = "Instant",
+            SlotDateTime = DateTimeOffset.UtcNow,
+            Requirements = [new CreateTeamRequirementDto { Count = 1, MinClearCount = 0,
+                Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 0 }] }]
+        });
+
+        var candidates = (await CreateService().GetCandidatesAsync(teamId)).ToList();
+
+        Assert.Single(candidates);
+        Assert.Equal("archer", candidates[0].CharacterId);
     }
 
     [Fact]
