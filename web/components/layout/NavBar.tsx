@@ -17,13 +17,9 @@ export default function NavBar() {
         {label: "即時揪團", href: "/teams/instant", roles: ["user", "admin"]},
         {label: "隊伍列表", href: "/me/teams", roles: ["user", "admin"]},
         {label: "帶隊", href: "/me/led-teams", roles: ["user", "admin"]},
-        {label: "補位", href: "/schedule", roles: ["user", "admin"]},
-        {label: "排團", href: "/admin/schedule", roles: ["admin"]},
-        {label: "排團結果", href: "/scheduleResult", roles: ["user", "admin"]},
     ];
 
     const adminMenuItems = [
-        {label: "範本管理", href: "/admin/templates", roles: ["admin"]},
         {label: "Boss 管理", href: "/admin/boss", roles: ["admin"]},
         {label: "系統設定", href: "/admin/config", roles: ["admin"]},
     ];
@@ -100,7 +96,7 @@ export default function NavBar() {
                                 onMouseEnter={() => setIsAdminMenuOpen(true)}
                                 onMouseLeave={() => setIsAdminMenuOpen(false)}
                             >
-                                <button className={`flex items-center space-x-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-[var(--foreground)] hover:bg-gray-100 dark:hover:bg-gray-800 ${pathname.startsWith('/admin/') && pathname !== '/admin/schedule' ? 'text-blue-600 dark:text-blue-400' : ''}`}>
+                                <button className={`flex items-center space-x-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-[var(--foreground)] hover:bg-gray-100 dark:hover:bg-gray-800 ${pathname.startsWith('/admin/') ? 'text-blue-600 dark:text-blue-400' : ''}`}>
                                     <span>管理</span>
                                     <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isAdminMenuOpen ? 'rotate-180' : ''}`} />
                                 </button>

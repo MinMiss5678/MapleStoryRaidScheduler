@@ -20,10 +20,10 @@ describe('API proxy — 真實 client IP 覆寫（安全）', () => {
         vi.unstubAllGlobals()
     })
 
-    // 打一個合法路徑（period 在白名單），回傳轉發給後端的 headers
+    // 打一個合法路徑（character 在白名單），回傳轉發給後端的 headers
     async function forwardedHeaders(headers: Record<string, string>): Promise<Headers> {
-        const req = new NextRequest('http://localhost/api/period/GetByNow', { headers })
-        await GET(req, { params: Promise.resolve({ path: ['period', 'GetByNow'] }) })
+        const req = new NextRequest('http://localhost/api/character/GetWithDiscordName', { headers })
+        await GET(req, { params: Promise.resolve({ path: ['character', 'GetWithDiscordName'] }) })
         expect(fetchMock).toHaveBeenCalledOnce()
         return fetchMock.mock.calls[0][1].headers as Headers
     }

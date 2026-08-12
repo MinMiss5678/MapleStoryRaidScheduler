@@ -1,7 +1,19 @@
 ﻿import { Character } from "@/types/character";
 import { apiClient } from './apiClient';
 
+// per 角色 per 王 的通關數（leader-led 候選 MinClearCount 過濾的資料來源）
+export interface BossClear {
+    bossId: number;
+    clearCount: number;
+}
+
 export const characterService = {
+    async getBossClears(characterId: string): Promise<BossClear[]> {
+        return apiClient.get<BossClear[]>(`/api/character/${encodeURIComponent(characterId)}/BossClears`);
+    },
+    async saveBossClears(characterId: string, clears: BossClear[]): Promise<void> {
+        await apiClient.post(`/api/character/${encodeURIComponent(characterId)}/BossClears`, clears);
+    },
     async getCharacters(bossId?: number): Promise<Character[]> {
         const url = bossId ? `/api/character/GetWithDiscordName?bossId=${bossId}` : "/api/character/GetWithDiscordName";
         return apiClient.get<Character[]>(url);
