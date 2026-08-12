@@ -1,43 +1,69 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
-import { Crown, Plus, Trash2, Swords } from "lucide-react";
+import { Crown, Plus, Trash2, Swords, Bookmark, Star, X } from "lucide-react";
 import { useBosses } from "@/hooks/queries/useBosses";
-import { usePeriod } from "@/hooks/queries/usePeriod";
-import { useJobMap } from "@/hooks/queries/useScheduleData";
 import toast from "react-hot-toast";
 import { leaderService } from "@/services/leaderService";
 import { ApiError } from "@/services/apiClient";
 import { JOBS } from "@/constants/jobs";
 import { CreateTeamRequirementInput } from "@/types/leaderLed";
 
-function toLocalInput(d: Date): string {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const emptyRow = (): CreateTeamRequirementInput => ({ count: 1, minClearCount: 0, jobs: [] });
+
+// 需求組合預設（取代舊 JobCategory「一鍵勾滿整組」）：純瀏覽器 localStorage，零後端、personal。
+const PRESET_KEY = "teamNew.requirementPresets";
+type Preset = { name: string; rows: CreateTeamRequirementInput[] };
+
+function loadPresets(): Preset[] {
+    if (typeof window === "undefined") return [];
+    try {
+        const raw = window.localStorage.getItem(PRESET_KEY);
+        return raw ? (JSON.parse(raw) as Preset[]) : [];
+    } catch {
+        return [];
+    }
 }
 
-const emptyRow = (): CreateTeamRequirementInput => ({ count: 1, minClearCount: 0, jobs: [] });
+function savePresets(presets: Preset[]) {
+    window.localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
+}
+
+// 深拷貝需求列（避免套用預設後改動污染 localStorage 內容）
+const cloneRows = (rows: CreateTeamRequirementInput[]): CreateTeamRequirementInput[] =>
+    rows.map((r) => ({ ...r, jobs: r.jobs.map((j) => ({ ...j })) }));
 
 export default function NewTeamPage() {
     const router = useRouter();
     const { data: bosses = [] } = useBosses();
-    const { data: period } = usePeriod();
-    const { data: jobMap = {} } = useJobMap();
-
-    // 反轉 job→category 成 category→jobs[]，供「一鍵勾滿整組」的分類鈕。
-    const categories = useMemo(() => {
-        const m: Record<string, string[]> = {};
-        for (const [job, cat] of Object.entries(jobMap)) (m[cat] ??= []).push(job);
-        return m;
-    }, [jobMap]);
 
     const [bossId, setBossId] = useState(0);
     const [slotDateTime, setSlotDateTime] = useState("");
     const [isInstant, setIsInstant] = useState(false);   // period-less §8 Phase 3：即時團
     const [description, setDescription] = useState("");
     const [rows, setRows] = useState<CreateTeamRequirementInput[]>([emptyRow()]);
+    const [presets, setPresets] = useState<Preset[]>([]);
+
+    useEffect(() => setPresets(loadPresets()), []);
+
+    const applyPreset = (p: Preset) => setRows(cloneRows(p.rows));
+
+    const saveCurrentAsPreset = () => {
+        const name = window.prompt("這組需求要存成什麼名字？（例：正常火山團）")?.trim();
+        if (!name) return;
+        const next = [...presets.filter((p) => p.name !== name), { name, rows: cloneRows(rows) }];
+        setPresets(next);
+        savePresets(next);
+        toast.success(`已存為「${name}」`);
+    };
+
+    const deletePreset = (name: string) => {
+        const next = presets.filter((p) => p.name !== name);
+        setPresets(next);
+        savePresets(next);
+    };
 
     const updateRow = (i: number, patch: Partial<CreateTeamRequirementInput>) =>
         setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -51,18 +77,6 @@ export default function NewTeamPage() {
                     ...r,
                     jobs: has ? r.jobs.filter((j) => j.job !== job) : [...r.jobs, { job, minAttackPower: 0 }],
                 };
-            }),
-        );
-
-    const addCategory = (i: number, cat: string) =>
-        setRows((rs) =>
-            rs.map((r, idx) => {
-                if (idx !== i) return r;
-                const existing = new Set(r.jobs.map((j) => j.job));
-                const added = (categories[cat] ?? [])
-                    .filter((job) => !existing.has(job))
-                    .map((job) => ({ job, minAttackPower: 0 }));
-                return { ...r, jobs: [...r.jobs, ...added] };
             }),
         );
 
@@ -83,7 +97,7 @@ export default function NewTeamPage() {
                 description: description.trim() || undefined,
                 requirements: rows,
             }),
-        onSuccess: () => router.push(isInstant ? "/me/led-teams" : "/me/led-teams"),
+        onSuccess: () => router.push("/me/led-teams"),
         onError: (e) => toast.error(e instanceof ApiError ? e.message : "開隊失敗，請稍後再試"),
     });
 
@@ -138,16 +152,9 @@ export default function NewTeamPage() {
                             <input
                                 type="datetime-local"
                                 value={slotDateTime}
-                                min={period ? toLocalInput(period.startDate) : undefined}
-                                max={period ? toLocalInput(period.endDate) : undefined}
                                 onChange={(e) => setSlotDateTime(e.target.value)}
                                 className="px-3 py-2 bg-background border border-border rounded-xl text-sm"
                             />
-                            {period && (
-                                <span className="text-xs text-muted-foreground">
-                                    須落在本期：{period.startDate.toLocaleDateString("zh-TW")} ~ {period.endDate.toLocaleDateString("zh-TW")}
-                                </span>
-                            )}
                         </label>
                     )}
 
@@ -173,6 +180,26 @@ export default function NewTeamPage() {
                             className="text-sm px-3 py-1.5 border border-border rounded-lg hover:bg-muted transition-colors flex items-center gap-1"
                         >
                             <Plus size={14} /> 新增需求列
+                        </button>
+                    </div>
+
+                    {/* 常用需求組合（localStorage）：一鍵套用取代舊職業分類快選 */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {presets.map((p) => (
+                            <span key={p.name}
+                                className="inline-flex items-center gap-1 text-xs pl-2.5 pr-1 py-1 bg-muted rounded-full">
+                                <button onClick={() => applyPreset(p)} className="flex items-center gap-1 hover:text-amber-600 transition-colors">
+                                    <Star size={11} /> {p.name}
+                                </button>
+                                <button onClick={() => deletePreset(p.name)} aria-label={`刪除 ${p.name}`}
+                                    className="text-muted-foreground hover:text-red-500 transition-colors">
+                                    <X size={12} />
+                                </button>
+                            </span>
+                        ))}
+                        <button onClick={saveCurrentAsPreset}
+                            className="inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-dashed border-border rounded-full hover:bg-muted transition-colors">
+                            <Bookmark size={11} /> 存成常用
                         </button>
                     </div>
 
@@ -210,21 +237,6 @@ export default function NewTeamPage() {
                                     </button>
                                 )}
                             </div>
-
-                            {/* 分類一鍵勾滿 */}
-                            {Object.keys(categories).length > 0 && (
-                                <div className="flex flex-wrap gap-1.5">
-                                    {Object.keys(categories).map((cat) => (
-                                        <button
-                                            key={cat}
-                                            onClick={() => addCategory(i, cat)}
-                                            className="text-xs px-2.5 py-1 bg-muted rounded-full hover:bg-muted/70 transition-colors"
-                                        >
-                                            + {cat}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
 
                             {/* 職業勾選 + 各自攻擊下限 */}
                             <div className="flex flex-wrap gap-2 border-t border-border pt-3">

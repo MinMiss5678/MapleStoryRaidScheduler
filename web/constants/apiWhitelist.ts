@@ -1,6 +1,6 @@
 ﻿export const ALLOWED_PATHS = new Set([
-    'auth', 'character', 'boss', 'register', 'schedule',
-    'teamslot', 'period', 'systemconfig', 'jobcategory',
+    'auth', 'character', 'boss',
+    'teamslot', 'systemconfig',
     // leader-led 玩家/隊長自助讀 API：/api/Me/Invitations、/Me/Teams、/Me/LedTeams
     'me',
     // period-less Phase 2b-write：玩家自助管理可用時段例外 /api/AvailabilityOverride

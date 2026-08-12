@@ -1,10 +1,11 @@
 ﻿"use client"
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Character } from "@/types/character";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/FormControls";
-import { Edit2, Trash2 } from "lucide-react";
+import { Edit2, Trash2, Swords } from "lucide-react";
+import BossClearsModal from "./BossClearsModal";
 
 interface CharacterCardProps {
     character: Character;
@@ -13,6 +14,7 @@ interface CharacterCardProps {
 }
 
 export default function CharacterCard({ character, onEdit, onDelete }: CharacterCardProps) {
+    const [showClears, setShowClears] = useState(false);
     return (
         <Card hoverable className="p-4 flex justify-between items-center group">
             <div className="flex flex-col">
@@ -32,6 +34,15 @@ export default function CharacterCard({ character, onEdit, onDelete }: Character
                 </div>
             </div>
             <div className="flex gap-2">
+                <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowClears(true)}
+                    className="p-2 bg-blue-500/10 hover:bg-blue-500 text-blue-600 hover:text-white"
+                    title="通關數"
+                >
+                    <Swords size={18} />
+                </Button>
                 <Button
                     size="sm"
                     variant="ghost"
@@ -55,6 +66,7 @@ export default function CharacterCard({ character, onEdit, onDelete }: Character
                     <Trash2 size={18} />
                 </Button>
             </div>
+            {showClears && <BossClearsModal character={character} onClose={() => setShowClears(false)} />}
         </Card>
     );
 }
