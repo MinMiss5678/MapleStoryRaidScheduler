@@ -88,8 +88,6 @@ public class Program
                  services.AddSingleton<IDiscordOAuthClient, DiscordOAuthClient>();
                  services.AddSingleton<ConfigChangeNotifier>();
                  services.AddSingleton<ISystemConfigService, SystemConfigService>();
-                 services.AddSingleton<IPeriodQuery, PeriodQuery>();
-                 services.AddSingleton<IPeriodRepository, PeriodRepository>();
                  services.AddSingleton<IPlayerRepository, PlayerRepository>();
                  services.AddSingleton<IPlayerService, PlayerService>();
                  services.AddSingleton<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();

@@ -12,16 +12,9 @@ namespace Infrastructure.Migrations;
 public class MigrationDbContext(DbContextOptions<MigrationDbContext> options) : DbContext(options)
 {
     public DbSet<BossDbModel> Bosses { get; set; }
-    public DbSet<BossTemplateDbModel> BossTemplates { get; set; }
-    public DbSet<BossTemplateRequirementDbModel> BossTemplateRequirements { get; set; }
     public DbSet<CharacterDbModel> Characters { get; set; }
-    public DbSet<CharacterRegisterDbModel> CharacterRegisters { get; set; }
     public DbSet<DiscordRoleMappingDbModel> DiscordRoleMappings { get; set; }
-    public DbSet<JobCategoryDbModel> JobCategories { get; set; }
-    public DbSet<PeriodDbModel> Periods { get; set; }
-    public DbSet<PlayerAvailabilityDbModel> PlayerAvailabilities { get; set; }
     public DbSet<PlayerDbModel> Players { get; set; }
-    public DbSet<PlayerRegisterDbModel> PlayerRegisters { get; set; }
     public DbSet<SessionDbModel> Sessions { get; set; }
     public DbSet<SystemConfigDbModel> SystemConfigs { get; set; }
     public DbSet<TeamSlotDbModel> TeamSlots { get; set; }

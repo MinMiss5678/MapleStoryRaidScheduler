@@ -16,85 +16,6 @@ public class TeamSlotQuery : ITeamSlotQuery
         _dbContext = dbContext;
     }
 
-    public async Task<IEnumerable<TeamSlotCharacterDto>> GetByPeriodAndBossIdAsync(Period period, int bossId)
-    {
-        var sql = new QueryBuilder();
-        sql.Select<TeamSlotDbModel>(x => new
-        {
-            TeamSlotId = x.Id,
-            x.BossId,
-            x.SlotDateTime
-        })
-            .Select<TeamSlotCharacterDbModel>(x => new
-            {
-                TeamSlotCharacterId = x.Id,
-                x.CharacterId,
-                x.CharacterName,
-                x.Job,
-                x.AttackPower,
-                x.DiscordId,
-                x.DiscordName,
-                x.Rounds
-            }, "b")
-            .SelectRaw("b.xmin::text AS \"Version\"")
-            .Select<BossDbModel>(x => new
-            {
-                BossName = x.Name
-            }, "c")
-            .From<TeamSlotDbModel>()
-            .LeftJoin<TeamSlotCharacterDbModel>("""
-                                                a."Id" = b."TeamSlotId"
-                                                """
-            )
-            .LeftJoin<BossDbModel>("""
-                                   a."BossId" = c."Id"
-                                   """
-            )
-            .Where<TeamSlotDbModel>(x => period.StartDate <= x.SlotDateTime && period.EndDate >= x.SlotDateTime)
-            .Where<TeamSlotDbModel>(x => x.BossId == bossId);
-
-        return await _dbContext.QueryAsync<TeamSlotCharacterDto>(sql);
-    }
-
-    public async Task<IEnumerable<TeamSlotCharacterDto>> GetByPeriodAndDiscordIdAsync(Period period, ulong discordId)
-    {
-        var sql = new QueryBuilder();
-        sql.Select<TeamSlotDbModel>(x => new
-        {
-            TeamSlotId = x.Id,
-            x.BossId,
-            x.SlotDateTime
-        })
-            .Select<TeamSlotCharacterDbModel>(x => new
-            {
-                TeamSlotCharacterId = x.Id,
-                x.CharacterId,
-                x.CharacterName,
-                x.Job,
-                x.AttackPower,
-                x.DiscordId,
-                x.DiscordName,
-                x.Rounds
-            }, "b")
-            .SelectRaw("b.xmin::text AS \"Version\"")
-            .Select<BossDbModel>(x => new
-            {
-                BossName = x.Name
-            }, "c")
-            .From<TeamSlotDbModel>()
-            .LeftJoin<TeamSlotCharacterDbModel>("""
-                                                a."Id" = b."TeamSlotId"
-                                                """
-            )
-            .LeftJoin<BossDbModel>("""
-                                   a."BossId" = c."Id" 
-                                   """
-            )
-            .Where<TeamSlotDbModel>(x => period.StartDate <= x.SlotDateTime && period.EndDate >= x.SlotDateTime);
-
-        return await _dbContext.QueryAsync<TeamSlotCharacterDto>(sql);
-    }
-
     public async Task<IEnumerable<TeamSlotCharacterDto>> GetBySlotDateTimeAsync(DateTimeOffset slotDateTime)
     {
         var end = slotDateTime.AddDays(1);
@@ -120,14 +41,14 @@ public class TeamSlotQuery : ITeamSlotQuery
             .Select<BossDbModel>(x => new
             {
                 BossName = x.Name
-            }, "e")
+            }, "c")
             .From<TeamSlotDbModel>()
             .LeftJoin<TeamSlotCharacterDbModel>("""
                                                 a."Id" = b."TeamSlotId"
                                                 """
             )
             .LeftJoin<BossDbModel>("""
-                                   e."Id" = a."BossId"
+                                   c."Id" = a."BossId"
                                    """)
             .Where<TeamSlotDbModel>(x => x.SlotDateTime >= slotDateTime && x.SlotDateTime < end);
 

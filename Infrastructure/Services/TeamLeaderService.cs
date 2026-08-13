@@ -13,7 +13,6 @@ namespace Infrastructure.Services;
 public class TeamLeaderService : ITeamLeaderService
 {
     private readonly IBossRepository _bossRepository;
-    private readonly IPeriodQuery _periodQuery;
     private readonly ITeamSlotRepository _teamSlotRepository;
     private readonly ITeamSlotRequirementRepository _requirementRepository;
     private readonly ITeamCandidateQuery _candidateQuery;
@@ -27,7 +26,6 @@ public class TeamLeaderService : ITeamLeaderService
 
     public TeamLeaderService(
         IBossRepository bossRepository,
-        IPeriodQuery periodQuery,
         ITeamSlotRepository teamSlotRepository,
         ITeamSlotRequirementRepository requirementRepository,
         ITeamCandidateQuery candidateQuery,
@@ -40,7 +38,6 @@ public class TeamLeaderService : ITeamLeaderService
         ILfgIntentRepository lfgIntentRepository)
     {
         _bossRepository = bossRepository;
-        _periodQuery = periodQuery;
         _teamSlotRepository = teamSlotRepository;
         _requirementRepository = requirementRepository;
         _candidateQuery = candidateQuery;
@@ -71,22 +68,16 @@ public class TeamLeaderService : ITeamLeaderService
         if (await _bossRepository.GetByIdAsync(command.BossId) == null)
             throw new NotFoundException($"Boss {command.BossId} not found");
 
-        // period-less §8 Phase 3：即時團(Instant)不綁 period、帶 TTL、候選來自 LfgIntent 看板；
-        // 排程團(Scheduled)維持 §3 硬綁不變式「SlotDateTime ∈ 開放 Period」。
+        // period-less（Phase 4d）：Period 承重牆已拆——排程團不再解析/綁 period，改驗時間本身合法：
+        // 排程團(Scheduled)的 SlotDateTime 不得早於現在（過去時段無意義，也不會出現在時間窗看板）；
+        // 即時團(Instant)時間＝現在、帶 TTL、候選來自 LfgIntent 看板。
         var isInstant = command.Kind == TeamSlotKind.Instant;
-        int? periodId = null;
-        if (!isInstant)
-        {
-            var pid = await _periodQuery.GetPeriodIdByDateAsync(command.SlotDateTime);
-            if (pid == 0)
-                throw new BusinessException("開隊時間不在任何開放週期內。");
-            periodId = pid;
-        }
+        if (!isInstant && command.SlotDateTime < DateTimeOffset.UtcNow)
+            throw new BusinessException("排程開隊時間不得早於現在。");
 
         var teamSlotId = await _teamSlotRepository.CreateAsync(new TeamSlot
         {
             BossId = command.BossId,
-            PeriodId = periodId ?? 0, // repo：>0 才寫、否則 NULL（即時團無 period）
             SlotDateTime = command.SlotDateTime,
             Source = TeamSlotSource.Leader,
             Kind = command.Kind,

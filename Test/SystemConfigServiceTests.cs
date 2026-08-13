@@ -37,9 +37,9 @@ public class SystemConfigServiceTests
         // Act
         var result = await _service.GetAsync();
 
-        // Assert（預設截止日 = 重製日前一天，重製週二 → 截止週一）
-        Assert.Equal(DayOfWeek.Monday, result.DeadlineDayOfWeek);
-        Assert.False(result.IsDeadlineNotified);
+        // Assert（period-less：無截止欄位，退團率警示預設關）
+        Assert.Equal(1, result.Id);
+        Assert.False(result.LeaveRateWarnEnabled);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class SystemConfigServiceTests
         // Arrange
         var dbModels = new List<SystemConfigDbModel>
         {
-            new SystemConfigDbModel { Id = 1, DeadlineDayOfWeek = (int)DayOfWeek.Thursday, DeadlineTime = new TimeSpan(12, 0, 0), IsDeadlineNotified = true }
+            new SystemConfigDbModel { Id = 1, LeaveRateWarnEnabled = true, LeaveRateWindowMonths = 6, LeaveRateThreshold = 40, LeaveRateMinSample = 8 }
         };
         _repoMock.Setup(r => r.GetAllAsync<SystemConfigDbModel>(null))
             .ReturnsAsync(dbModels);
@@ -57,9 +57,10 @@ public class SystemConfigServiceTests
         var result = await _service.GetAsync();
 
         // Assert
-        Assert.Equal(DayOfWeek.Thursday, result.DeadlineDayOfWeek);
-        Assert.Equal(new TimeSpan(12, 0, 0), result.DeadlineTime);
-        Assert.True(result.IsDeadlineNotified);
+        Assert.True(result.LeaveRateWarnEnabled);
+        Assert.Equal(6, result.LeaveRateWindowMonths);
+        Assert.Equal(40, result.LeaveRateThreshold);
+        Assert.Equal(8, result.LeaveRateMinSample);
     }
 
     [Fact]
@@ -68,7 +69,7 @@ public class SystemConfigServiceTests
         // Arrange
         _repoMock.Setup(r => r.GetAllAsync<SystemConfigDbModel>(null))
             .ReturnsAsync(new List<SystemConfigDbModel>());
-        var config = new SystemConfig { DeadlineDayOfWeek = DayOfWeek.Monday };
+        var config = new SystemConfig { LeaveRateWarnEnabled = true };
 
         // Act
         await _service.UpdateAsync(config);
@@ -78,22 +79,22 @@ public class SystemConfigServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_WhenDeadlineChanges_ShouldResetNotification()
+    public async Task UpdateAsync_WhenExisting_ShouldUpdateLeaveRateFields()
     {
         // Arrange
-        var existing = new SystemConfigDbModel { Id = 1, DeadlineDayOfWeek = (int)DayOfWeek.Monday, DeadlineTime = new TimeSpan(10, 0, 0), IsDeadlineNotified = true };
+        var existing = new SystemConfigDbModel { Id = 1, LeaveRateWarnEnabled = false, LeaveRateThreshold = 30 };
 
         _repoMock.Setup(r => r.GetAllAsync<SystemConfigDbModel>(null))
             .ReturnsAsync(new List<SystemConfigDbModel> { existing });
 
-        var updateConfig = new SystemConfig { DeadlineDayOfWeek = DayOfWeek.Tuesday, DeadlineTime = new TimeSpan(10, 0, 0), IsDeadlineNotified = true };
+        var updateConfig = new SystemConfig { LeaveRateWarnEnabled = true, LeaveRateThreshold = 50 };
 
         // Act
         await _service.UpdateAsync(updateConfig);
 
         // Assert
         _repoMock.Verify(r => r.UpdateAsync(It.Is<SystemConfigDbModel>(m =>
-            m.DeadlineDayOfWeek == (int)DayOfWeek.Tuesday && m.IsDeadlineNotified == false)), Times.Once);
+            m.LeaveRateWarnEnabled && m.LeaveRateThreshold == 50)), Times.Once);
     }
 
     [Fact]
@@ -104,7 +105,7 @@ public class SystemConfigServiceTests
             .ReturnsAsync(new List<SystemConfigDbModel>());
 
         // Act
-        await _service.UpdateAsync(new SystemConfig { DeadlineDayOfWeek = DayOfWeek.Wednesday });
+        await _service.UpdateAsync(new SystemConfig { LeaveRateWarnEnabled = true });
 
         // Assert：設定變更寫成 outbox 事件（與 UPDATE 同一交易 → commit 才生效、rollback 丟棄，
         // 那個原子性由整合測對真 DB 驗；此處單元只驗「有 enqueue、type 正確」）。

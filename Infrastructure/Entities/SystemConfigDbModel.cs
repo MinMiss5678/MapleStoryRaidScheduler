@@ -8,9 +8,6 @@ public class SystemConfigDbModel
 {
     [Key]
     public int Id { get; set; }
-    public int DeadlineDayOfWeek { get; set; }
-    public TimeSpan DeadlineTime { get; set; }
-    public bool IsDeadlineNotified { get; set; }
     public bool LeaveRateWarnEnabled { get; set; }
     public int LeaveRateWindowMonths { get; set; }
     public int LeaveRateThreshold { get; set; }

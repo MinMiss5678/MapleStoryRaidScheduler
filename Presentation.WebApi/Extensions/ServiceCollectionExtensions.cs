@@ -39,7 +39,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILfgIntentRepository, LfgIntentRepository>();
         services.AddScoped<ILfgQuery, LfgQuery>();
         services.AddScoped<ILfgService, LfgService>();
-        services.AddScoped<IPeriodService, PeriodService>();
         services.AddScoped<ISystemConfigService, SystemConfigService>();
         services.AddScoped<IMicrosoftMailService, MicrosoftMailService>();
         return services;
@@ -55,10 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBossRepository, BossRepository>();
         services.AddScoped<IPlayerAvailabilityStandingRepository, PlayerAvailabilityStandingRepository>();
         services.AddScoped<IPlayerAvailabilityOverrideRepository, PlayerAvailabilityOverrideRepository>();
-        services.AddScoped<IPeriodRepository, PeriodRepository>();
-        services.AddScoped<IPeriodQuery, PeriodQuery>();
         services.AddScoped<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();
-        services.AddScoped<IJobCategoryRepository, JobCategoryRepository>();
         services.AddScoped<ITeamSlotRepository, TeamSlotRepository>();
         services.AddScoped<ITeamSlotQuery, TeamSlotQuery>();
         services.AddScoped<ITeamSlotCharacterRepository, TeamSlotCharacterRepository>();

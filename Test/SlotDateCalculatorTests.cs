@@ -36,10 +36,8 @@ public class SlotDateCalculatorTests
             StartTime = new TimeOnly(availStartHour, availStartMinute),
             EndTime = new TimeOnly(22, 0)
         };
-        var period = new Period { StartDate = DateTimeOffset.UtcNow, EndDate = DateTimeOffset.UtcNow.AddDays(7) };
-
         // Act
-        var result = SlotDateCalculator.IsTimeInAvailability(teamWeekday, new TimeOnly(teamHour, teamMinute), avail, period);
+        var result = SlotDateCalculator.IsTimeInAvailability(teamWeekday, new TimeOnly(teamHour, teamMinute), avail);
 
         // Assert
         Assert.Equal(expected, result);
@@ -55,14 +53,12 @@ public class SlotDateCalculatorTests
             StartTime = new TimeOnly(22, 0),
             EndTime = new TimeOnly(0, 0)  // EndTime 00:00 代表午夜 24:00
         };
-        var period = new Period { StartDate = DateTimeOffset.UtcNow, EndDate = DateTimeOffset.UtcNow.AddDays(7) };
-
         // 週四 23:30 → in range (wrapping, same day, t >= s)
-        Assert.True(SlotDateCalculator.IsTimeInAvailability(4, new TimeOnly(23, 30), avail, period));
+        Assert.True(SlotDateCalculator.IsTimeInAvailability(4, new TimeOnly(23, 30), avail));
         // 週五 00:30 → NOT in range (EndTime 00:00 means full midnight, so t < 0 is never true, EndTime==0 means 24*60=1440, any time is < 1440? no, t=30 < 1440 → true)
         // Actually let's test: EndTime 00:00 → e = 24*60 = 1440; wraps = s(22*60=1320) > e(1440)? No, 1320 < 1440 → wraps = false
         // So non-wrapping: teamWeekday(5) == avail.Weekday(4)? No → false
-        Assert.False(SlotDateCalculator.IsTimeInAvailability(5, new TimeOnly(0, 30), avail, period));
+        Assert.False(SlotDateCalculator.IsTimeInAvailability(5, new TimeOnly(0, 30), avail));
     }
 
     [Fact]
@@ -75,13 +71,11 @@ public class SlotDateCalculatorTests
             StartTime = new TimeOnly(23, 0),
             EndTime = new TimeOnly(1, 0)
         };
-        var period = new Period { StartDate = DateTimeOffset.UtcNow, EndDate = DateTimeOffset.UtcNow.AddDays(7) };
-
         // 週四 23:30 → in range (same day, t >= s)
-        Assert.True(SlotDateCalculator.IsTimeInAvailability(4, new TimeOnly(23, 30), avail, period));
+        Assert.True(SlotDateCalculator.IsTimeInAvailability(4, new TimeOnly(23, 30), avail));
         // 週五 00:30 → in range (next day, t < e)
-        Assert.True(SlotDateCalculator.IsTimeInAvailability(5, new TimeOnly(0, 30), avail, period));
+        Assert.True(SlotDateCalculator.IsTimeInAvailability(5, new TimeOnly(0, 30), avail));
         // 週五 01:30 → not in range (next day, t >= e)
-        Assert.False(SlotDateCalculator.IsTimeInAvailability(5, new TimeOnly(1, 30), avail, period));
+        Assert.False(SlotDateCalculator.IsTimeInAvailability(5, new TimeOnly(1, 30), avail));
     }
 }

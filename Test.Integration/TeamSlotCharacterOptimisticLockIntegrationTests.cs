@@ -32,9 +32,6 @@ public class TeamSlotCharacterOptimisticLockIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs);
-        var periodId = await Seed.PeriodAsync(cs,
-            new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 8, 0, 0, 0, TimeSpan.Zero));
         var teamSlotId = await Seed.TeamSlotAsync(cs, bossId, "auto");
         var characterRowId = await Seed.OccupiedSlotAsync(cs, teamSlotId, discordId: 111, charId: "occ1");
 
@@ -88,9 +85,6 @@ public class TeamSlotCharacterOptimisticLockIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs);
-        await Seed.PeriodAsync(cs,
-            new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 8, 0, 0, 0, TimeSpan.Zero));
         var teamSlotId = await Seed.TeamSlotAsync(cs, bossId, "auto");
         var characterRowId = await Seed.OccupiedSlotAsync(cs, teamSlotId, discordId: 111, charId: "occ1");
         var staleVersion = await GetCurrentVersionAsync(cs, characterRowId);

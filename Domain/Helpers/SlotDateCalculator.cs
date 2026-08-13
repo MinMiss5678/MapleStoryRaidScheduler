@@ -29,34 +29,8 @@ public static class SlotDateCalculator
         return new DateTimeOffset(now.Date.AddDays(days), TimeSpan.Zero);
     }
 
-    public static DateTime GetNextSlotDate(PlayerAvailability avail, Period period)
-    {
-        // 確保以台灣時間 (UTC+8) 計算
-        // period.StartDate 為重製日 00:00 UTC = 08:00 TPE
-        var periodStartTpe = period.StartDate.ToOffset(TimeSpan.FromHours(8));
-        var startDate = periodStartTpe.Date; // 重製日的日期
-
-        int targetDayOfWeek = avail.Weekday;
-        var slotTime = avail.StartTime.ToTimeSpan();
-
-        // 週期內天數偏移：重製日=0, 隔天=1, ..., 前一天=6
-        int targetOffset = CycleDayOffset(targetDayOfWeek);
-
-        var slotDate = startDate.AddDays(targetOffset).Add(slotTime);
-
-        if (new DateTimeOffset(slotDate, TimeSpan.FromHours(8)) < period.StartDate)
-        {
-            slotDate = slotDate.AddDays(7);
-        }
-
-        return slotDate;
-    }
-
-    /// <summary>period-less 重疊判定：純 weekday+time（period 參數本就未用，見 4-arg 多載）。</summary>
+    /// <summary>period-less 重疊判定：純 weekday+time（Period 已退場，Phase 4d）。EndTime 00:00 視為 24:00；支援跨午夜 wrap。</summary>
     public static bool IsTimeInAvailability(int teamWeekday, TimeOnly teamTime, PlayerAvailability avail)
-        => IsTimeInAvailability(teamWeekday, teamTime, avail, null!);
-
-    public static bool IsTimeInAvailability(int teamWeekday, TimeOnly teamTime, PlayerAvailability avail, Period period)
     {
         int Next(int isoWeekday) => isoWeekday == 7 ? 1 : isoWeekday + 1;
 

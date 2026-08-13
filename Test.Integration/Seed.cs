@@ -21,14 +21,6 @@ internal static class Seed
             new { name, rm = requireMembers });
     }
 
-    public static async Task<int> PeriodAsync(string cs, DateTimeOffset start, DateTimeOffset end)
-    {
-        await using var c = await OpenAsync(cs);
-        return await c.ExecuteScalarAsync<int>(
-            """INSERT INTO "Period"("StartDate","EndDate") VALUES (@start,@end) RETURNING "Id";""",
-            new { start, end });
-    }
-
     public static async Task<int> TeamSlotAsync(string cs, int bossId, string source, DateTimeOffset? slot = null)
     {
         await using var c = await OpenAsync(cs);
@@ -83,33 +75,4 @@ internal static class Seed
             """SELECT COUNT(*) FROM "TeamSlot" WHERE "Id" = @teamSlotId;""", new { teamSlotId });
     }
 
-    public static async Task<int> PlayerRegisterAsync(string cs, long discordId, int periodId)
-    {
-        await using var c = await OpenAsync(cs);
-        return await c.ExecuteScalarAsync<int>(
-            """INSERT INTO "PlayerRegister"("DiscordId","PeriodId") VALUES (@discordId,@periodId) RETURNING "Id";""",
-            new { discordId, periodId });
-    }
-
-    public static async Task CharacterRegisterAsync(string cs, int playerRegisterId, string charId, int bossId, int rounds)
-    {
-        await using var c = await OpenAsync(cs);
-        await c.ExecuteAsync(
-            """
-            INSERT INTO "CharacterRegister"("PlayerRegisterId","CharacterId","BossId","Rounds")
-            VALUES (@playerRegisterId,@charId,@bossId,@rounds);
-            """,
-            new { playerRegisterId, charId, bossId, rounds });
-    }
-
-    public static async Task AvailabilityAsync(string cs, int playerRegisterId, int weekday, TimeOnly start, TimeOnly end)
-    {
-        await using var c = await OpenAsync(cs);
-        await c.ExecuteAsync(
-            """
-            INSERT INTO "PlayerAvailability"("PlayerRegisterId","Weekday","StartTime","EndTime")
-            VALUES (@playerRegisterId,@weekday,@start,@end);
-            """,
-            new { playerRegisterId, weekday, start, end });
-    }
 }
