@@ -7,10 +7,6 @@ public interface ITeamSlotRepository
     Task<int> CreateAsync(TeamSlot teamSlot);
     Task DeleteAsync(int id);
     Task<TeamSlot?> GetByIdAsync(int id);
-    Task<IEnumerable<TeamSlot>> GetByPeriodIdAsync(int periodId);
-    Task<IEnumerable<TeamSlot>> GetIncompleteTeamsAsync(int bossId, int periodId);
-    Task<IEnumerable<TeamSlot>> GetTemporaryByPeriodIdAsync(int periodId);
-    Task UpdateAsync(TeamSlot teamSlot);
 
     /// <summary>設待處理隊長轉讓目標（提議＝設目標、拒絕/作廢＝設 null）。</summary>
     Task SetPendingLeaderAsync(int teamSlotId, ulong? pendingDiscordId);

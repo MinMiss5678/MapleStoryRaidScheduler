@@ -25,12 +25,11 @@ public class TeamLeaderServiceIntegrationTests
         var db = _fx.CreateDbContext();
         return new TeamLeaderService(
             new BossRepository(db),
-            new PeriodQuery(db),
             new TeamSlotRepository(db),
             new TeamSlotRequirementRepository(db),
             new TeamCandidateQuery(db),
             new TeamSlotCharacterRepository(db),
-            new CharacterQuery(db, new PeriodQuery(db)),
+            new CharacterQuery(db),
             new RegistrationLock(db),
             new Outbox(db),
             new TeamMembershipQuery(db),
@@ -44,12 +43,10 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        var periodId = await Seed.PeriodAsync(cs,
-            new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
         await Seed.PlayerAsync(cs, 999, "隊長");
 
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        // period-less（4d）：CreateTeam 只驗排程時間不得過去 → 用未來時間
+        var slot = DateTimeOffset.UtcNow.AddDays(3);
         var teamSlotId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
@@ -72,14 +69,13 @@ public class TeamLeaderServiceIntegrationTests
 
         Assert.True(teamSlotId > 0);
 
-        // TeamSlot 新欄實際寫入（read 路徑尚未映射這些欄，故直接查 DB 驗）
+        // TeamSlot 新欄實際寫入（read 路徑尚未映射這些欄，故直接查 DB 驗；period-less：已無 PeriodId）
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync();
-        var row = await conn.QuerySingleAsync<(string Source, int? PeriodId, long? LeaderDiscordId, string? Description)>(
-            """SELECT "Source", "PeriodId", "LeaderDiscordId", "Description" FROM "TeamSlot" WHERE "Id" = @id;""",
+        var row = await conn.QuerySingleAsync<(string Source, long? LeaderDiscordId, string? Description)>(
+            """SELECT "Source", "LeaderDiscordId", "Description" FROM "TeamSlot" WHERE "Id" = @id;""",
             new { id = teamSlotId });
         Assert.Equal(TeamSlotSource.Leader, row.Source);
-        Assert.Equal(periodId, row.PeriodId);
         Assert.Equal(999L, row.LeaderDiscordId);
         Assert.Equal("楓葉祝福9", row.Description);
 
@@ -97,12 +93,10 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        var periodId = await Seed.PeriodAsync(cs,
-            new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
 
-        // 團：週三 20:00 TPE（2026-04-08 12:00 UTC）；條件 箭神(≥900) or 槍神(≥1000) 1位、通關≥1
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        // 團：未來的某個週三 20:00 TPE（12:00 UTC）；條件 箭神(≥900) or 槍神(≥1000) 1位、通關≥1
+        const int wed = 3;
+        var slot = NextWeekdayUtc(wed, 12);
         await Seed.PlayerAsync(cs, 999, "隊長");
         var teamSlotId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
@@ -115,17 +109,16 @@ public class TeamLeaderServiceIntegrationTests
         });
 
         // 週三 = ISO weekday 3；時段 19:00-22:00 涵蓋 20:00
-        const int wed = 3;
         // A：箭神 950、週三可、通關 2 → ✅ 唯一該中的
-        await SeedCandidate(cs, periodId, bossId, 101, "archer", "箭神", 950, wed, clears: 2);
+        await SeedCandidate(cs, bossId, 101, "archer", "箭神", 950, wed, clears: 2);
         // B：箭神 800（攻擊不足）→ ✗
-        await SeedCandidate(cs, periodId, bossId, 102, "weak", "箭神", 800, wed, clears: 5);
+        await SeedCandidate(cs, bossId, 102, "weak", "箭神", 800, wed, clears: 5);
         // C：主教（職業不符）→ ✗
-        await SeedCandidate(cs, periodId, bossId, 103, "bishop", "主教", 1500, wed, clears: 5);
+        await SeedCandidate(cs, bossId, 103, "bishop", "主教", 1500, wed, clears: 5);
         // D：箭神 1000 但週四（時段不重疊）→ ✗
-        await SeedCandidate(cs, periodId, bossId, 104, "archer2", "箭神", 1000, weekday: 4, clears: 5);
+        await SeedCandidate(cs, bossId, 104, "archer2", "箭神", 1000, weekday: 4, clears: 5);
         // E：箭神 1000、週三可，但通關 0（＜門檻 1）→ ✗
-        await SeedCandidate(cs, periodId, bossId, 105, "rookie", "箭神", 1000, wed, clears: 0);
+        await SeedCandidate(cs, bossId, 105, "rookie", "箭神", 1000, wed, clears: 0);
 
         var candidates = (await CreateService().GetCandidatesAsync(teamSlotId)).ToList();
 
@@ -143,10 +136,7 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        var periodId = await Seed.PeriodAsync(cs,
-            new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero); // 週三 20:00 TPE，日期 2026-04-08
+        var slot = NextWeekdayUtc(3, 12); // 未來某週三 20:00 TPE
         await Seed.PlayerAsync(cs, 999, "隊長");
         var teamSlotId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
@@ -157,14 +147,15 @@ public class TeamLeaderServiceIntegrationTests
                 Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 0 }] }]
         });
         // 常設週三 19–22 可 → 本會命中
-        await SeedCandidate(cs, periodId, bossId, 101, "archer", "箭神", 950, weekday: 3, clears: 0);
+        await SeedCandidate(cs, bossId, 101, "archer", "箭神", 950, weekday: 3, clears: 0);
 
-        // 該日整天不行 override → 蓋掉常設 → 撈不到
+        // 該日整天不行 override → 蓋掉常設 → 撈不到（override 綁團當天 TPE 日期）
         await using (var conn = new NpgsqlConnection(cs))
         {
             await conn.OpenAsync();
             await conn.ExecuteAsync(
-                """INSERT INTO "PlayerAvailabilityOverride"("DiscordId","Date","StartTime","EndTime","IsAvailable") VALUES (101, DATE '2026-04-08', TIME '00:00', TIME '00:00', false);""");
+                """INSERT INTO "PlayerAvailabilityOverride"("DiscordId","Date","StartTime","EndTime","IsAvailable") VALUES (101, @d, TIME '00:00', TIME '00:00', false);""",
+                new { d = slot.ToOffset(TimeSpan.FromHours(8)).Date });
         }
 
         Assert.Empty(await CreateService().GetCandidatesAsync(teamSlotId));
@@ -211,13 +202,11 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
         await Seed.PlayerAsync(cs, 999, "隊長");
         await Seed.PlayerAsync(cs, 101, "P101");
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var slot = DateTimeOffset.UtcNow.AddDays(3);
         var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
@@ -242,14 +231,12 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
         await Seed.PlayerAsync(cs, 999, "隊長");
         await Seed.PlayerAsync(cs, 101, "P101");
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
         // 兩隊同一時段（跨隊重疊）
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var slot = DateTimeOffset.UtcNow.AddDays(3);
         CreateTeamCommand Cmd() => new()
         {
             LeaderDiscordId = 999,
@@ -278,13 +265,11 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
         await Seed.PlayerAsync(cs, 999, "隊長");
         await Seed.PlayerAsync(cs, 101, "P101");
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var slot = DateTimeOffset.UtcNow.AddDays(3);
         var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
@@ -306,13 +291,11 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
         await Seed.PlayerAsync(cs, 999, "隊長");
         await Seed.PlayerAsync(cs, 101, "P101");
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var slot = DateTimeOffset.UtcNow.AddDays(3);
         var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
@@ -338,13 +321,11 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
         await Seed.PlayerAsync(cs, 999, "隊長");
         await Seed.PlayerAsync(cs, 101, "P101");
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var slot = DateTimeOffset.UtcNow.AddDays(3);
         var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
@@ -371,13 +352,11 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, name: "西格諾斯", requireMembers: 6);
-        await Seed.PeriodAsync(cs, new DateTimeOffset(2026, 4, 7, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 4, 13, 23, 59, 59, TimeSpan.Zero));
         await Seed.PlayerAsync(cs, 999, "隊長");
         await Seed.PlayerAsync(cs, 101, "P101");
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
-        var slot = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero);
+        var slot = DateTimeOffset.UtcNow.AddDays(3);
         var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
@@ -406,10 +385,8 @@ public class TeamLeaderServiceIntegrationTests
         await _fx.ResetAsync();
         var cs = _fx.ConnectionString;
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
-        // period-less §8 Phase 4a：GetOpenTeams 改時間窗（SlotDateTime > now()-1天）→ 用相對現在的日期，
-        // 既滿足排程開隊的 period 檢查、又落在時間窗。
+        // period-less §8 Phase 4a：GetOpenTeams 改時間窗（SlotDateTime > now()-1天）→ 用相對現在的日期落在窗內。
         var now = DateTimeOffset.UtcNow;
-        await Seed.PeriodAsync(cs, now.AddDays(-1), now.AddDays(7)); // 排程開隊仍需 period 存在
         await Seed.PlayerAsync(cs, 999, "隊長");
         await Seed.PlayerAsync(cs, 101, "P101");
         await Seed.CharacterAsync(cs, "archer", 101, "C1", "箭神", 950);
@@ -468,16 +445,13 @@ public class TeamLeaderServiceIntegrationTests
             """SELECT "Status" FROM "TeamSlotCharacter" WHERE "Id"=@memberId;""", new { memberId });
     }
 
-    private async Task SeedCandidate(string cs, int periodId, int bossId, long discordId, string charId,
+    // period-less（4d）：候選池只讀常設可用時段 + 角色 IsSeekingRaid + CharacterBossClear（報名/週期已退場）。
+    private async Task SeedCandidate(string cs, int bossId, long discordId, string charId,
         string job, int atk, int weekday, int clears)
     {
         await Seed.PlayerAsync(cs, discordId, $"P{discordId}");
         await Seed.CharacterAsync(cs, charId, discordId, $"C{charId}", job, atk);
-        var prId = await Seed.PlayerRegisterAsync(cs, discordId, periodId);
-        await Seed.CharacterRegisterAsync(cs, prId, charId, bossId, rounds: 1);
-        await Seed.AvailabilityAsync(cs, prId, weekday, new TimeOnly(19, 0), new TimeOnly(22, 0));
 
-        // period-less（§8 Phase 2）：候選池改讀常設可用時段 + 角色 IsSeekingRaid → 寫進新模型
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync();
         await conn.ExecuteAsync(
@@ -491,5 +465,14 @@ public class TeamLeaderServiceIntegrationTests
                 """INSERT INTO "CharacterBossClear"("CharacterId","BossId","ClearCount") VALUES (@charId,@bossId,@clears);""",
                 new { charId, bossId, clears });
         }
+    }
+
+    // period-less（4d）：CreateTeam 擋過去時段 → 候選 weekday 比對需要「未來的某個 ISO 星期 X」的 slot。
+    private static DateTimeOffset NextWeekdayUtc(int isoWeekday, int hourUtc)
+    {
+        var d = DateTimeOffset.UtcNow.Date.AddDays(7); // 至少一週後，確保在未來
+        int Iso(DayOfWeek w) => w == DayOfWeek.Sunday ? 7 : (int)w;
+        while (Iso(d.DayOfWeek) != isoWeekday) d = d.AddDays(1);
+        return new DateTimeOffset(d.Year, d.Month, d.Day, hourUtc, 0, 0, TimeSpan.Zero);
     }
 }

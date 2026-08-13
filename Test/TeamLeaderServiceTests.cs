@@ -12,7 +12,6 @@ namespace Test;
 public class TeamLeaderServiceTests
 {
     private readonly Mock<IBossRepository> _bossRepositoryMock = new();
-    private readonly Mock<IPeriodQuery> _periodQueryMock = new();
     private readonly Mock<ITeamSlotRepository> _teamSlotRepositoryMock = new();
     private readonly Mock<ITeamSlotRequirementRepository> _requirementRepositoryMock = new();
     private readonly Mock<ITeamCandidateQuery> _candidateQueryMock = new();
@@ -28,7 +27,6 @@ public class TeamLeaderServiceTests
         _systemConfigServiceMock.Setup(s => s.GetAsync()).ReturnsAsync(new Domain.Entities.SystemConfig());
         _service = new TeamLeaderService(
             _bossRepositoryMock.Object,
-            _periodQueryMock.Object,
             _teamSlotRepositoryMock.Object,
             _requirementRepositoryMock.Object,
             _candidateQueryMock.Object,
@@ -47,7 +45,8 @@ public class TeamLeaderServiceTests
     {
         LeaderDiscordId = 999,
         BossId = 1,
-        SlotDateTime = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero),
+        // period-less（4d）：CreateTeam 只驗「排程時間不得早於現在」→ 用未來時間
+        SlotDateTime = DateTimeOffset.UtcNow.AddDays(3),
         Description = "楓葉祝福9",
         Requirements =
         [
@@ -69,17 +68,15 @@ public class TeamLeaderServiceTests
     {
         _bossRepositoryMock.Setup(b => b.GetByIdAsync(1))
             .ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
-        _periodQueryMock.Setup(p => p.GetPeriodIdByDateAsync(It.IsAny<DateTimeOffset>())).ReturnsAsync(5);
         _teamSlotRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<TeamSlot>())).ReturnsAsync(100);
 
         var id = await _service.CreateTeamAsync(ValidCommand());
 
         Assert.Equal(100, id);
-        // 建的是 leader 隊，帶隊長 + 由日期解析的 PeriodId
+        // 建的是 leader 隊，帶隊長（period-less：不再有 PeriodId）
         _teamSlotRepositoryMock.Verify(r => r.CreateAsync(It.Is<TeamSlot>(t =>
             t.Source == TeamSlotSource.Leader &&
             t.BossId == 1 &&
-            t.PeriodId == 5 &&
             t.LeaderDiscordId == 999UL &&
             t.Description == "楓葉祝福9")), Times.Once);
         // 條件列連同其職業一起寫入
@@ -98,14 +95,16 @@ public class TeamLeaderServiceTests
     }
 
     [Fact]
-    public async Task CreateTeamAsync_ThrowsBusiness_WhenSlotTimeNotInAnyPeriod()
+    public async Task CreateTeamAsync_ThrowsBusiness_WhenScheduledSlotTimeInPast()
     {
+        // period-less（4d）：排程團的 SlotDateTime 早於現在 → 擋（過去時段無意義）
         _bossRepositoryMock.Setup(b => b.GetByIdAsync(1))
             .ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
-        _periodQueryMock.Setup(p => p.GetPeriodIdByDateAsync(It.IsAny<DateTimeOffset>())).ReturnsAsync(0); // 查無週期
+        var pastCommand = ValidCommand();
+        pastCommand.SlotDateTime = DateTimeOffset.UtcNow.AddDays(-1);
 
         await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(
-            () => _service.CreateTeamAsync(ValidCommand()));
+            () => _service.CreateTeamAsync(pastCommand));
         _teamSlotRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlot>()), Times.Never);
     }
 
@@ -171,13 +170,6 @@ public class TeamLeaderServiceTests
             Id = 10,
             BossId = 1,
             SlotDateTime = new DateTimeOffset(2026, 4, 8, 12, 0, 0, TimeSpan.Zero)
-        });
-        _periodQueryMock.Setup(p => p.GetPeriodIdByDateAsync(It.IsAny<DateTimeOffset>())).ReturnsAsync(1);
-        _periodQueryMock.Setup(p => p.GetByIdAsync(1)).ReturnsAsync(new Period
-        {
-            Id = 1,
-            StartDate = new DateTimeOffset(2026, 4, 6, 0, 0, 0, TimeSpan.Zero),
-            EndDate = new DateTimeOffset(2026, 4, 13, 0, 0, 0, TimeSpan.Zero)
         });
         _requirementRepositoryMock.Setup(r => r.GetByTeamSlotIdAsync(10)).ReturnsAsync(new[]
         {

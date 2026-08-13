@@ -139,7 +139,6 @@ builder.Services.AddOpenApi();
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices();
 builder.Services.AddRepositories();
-builder.Services.AddHostedService<WeeklyPeriodJob>();
 
 var defaultConnectionFile = builder.Configuration.GetConnectionString("DefaultConnectionFile");
 var connectionString = !string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectionFile)

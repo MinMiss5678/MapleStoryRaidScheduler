@@ -24,22 +24,12 @@ public class SystemConfigService : ISystemConfigService
 
         if (dbModel == null)
         {
-            // 預設截止日設在重製日前一天（重製=週二 → 截止週一 23:59:59）
-            return new SystemConfig
-            {
-                Id = 1,
-                DeadlineDayOfWeek = DayOfWeek.Monday,
-                DeadlineTime = new TimeSpan(23, 59, 59),
-                IsDeadlineNotified = false
-            };
+            return new SystemConfig { Id = 1 };
         }
 
         return new SystemConfig
         {
             Id = dbModel.Id,
-            DeadlineDayOfWeek = (DayOfWeek)dbModel.DeadlineDayOfWeek,
-            DeadlineTime = dbModel.DeadlineTime,
-            IsDeadlineNotified = dbModel.IsDeadlineNotified,
             LeaveRateWarnEnabled = dbModel.LeaveRateWarnEnabled,
             LeaveRateWindowMonths = dbModel.LeaveRateWindowMonths,
             LeaveRateThreshold = dbModel.LeaveRateThreshold,
@@ -56,9 +46,6 @@ public class SystemConfigService : ISystemConfigService
         {
             await repository.InsertAsync(new SystemConfigDbModel
             {
-                DeadlineDayOfWeek = (int)config.DeadlineDayOfWeek,
-                DeadlineTime = config.DeadlineTime,
-                IsDeadlineNotified = config.IsDeadlineNotified,
                 LeaveRateWarnEnabled = config.LeaveRateWarnEnabled,
                 LeaveRateWindowMonths = config.LeaveRateWindowMonths,
                 LeaveRateThreshold = config.LeaveRateThreshold,
@@ -67,19 +54,6 @@ public class SystemConfigService : ISystemConfigService
         }
         else
         {
-            // 如果期限有變動，重置通知狀態
-            if (existing.DeadlineDayOfWeek != (int)config.DeadlineDayOfWeek ||
-                existing.DeadlineTime != config.DeadlineTime)
-            {
-                existing.IsDeadlineNotified = false;
-            }
-            else
-            {
-                existing.IsDeadlineNotified = config.IsDeadlineNotified;
-            }
-
-            existing.DeadlineDayOfWeek = (int)config.DeadlineDayOfWeek;
-            existing.DeadlineTime = config.DeadlineTime;
             existing.LeaveRateWarnEnabled = config.LeaveRateWarnEnabled;
             existing.LeaveRateWindowMonths = config.LeaveRateWindowMonths;
             existing.LeaveRateThreshold = config.LeaveRateThreshold;

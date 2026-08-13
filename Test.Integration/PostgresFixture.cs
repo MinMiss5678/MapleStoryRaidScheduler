@@ -41,10 +41,11 @@ public class PostgresFixture : IAsyncLifetime
     {
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
+        // period-less（4d）：register/period/template/jobcategory 表已 drop；CASCADE 連帶清子表
+        // （PlayerAvailabilityStanding/Override、LfgIntent、CharacterBossClear、TeamSlotRequirement* 等）。
         await conn.ExecuteAsync("""
-            TRUNCATE "TeamSlotCharacter","TeamSlot","CharacterRegister","PlayerAvailability",
-                     "PlayerRegister","Character","Player","BossTemplateRequirement","BossTemplate",
-                     "Boss","Period","JobCategory","DiscordRoleMapping","Session","SystemConfig","OutboxMessage"
+            TRUNCATE "TeamSlotCharacter","TeamSlot","Character","Player",
+                     "Boss","DiscordRoleMapping","Session","SystemConfig","OutboxMessage"
             RESTART IDENTITY CASCADE;
             """);
     }

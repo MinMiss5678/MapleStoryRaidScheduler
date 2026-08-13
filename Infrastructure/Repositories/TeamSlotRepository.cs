@@ -21,10 +21,6 @@ public class TeamSlotRepository : ITeamSlotRepository
         sql.Set(x => x.BossId, teamSlot.BossId)
             .Set(x => x.SlotDateTime, teamSlot.SlotDateTime.ToUniversalTime())
             .Set(x => x.Source, teamSlot.Source)
-            .Set(x => x.TemplateId, teamSlot.TemplateId)
-            // leader-led 新欄：舊 auto-assign 路徑不帶（PeriodId=0/其餘 null）→ 寫 NULL、不變行為；
-            // PeriodId 是 Period FK，0 會 FK 違反，故 0 一律轉 NULL（只有 leader 開隊帶真值）。
-            .Set(x => x.PeriodId, teamSlot.PeriodId > 0 ? (int?)teamSlot.PeriodId : null)
             .Set(x => x.LeaderDiscordId, teamSlot.LeaderDiscordId.HasValue ? (long?)teamSlot.LeaderDiscordId.Value : null)
             .Set(x => x.Description, teamSlot.Description)
             // period-less（§3.1）：Kind 預設 Scheduled（DB 亦有 DEFAULT），即時團才帶 ExpiresAt；場數範圍選填
@@ -51,7 +47,7 @@ public class TeamSlotRepository : ITeamSlotRepository
         // 原本是「查 TeamSlot」+「查 Characters」兩次往返，合併成一次 LEFT JOIN：
         // 併發控制迴圈裡每個既有隊伍都會呼叫一次，逐隊各打兩次是可避免的 N+1（見 architecture.md）。
         var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId, x.LeaderDiscordId, x.PendingLeaderDiscordId, x.Kind, x.ExpiresAt, x.RunsMin, x.RunsMax })
+            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.LeaderDiscordId, x.PendingLeaderDiscordId, x.Kind, x.ExpiresAt, x.RunsMin, x.RunsMax })
             .Select<TeamSlotCharacterDbModel>(x => new
             {
                 CharacterRowId = x.Id,
@@ -96,7 +92,6 @@ public class TeamSlotRepository : ITeamSlotRepository
             BossId = first.BossId,
             SlotDateTime = first.SlotDateTime,
             Source = first.Source,
-            TemplateId = first.TemplateId,
             LeaderDiscordId = first.LeaderDiscordId.HasValue ? (ulong?)first.LeaderDiscordId.Value : null,
             PendingLeaderDiscordId = first.PendingLeaderDiscordId.HasValue ? (ulong?)first.PendingLeaderDiscordId.Value : null,
             Kind = first.Kind,
@@ -127,7 +122,6 @@ public class TeamSlotRepository : ITeamSlotRepository
         public int BossId { get; set; }
         public DateTimeOffset SlotDateTime { get; set; }
         public string Source { get; set; } = "";
-        public int? TemplateId { get; set; }
         public long? LeaderDiscordId { get; set; }
         public long? PendingLeaderDiscordId { get; set; }
         public string Kind { get; set; } = "Scheduled";
@@ -145,180 +139,4 @@ public class TeamSlotRepository : ITeamSlotRepository
         public bool IsManual { get; set; }
     }
 
-    public async Task<IEnumerable<TeamSlot>> GetByPeriodIdAsync(int periodId)
-    {
-        var periodSql = new QueryBuilder()
-            .Select<PeriodDbModel>(x => new { x.StartDate, x.EndDate })
-            .From<PeriodDbModel>()
-            .Where<PeriodDbModel>(x => x.Id == periodId);
-        var period = await _dbContext.QuerySingleOrDefaultAsync<PeriodDbModel>(periodSql);
-        if (period == null) return [];
-
-        var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId })
-            .From<TeamSlotDbModel>()
-            .Where<TeamSlotDbModel>(x => x.SlotDateTime >= period.StartDate && x.SlotDateTime <= period.EndDate)
-            .Where<TeamSlotDbModel>(x => x.Source == TeamSlotSource.Auto);
-
-        var slots = (await _dbContext.QueryAsync<TeamSlotDbModel>(sql)).ToList();
-        if (!slots.Any()) return [];
-
-        var teamSlotIds = slots.Select(s => s.Id).ToList();
-        var allCharacters = await GetCharactersByTeamSlotIdsAsync(teamSlotIds);
-        var charactersGrouped = allCharacters.GroupBy(c => c.TeamSlotId).ToDictionary(g => g.Key, g => g.ToList());
-
-        return slots.Select(s => new TeamSlot
-        {
-            Id = s.Id,
-            BossId = s.BossId,
-            SlotDateTime = s.SlotDateTime,
-            Source = s.Source,
-            TemplateId = s.TemplateId,
-            Characters = charactersGrouped.GetValueOrDefault(s.Id, new List<TeamSlotCharacter>())
-        });
-    }
-
-    public async Task<IEnumerable<TeamSlot>> GetIncompleteTeamsAsync(int bossId, int periodId)
-    {
-        var periodSql = new QueryBuilder()
-            .Select<PeriodDbModel>(x => new { x.StartDate, x.EndDate })
-            .From<PeriodDbModel>()
-            .Where<PeriodDbModel>(x => x.Id == periodId);
-        var period = await _dbContext.QuerySingleOrDefaultAsync<PeriodDbModel>(periodSql);
-        if (period == null) return [];
-
-        var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId })
-            .From<TeamSlotDbModel>()
-            .Where<TeamSlotDbModel>(x => x.BossId == bossId)
-            .Where<TeamSlotDbModel>(x => x.SlotDateTime >= period.StartDate && x.SlotDateTime <= period.EndDate)
-            .Where<TeamSlotDbModel>(x => x.Source == TeamSlotSource.Auto);
-
-        var slots = (await _dbContext.QueryAsync<TeamSlotDbModel>(sql)).ToList();
-        if (!slots.Any()) return [];
-
-        var teamSlotIds = slots.Select(s => s.Id).ToList();
-        var allCharacters = await GetCharactersByTeamSlotIdsAsync(teamSlotIds);
-        var charactersGrouped = allCharacters.GroupBy(c => c.TeamSlotId).ToDictionary(g => g.Key, g => g.ToList());
-
-        var result = new List<TeamSlot>();
-        foreach (var s in slots)
-        {
-            var characters = charactersGrouped.GetValueOrDefault(s.Id, new List<TeamSlotCharacter>());
-            // 檢查是否未滿員 (至少有一個空位)
-            if (characters.Any(c => c.CharacterId == null))
-            {
-                result.Add(new TeamSlot
-                {
-                    Id = s.Id,
-                    BossId = s.BossId,
-                    SlotDateTime = s.SlotDateTime,
-                    Source = s.Source,
-                    TemplateId = s.TemplateId,
-                    Characters = characters
-                });
-            }
-        }
-        return result;
-    }
-
-    public async Task<IEnumerable<TeamSlot>> GetTemporaryByPeriodIdAsync(int periodId)
-    {
-        var periodSql = new QueryBuilder()
-            .Select<PeriodDbModel>(x => new { x.StartDate, x.EndDate })
-            .From<PeriodDbModel>()
-            .Where<PeriodDbModel>(x => x.Id == periodId);
-        var period = await _dbContext.QuerySingleOrDefaultAsync<PeriodDbModel>(periodSql);
-        if (period == null) return [];
-
-        var sql = new QueryBuilder()
-            .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.TemplateId })
-            .From<TeamSlotDbModel>()
-            .Where<TeamSlotDbModel>(x => x.SlotDateTime >= period.StartDate && x.SlotDateTime <= period.EndDate)
-            .Where<TeamSlotDbModel>(x => x.Source == TeamSlotSource.Admin);
-
-        var slots = (await _dbContext.QueryAsync<TeamSlotDbModel>(sql)).ToList();
-        if (!slots.Any()) return [];
-
-        var teamSlotIds = slots.Select(s => s.Id).ToList();
-        var allCharacters = await GetCharactersByTeamSlotIdsAsync(teamSlotIds);
-        var charactersGrouped = allCharacters.GroupBy(c => c.TeamSlotId).ToDictionary(g => g.Key, g => g.ToList());
-
-        return slots.Select(s => new TeamSlot
-        {
-            Id = s.Id,
-            BossId = s.BossId,
-            SlotDateTime = s.SlotDateTime,
-            Source = s.Source,
-            TemplateId = s.TemplateId,
-            Characters = charactersGrouped.GetValueOrDefault(s.Id, new List<TeamSlotCharacter>())
-        });
-    }
-
-    public async Task UpdateAsync(TeamSlot teamSlot)
-    {
-        var sql = new UpdateBuilder<TeamSlotDbModel>();
-        sql.Set(x => x.BossId, teamSlot.BossId)
-            .Set(x => x.SlotDateTime, teamSlot.SlotDateTime)
-            .Set(x => x.Source, teamSlot.Source)
-            .Set(x => x.TemplateId, teamSlot.TemplateId)
-            .Where(x => x.Id == teamSlot.Id);
-
-        await _dbContext.ExecuteAsync(sql);
-
-        // 更新成員：先刪除再重新插入（簡單做法）
-        var deleteCharSql = new DeleteBuilder<TeamSlotCharacterDbModel>();
-        deleteCharSql.Where(x => x.TeamSlotId == teamSlot.Id);
-        await _dbContext.ExecuteAsync(deleteCharSql);
-
-        foreach (var character in teamSlot.Characters)
-        {
-            var charSql = new InsertBuilder<TeamSlotCharacterDbModel>();
-            charSql.Set(x => x.TeamSlotId, teamSlot.Id)
-                .Set(x => x.DiscordId, (long)character.DiscordId)
-                .Set(x => x.DiscordName, character.DiscordName)
-                .Set(x => x.CharacterId, character.CharacterId)
-                .Set(x => x.CharacterName, character.CharacterName)
-                .Set(x => x.Job, character.Job)
-                .Set(x => x.AttackPower, character.AttackPower)
-                .Set(x => x.Rounds, character.Rounds)
-                .Set(x => x.IsManual, character.IsManual);
-            await _dbContext.ExecuteScalarAsync(charSql);
-        }
-    }
-
-    private async Task<IEnumerable<TeamSlotCharacter>> GetCharactersByTeamSlotIdsAsync(IEnumerable<int> teamSlotIds)
-    {
-        var sql = new QueryBuilder()
-            .Select<TeamSlotCharacterDbModel>(x => new
-            {
-                x.Id,
-                x.TeamSlotId,
-                x.DiscordId,
-                x.DiscordName,
-                x.CharacterId,
-                x.CharacterName,
-                x.Job,
-                x.AttackPower,
-                x.Rounds,
-                x.IsManual
-            })
-            .From<TeamSlotCharacterDbModel>()
-            .Where<TeamSlotCharacterDbModel>(x => teamSlotIds.Contains(x.TeamSlotId));
-
-        var dbCharacters = await _dbContext.QueryAsync<TeamSlotCharacterDbModel>(sql);
-        return dbCharacters.Select(c => new TeamSlotCharacter
-        {
-            Id = c.Id,
-            TeamSlotId = c.TeamSlotId,
-            DiscordId = (ulong)c.DiscordId,
-            DiscordName = c.DiscordName,
-            CharacterId = c.CharacterId,
-            CharacterName = c.CharacterName,
-            Job = c.Job,
-            AttackPower = c.AttackPower,
-            Rounds = c.Rounds,
-            IsManual = c.IsManual
-        });
-    }
 }

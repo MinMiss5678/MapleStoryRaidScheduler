@@ -22,42 +22,6 @@ public class BossController : ControllerBase
         return Ok(await _bossService.GetAllAsync());
     }
 
-    [HttpGet("{bossId}/Templates")]
-    public async Task<IActionResult> GetTemplatesAsync(int bossId)
-    {
-        return Ok(await _bossService.GetTemplatesByBossIdAsync(bossId));
-    }
-
-    [HttpGet("Templates/{templateId}")]
-    public async Task<IActionResult> GetTemplateByIdAsync(int templateId)
-    {
-        return Ok(await _bossService.GetTemplateByIdAsync(templateId));
-    }
-
-    [AuthorizeRole("admin")]
-    [HttpPost("Templates")]
-    public async Task<IActionResult> CreateTemplateAsync([FromBody] BossTemplateRequest request)
-    {
-        var id = await _bossService.CreateTemplateAsync(request);
-        return Ok(id);
-    }
-
-    [AuthorizeRole("admin")]
-    [HttpPut("Templates/{templateId}")]
-    public async Task<IActionResult> UpdateTemplateAsync(int templateId, [FromBody] BossTemplateRequest request)
-    {
-        await _bossService.UpdateTemplateAsync(templateId, request);
-        return Ok();
-    }
-
-    [AuthorizeRole("admin")]
-    [HttpDelete("Templates/{templateId}")]
-    public async Task<IActionResult> DeleteTemplateAsync(int templateId)
-    {
-        await _bossService.DeleteTemplateAsync(templateId);
-        return Ok();
-    }
-
     [AuthorizeRole("admin")]
     [HttpPost]
     public async Task<IActionResult> CreateBossAsync([FromBody] BossRequest request)
