@@ -150,4 +150,26 @@ public class LeaderLedPhase1aRepositoryIntegrationTests
         Assert.Equal(bossId, loaded[0].BossId);
         Assert.Equal(5, loaded[0].ClearCount);
     }
+
+    [Fact]
+    public async Task CharacterBossClear_Upsert_InsertsThenOverwritesSameCharBoss()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        var bossId = await Seed.BossAsync(cs);
+        await Seed.PlayerAsync(cs, 556, "P");
+        await Seed.CharacterAsync(cs, "c556", 556, "角色", "夜使者", 1200);
+
+        var repo = new CharacterBossClearRepository(_fx.CreateDbContext());
+
+        // 首次 upsert → 插入
+        await repo.UpsertAsync(new CharacterBossClear { CharacterId = "c556", BossId = bossId, ClearCount = 3 });
+        // 同角色同王再 upsert → 覆寫（uq_charbossclear 走 ON CONFLICT，不是新增第二筆）
+        await repo.UpsertAsync(new CharacterBossClear { CharacterId = "c556", BossId = bossId, ClearCount = 8 });
+
+        var loaded = (await new CharacterBossClearRepository(_fx.CreateDbContext()).GetByCharacterIdAsync("c556")).ToList();
+
+        Assert.Single(loaded);            // 仍只有一筆
+        Assert.Equal(8, loaded[0].ClearCount); // 值被覆寫成最新
+    }
 }

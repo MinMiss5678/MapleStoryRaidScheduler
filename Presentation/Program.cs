@@ -130,7 +130,6 @@ public class Program
                  // 註冊自動執行的 Background Services
                  services.AddHostedService<DiscordBotService>();       // Discord 啟動管理
                  services.AddHostedService<DailyNotificationService>(); // 每日通知排程
-                 services.AddHostedService<RegistrationDeadlineJob>();  // 截止通知排程
 
                  services.Configure<DiscordOptions>(
                      config.GetSection("Discord"));

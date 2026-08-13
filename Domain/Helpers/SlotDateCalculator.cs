@@ -29,29 +29,6 @@ public static class SlotDateCalculator
         return new DateTimeOffset(now.Date.AddDays(days), TimeSpan.Zero);
     }
 
-    public static PlayerAvailability GetBestAvailability(Register register, Period period)
-    {
-        // 取得週期重置時間 (TPE)
-        var resetTime = period.StartDate.ToOffset(TimeSpan.FromHours(8)).TimeOfDay;
-
-        return register.Availabilities
-            .OrderBy(a =>
-            {
-                // 依重製日旋轉：ResetDay 當天為 0
-                int dayWeight = CycleDayOffset(a.Weekday);
-
-                // 若為重製日當天、且時間早於重製時間 (08:00)，權重加 7，視為本週期最後（屬上一輪殘留）
-                if (a.Weekday == (int)ResetDay && a.StartTime.ToTimeSpan() < resetTime)
-                {
-                    return dayWeight + 7;
-                }
-
-                return dayWeight;
-            })
-            .ThenBy(a => a.StartTime) // 同一天則按時間排序
-            .First(); // 呼叫端保證 Availabilities 非空（AutoAssign 前已檢查 .Any()）
-    }
-
     public static DateTime GetNextSlotDate(PlayerAvailability avail, Period period)
     {
         // 確保以台灣時間 (UTC+8) 計算

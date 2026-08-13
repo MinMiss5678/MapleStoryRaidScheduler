@@ -1,6 +1,5 @@
 using Application.DTOs;
 using Application.Exceptions;
-using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
 using Domain.Repositories;
@@ -14,19 +13,26 @@ public class CharacterServiceTests
 {
     private readonly Mock<ICharacterRepository> _characterRepositoryMock;
     private readonly Mock<ICharacterQuery> _characterQueryMock;
-    private readonly Mock<ICharacterRegisterRepository> _characterRegisterRepositoryMock;
+    private readonly Mock<ICharacterBossClearRepository> _bossClearRepositoryMock;
     private readonly CharacterService _characterService;
 
     public CharacterServiceTests()
     {
         _characterRepositoryMock = new Mock<ICharacterRepository>();
         _characterQueryMock = new Mock<ICharacterQuery>();
-        _characterRegisterRepositoryMock = new Mock<ICharacterRegisterRepository>();
+        _bossClearRepositoryMock = new Mock<ICharacterBossClearRepository>();
         _characterService = new CharacterService(
             _characterRepositoryMock.Object,
             _characterQueryMock.Object,
-            _characterRegisterRepositoryMock.Object);
+            _bossClearRepositoryMock.Object);
     }
+
+    private void SetupOwns(ulong discordId, params string[] charIds) =>
+        _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(discordId))
+            .ReturnsAsync(charIds.Select(id => new Character
+            {
+                Id = id, DiscordId = discordId, Name = "N", Job = "英雄", AttackPower = 0
+            }));
 
     [Fact]
     public async Task GetWithDiscordNameAsync_ShouldReturnDtos()
@@ -101,7 +107,7 @@ public class CharacterServiceTests
     }
 
     [Fact]
-    public async Task DeleteAsync_ShouldDeleteRegistersThenCharacter()
+    public async Task DeleteAsync_ShouldDeleteBossClearsThenCharacter()
     {
         // Arrange
         ulong discordId = 12345;
@@ -112,7 +118,7 @@ public class CharacterServiceTests
         await _characterService.DeleteAsync(discordId, charId);
 
         // Assert
-        _characterRegisterRepositoryMock.Verify(r => r.DeleteByCharacterIdAsync(charId), Times.Once);
+        _bossClearRepositoryMock.Verify(r => r.DeleteByCharacterIdAsync(charId), Times.Once);
         _characterRepositoryMock.Verify(r => r.DeleteAsync(discordId, charId), Times.Once);
     }
 
@@ -126,5 +132,59 @@ public class CharacterServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<NotFoundException>(() => _characterService.DeleteAsync(discordId, charId));
+    }
+
+    [Fact]
+    public async Task SaveBossClearsAsync_ShouldUpsertEachClear_WhenOwned()
+    {
+        // Arrange
+        ulong discordId = 12345;
+        string charId = "c1";
+        SetupOwns(discordId, charId);
+        var clears = new List<BossClearDto> { new() { BossId = 1, ClearCount = 3 }, new() { BossId = 2, ClearCount = 0 } };
+
+        // Act
+        await _characterService.SaveBossClearsAsync(discordId, charId, clears);
+
+        // Assert：逐王 upsert
+        _bossClearRepositoryMock.Verify(r => r.UpsertAsync(It.Is<CharacterBossClear>(
+            c => c.CharacterId == charId && c.BossId == 1 && c.ClearCount == 3)), Times.Once);
+        _bossClearRepositoryMock.Verify(r => r.UpsertAsync(It.Is<CharacterBossClear>(
+            c => c.CharacterId == charId && c.BossId == 2 && c.ClearCount == 0)), Times.Once);
+    }
+
+    [Fact]
+    public async Task SaveBossClearsAsync_ShouldThrowNotFound_WhenCharacterNotOwned()
+    {
+        // Arrange：登入者名下沒有這個角色 → 不得寫別人的通關數
+        ulong discordId = 12345;
+        SetupOwns(discordId, "someoneElse");
+        var clears = new List<BossClearDto> { new() { BossId = 1, ClearCount = 3 } };
+
+        // Act & Assert
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            _characterService.SaveBossClearsAsync(discordId, "c1", clears));
+        _bossClearRepositoryMock.Verify(r => r.UpsertAsync(It.IsAny<CharacterBossClear>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetBossClearsAsync_ShouldReturnDtos_WhenOwned()
+    {
+        // Arrange
+        ulong discordId = 12345;
+        string charId = "c1";
+        SetupOwns(discordId, charId);
+        _bossClearRepositoryMock.Setup(r => r.GetByCharacterIdAsync(charId)).ReturnsAsync(new List<CharacterBossClear>
+        {
+            new() { CharacterId = charId, BossId = 1, ClearCount = 5 }
+        });
+
+        // Act
+        var result = (await _characterService.GetBossClearsAsync(discordId, charId)).ToList();
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal(1, result[0].BossId);
+        Assert.Equal(5, result[0].ClearCount);
     }
 }
