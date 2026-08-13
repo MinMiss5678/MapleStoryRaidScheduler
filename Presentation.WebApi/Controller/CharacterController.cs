@@ -58,4 +58,24 @@ public class CharacterController : ControllerBase
         await _characterService.DeleteAsync(discordId, id);
         return Ok();
     }
+
+    // per 角色 per 王 通關數：玩家自填（取代舊 register 退場後缺的輸入路徑）。只能讀寫自己的角色。
+    [HttpGet("{id}/BossClears")]
+    public async Task<IActionResult> GetBossClearsAsync(string id)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _characterService.GetBossClearsAsync(discordId, id));
+    }
+
+    [HttpPost("{id}/BossClears")]
+    public async Task<IActionResult> SaveBossClearsAsync(string id, [FromBody] IEnumerable<BossClearDto> clears)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        await _characterService.SaveBossClearsAsync(discordId, id, clears);
+        return Ok();
+    }
 }

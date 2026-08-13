@@ -25,6 +25,18 @@ public class CharacterBossClearRepository : ICharacterBossClearRepository
         });
     }
 
+    public async Task UpsertAsync(CharacterBossClear clear)
+    {
+        // 同角色同王一筆（uq_charbossclear）：ON CONFLICT 覆寫 ClearCount，讓玩家可反覆自填最新通關數。
+        const string sql = """
+            INSERT INTO "CharacterBossClear" ("CharacterId", "BossId", "ClearCount")
+            VALUES (@CharacterId, @BossId, @ClearCount)
+            ON CONFLICT ("CharacterId", "BossId")
+            DO UPDATE SET "ClearCount" = EXCLUDED."ClearCount";
+            """;
+        await _dbContext.ExecuteAsync(sql, new { clear.CharacterId, clear.BossId, clear.ClearCount });
+    }
+
     public async Task<IEnumerable<CharacterBossClear>> GetByCharacterIdAsync(string characterId)
     {
         var sql = new QueryBuilder();

@@ -34,20 +34,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICharacterService, CharacterService>();
         services.AddScoped<IDiscordOAuthClient, DiscordOAuthClient>();
         services.AddScoped<IBossService, BossService>();
-        services.AddScoped<IRegisterService, RegisterService>();
         services.AddScoped<IAvailabilityOverrideService, AvailabilityOverrideService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ILfgIntentRepository, LfgIntentRepository>();
         services.AddScoped<ILfgQuery, LfgQuery>();
         services.AddScoped<ILfgService, LfgService>();
-        services.AddScoped<IRegisterQueryService, RegisterQueryService>();
         services.AddScoped<IPeriodService, PeriodService>();
         services.AddScoped<ISystemConfigService, SystemConfigService>();
-        services.AddScoped<IScheduleService, ScheduleService>();
-        services.AddScoped<ITeamSlotService, TeamSlotService>();
-        services.AddScoped<ITeamSlotAutoAssignService, TeamSlotAutoAssignService>();
-        services.AddScoped<ITeamSlotMergeService, TeamSlotMergeService>();
-        services.AddScoped<ITeamSlotCharacterService, TeamSlotCharacterService>();
         services.AddScoped<IMicrosoftMailService, MicrosoftMailService>();
         return services;
     }
@@ -60,16 +53,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICharacterQuery, CharacterQuery>();
         services.AddScoped<ICharacterRepository, CharacterRepository>();
         services.AddScoped<IBossRepository, BossRepository>();
-        services.AddScoped<IPlayerRegisterRepository, PlayerRegisterRepository>();
-        services.AddScoped<IPlayerAvailabilityRepository, PlayerAvailabilityRepository>();
         services.AddScoped<IPlayerAvailabilityStandingRepository, PlayerAvailabilityStandingRepository>();
         services.AddScoped<IPlayerAvailabilityOverrideRepository, PlayerAvailabilityOverrideRepository>();
-        services.AddScoped<ICharacterRegisterRepository, CharacterRegisterRepository>();
         services.AddScoped<IPeriodRepository, PeriodRepository>();
         services.AddScoped<IPeriodQuery, PeriodQuery>();
         services.AddScoped<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();
         services.AddScoped<IJobCategoryRepository, JobCategoryRepository>();
-        services.AddScoped<IPlayerRegisterQuery, PlayerRegisterQuery>();
         services.AddScoped<ITeamSlotRepository, TeamSlotRepository>();
         services.AddScoped<ITeamSlotQuery, TeamSlotQuery>();
         services.AddScoped<ITeamSlotCharacterRepository, TeamSlotCharacterRepository>();
