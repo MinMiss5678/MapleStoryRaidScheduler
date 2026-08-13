@@ -31,7 +31,11 @@ public class CharacterServiceTests
         _characterQueryMock.Setup(q => q.GetByDiscordIdAsync(discordId))
             .ReturnsAsync(charIds.Select(id => new Character
             {
-                Id = id, DiscordId = discordId, Name = "N", Job = "英雄", AttackPower = 0
+                Id = id,
+                DiscordId = discordId,
+                Name = "N",
+                Job = "英雄",
+                AttackPower = 0
             }));
 
     [Fact]
