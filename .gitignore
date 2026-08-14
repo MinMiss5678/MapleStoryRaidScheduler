@@ -12,3 +12,6 @@ secrets/
 coverage-merged/
 coverage-report/
 loadtest-results*.log
+# Stryker.NET mutation testing output
+**/StrykerOutput/
+stryker-output*/

@@ -43,6 +43,20 @@ public class SlotDateCalculatorTests
         Assert.Equal(expected, result);
     }
 
+    [Theory]
+    [InlineData(20, 0, 19, 0, 22, 0, true)]   // 20:00 在 19:00–22:00 → true（含起點）
+    [InlineData(19, 0, 19, 0, 22, 0, true)]   // 剛好起點 19:00 → true
+    [InlineData(18, 59, 19, 0, 22, 0, false)] // 18:59 早於起點 → false
+    [InlineData(22, 0, 19, 0, 22, 0, false)]  // 22:00 剛好終點 → false（不含終點）
+    [InlineData(23, 30, 19, 0, 0, 0, true)]   // EndTime 00:00 視為 24:00（整天尾）→ 23:30 在窗內
+    public void IsTimeInWindow_ShouldRespectHalfOpenRange_AndTreatMidnightEndAsFullDay(
+        int th, int tm, int sh, int sm, int eh, int em, bool expected)
+    {
+        var result = SlotDateCalculator.IsTimeInWindow(
+            new TimeOnly(th, tm), new TimeOnly(sh, sm), new TimeOnly(eh, em));
+        Assert.Equal(expected, result);
+    }
+
     [Fact]
     public void IsTimeInAvailability_WrappingMidnight_ShouldReturnTrue_ForNextDayEarlyHour()
     {
