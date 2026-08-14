@@ -141,10 +141,10 @@ public class CharacterServiceTests
     [Fact]
     public async Task SaveBossClearsAsync_ShouldUpsertEachClear_WhenOwned()
     {
-        // Arrange
+        // Arrange：名下有目標角色 + 另一支（sibling）→ 擁有權比對需精確（All 而非 Any）才不誤判
         ulong discordId = 12345;
         string charId = "c1";
-        SetupOwns(discordId, charId);
+        SetupOwns(discordId, charId, "sibling");
         var clears = new List<BossClearDto> { new() { BossId = 1, ClearCount = 3 }, new() { BossId = 2, ClearCount = 0 } };
 
         // Act
@@ -174,10 +174,10 @@ public class CharacterServiceTests
     [Fact]
     public async Task GetBossClearsAsync_ShouldReturnDtos_WhenOwned()
     {
-        // Arrange
+        // Arrange：名下有目標角色 + sibling → 精確擁有權比對
         ulong discordId = 12345;
         string charId = "c1";
-        SetupOwns(discordId, charId);
+        SetupOwns(discordId, charId, "sibling");
         _bossClearRepositoryMock.Setup(r => r.GetByCharacterIdAsync(charId)).ReturnsAsync(new List<CharacterBossClear>
         {
             new() { CharacterId = charId, BossId = 1, ClearCount = 5 }
@@ -190,5 +190,18 @@ public class CharacterServiceTests
         Assert.Single(result);
         Assert.Equal(1, result[0].BossId);
         Assert.Equal(5, result[0].ClearCount);
+    }
+
+    [Fact]
+    public async Task GetBossClearsAsync_ShouldThrowNotFound_WhenCharacterNotOwned()
+    {
+        // Arrange：登入者名下沒有這個角色 → 不得讀別人的通關數（守住 GetBossClears 的擁有權檢查）
+        ulong discordId = 12345;
+        SetupOwns(discordId, "someoneElse");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            _characterService.GetBossClearsAsync(discordId, "c1"));
+        _bossClearRepositoryMock.Verify(r => r.GetByCharacterIdAsync(It.IsAny<string>()), Times.Never);
     }
 }

@@ -4,30 +4,8 @@ namespace Domain.Helpers;
 
 public static class SlotDateCalculator
 {
-    /// <summary>
-    /// 楓之谷官方每週重製日（＝週期第一天）的單一事實來源。
-    /// 官方改期時只改這裡，所有週期排序 / slot 日期 / 背景排程都會跟著推導。
-    /// 重製「時間」不在此定義——它由 period.StartDate 的當日時間推導（目前週二 00:00 UTC = 08:00 TPE）。
-    /// </summary>
-    public const DayOfWeek ResetDay = DayOfWeek.Tuesday;
-
-    /// <summary>週期內的天別偏移：重製日 = 0、隔天 = 1 … 前一天 = 6（以 ResetDay 為基準旋轉）。</summary>
-    public static int CycleDayOffset(int weekday) => (weekday - (int)ResetDay + 7) % 7;
-
-    /// <summary>週期內天別排序（重製日優先），供合併 / 顯示使用。例：週二起 → [2,3,4,5,6,0,1]。</summary>
-    public static int[] CycleWeekdayOrder()
-        => Enumerable.Range(0, 7).Select(i => ((int)ResetDay + i) % 7).ToArray();
-
-    /// <summary>
-    /// 從 now 起算下一個重製日的 00:00 UTC。
-    /// 若今天正是重製日且已過 00:00，回傳下週的重製日（與 WeeklyPeriodJob / DeadlineJob 共用）。
-    /// </summary>
-    public static DateTimeOffset NextReset(DateTimeOffset now)
-    {
-        int days = ((int)ResetDay - (int)now.DayOfWeek + 7) % 7;
-        if (days == 0) days = 7;
-        return new DateTimeOffset(now.Date.AddDays(days), TimeSpan.Zero);
-    }
+    // period-less（Phase 4d）：重製日/週期天別排序（ResetDay/CycleDayOffset/CycleWeekdayOrder/NextReset）
+    // 隨自動排團/週期 job 退場一併移除——period-less 下不再有「週期第一天」概念。
 
     /// <summary>period-less 重疊判定：純 weekday+time（Period 已退場，Phase 4d）。EndTime 00:00 視為 24:00；支援跨午夜 wrap。</summary>
     public static bool IsTimeInAvailability(int teamWeekday, TimeOnly teamTime, PlayerAvailability avail)

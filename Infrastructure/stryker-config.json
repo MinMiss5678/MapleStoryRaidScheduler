@@ -3,11 +3,8 @@
   "stryker-config": {
     "test-projects": ["../Test/Test.csproj"],
     "mutate": [
-      "Services/RegisterService.cs",
-      "Services/TeamSlotAutoAssignService.cs",
-      "Services/TeamSlotService.cs",
-      "Services/TeamSlotMergeService.cs",
-      "Services/ScheduleService.cs"
+      "Services/TeamLeaderService.cs",
+      "Services/CharacterService.cs"
     ],
     "reporters": ["progress", "html", "json"],
     "thresholds": { "high": 80, "low": 60, "break": 0 }
