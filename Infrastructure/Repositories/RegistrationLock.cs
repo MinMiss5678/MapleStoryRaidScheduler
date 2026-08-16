@@ -7,8 +7,8 @@ namespace Infrastructure.Repositories;
 
 public class RegistrationLock : IRegistrationLock
 {
-    // advisory lock 的命名空間 classId（避免與其他 advisory lock 撞號）；objId 用 periodId / teamSlotId。
-    private const int AutoAssignLockClass = 1001;
+    // advisory lock 的命名空間 classId（避免與其他 advisory lock 撞號）；objId 用 teamSlotId。
+    // （classId 1001 的 auto-assign 鎖已隨 period-less 4d 自動排團退場，號碼保留不重用。）
     private const int TeamSlotEditLockClass = 1002;
 
     // Postgres SQLSTATE：等待 lock_timeout 逾時觸發（NOWAIT 也會觸發同一碼，這裡只用 timeout）。
@@ -27,17 +27,11 @@ public class RegistrationLock : IRegistrationLock
         _lockTimeout = lockTimeout;
     }
 
-    public async Task AcquireAutoAssignLockAsync(int periodId)
-    {
-        // pg_advisory_xact_lock：交易級鎖，隨 UoW 交易結束自動釋放（不必手動 unlock）。
-        // 同一 (classId, periodId) 的併發交易序列化；不同 period 用不同 objId → 互不阻塞。
-        // 必須跑在 UoW 的同一連線/交易上（DbContext 為 Scoped，天然同一條）。
-        await AcquireAsync(AutoAssignLockClass, periodId);
-    }
-
     public async Task AcquireTeamSlotEditLockAsync(int teamSlotId)
     {
-        // 同一 (classId, teamSlotId) 的併發編輯序列化；不同隊伍互不阻塞。
+        // pg_advisory_xact_lock：交易級鎖，隨 UoW 交易結束自動釋放（不必手動 unlock）。
+        // 同一 (classId, teamSlotId) 的併發入隊定案序列化；不同隊伍用不同 objId → 互不阻塞。
+        // 必須跑在 UoW 的同一連線/交易上（DbContext 為 Scoped，天然同一條）。
         await AcquireAsync(TeamSlotEditLockClass, teamSlotId);
     }
 
