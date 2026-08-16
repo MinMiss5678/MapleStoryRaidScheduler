@@ -146,3 +146,30 @@
 ## 工時估
 - **Phase 1**：k6 腳本 + seed + compose load profile ≈ 一天；跑 + 分析 + 記斷點 ≈ 半天。
 - **Phase 2**：重用 Phase 1 環境，加 `teamslot_edit_contention` 情境 + 跑 + 分析 ≈ 半天。
+
+---
+
+## 附記：period-less 重構後的重指（2026-08-17）
+
+period-less Phase 4c/4d（PR #83–#85）把「每週報名 → 自動排團」與舊 `TeamSlotService` 補位端點整包退場後，兩支壓測的目標端點都變了：
+
+- **Phase 1（register-load）→ 退場**：`POST /api/register` 與 `TeamSlotAutoAssignService` 的 **classId 1001** advisory lock（`AcquireAutoAssignLockAsync`）都沒了，且沒有對應熱路徑可重指。刪 `k6/register-load.js`、`db/seed-load.sql`、`db/verify-load.sql`。（`AcquireAutoAssignLockAsync` 目前是死碼，之後可清。）
+- **Phase 2（teamslot-edit）→ 重指**：**classId 1002** 這把鎖（`AcquireTeamSlotEditLockAsync`）還活著，搬到了 `TeamLeaderService.ConfirmMemberAsync`（accept/approve 定案）。所以重指到現行熱路徑「**併發接受同一隊邀請**」：
+  - `db/seed-load-confirm.sql`：1 支 leader 隊（容量=N）+ N 筆 `Invited` 成員（memberId=1..N）。容量=N → 全接受成功，純量鎖排隊延遲（同舊版無衝突設計）。
+  - `k6/confirm-accept-load.js`：N 個 VU 各 `PUT /api/teamSlot/{id}/Invitations/{memberId}`（`{"action":"accept"}`）。
+  - 量的問題跟原 §1b 完全一樣（`accept_invite` 延遲分布 vs `lock_timeout` 5s；超編硬條件由 `ConfirmMemberAsync` 重讀容量 + `uq_tsc_confirmed_overlap` 守）。
+  - `loadtest-multiround.sh` 已同步（只剩這一個情境）。
+
+> 上面 2026-07-29 的 baseline 數字是**歷史記錄**（舊端點），保留佐證「`lock_timeout=5s` 有安全邊際」的推論仍成立（同一把 classId 1002 鎖、同樣 `SET LOCAL lock_timeout` 機制）。重指後需**重跑一輪**確認對現行 `ConfirmMemberAsync` 依然成立——跑法見 `k6/confirm-accept-load.js` 檔頭。
+
+### 重跑結果（2026-08-17，環境 A 本機、單輪、每級 restart+reseed）
+
+`k6/confirm-accept-load.js` 對 `ConfirmMemberAsync`（classId 1002 鎖）：
+
+| VUS | `accept_invite` p95 / p99（client 觀察） | http_req_failed | 正確性（confirmed / overcap / overlap_dup） |
+|---|---|---|---|
+| 60  | 1.25s / 1.30s | **0%** | 60 / 0 / 0 |
+| 250 | 4.27s / 4.43s | **0%** | 250 / 0 / 0 |
+| 500 | 9.05s / 9.15s | **0%** | 500 / 0 / 0 |
+
+**結論**：`http_req_failed=0%` 且 `confirmed=VUS`（含 VUS=500）→ `lock_timeout=5s` 對現行 `ConfirmMemberAsync` **從未誤觸發**（逾時會回「隊伍忙碌中」非 2xx，成員留 Invited；實際全數 Confirmed）。跟舊 baseline 同一結論：`accept_invite` 延遲是 client 觀察值（含進交易前的 Kestrel/連線池排隊），而 `SET LOCAL lock_timeout` 只算「已進交易、卡在 `pg_advisory_xact_lock`」的時間，故 client 端 9s 不代表鎖等 9s。超編/跨隊重複硬條件在三級皆守住（overcap=0、overlap_dup=0）。5s 安全邊際在 period-less 重構後依然成立。
