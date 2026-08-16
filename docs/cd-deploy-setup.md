@@ -55,7 +55,7 @@ kubectl set image deployment/backend backend=minqq/presentation.webapi:<舊SHA> 
 - **前提：SHA 映像須先存在**：`deploy.ps1`/CD 部署當前 commit 的 SHA 前，該映像要已推上 Docker Hub。全新 bootstrap（還沒任何映像）先用 `rollout.ps1` 各建一次或推 `:latest`。
 - **migrate 失敗**：job 失敗會讓 deploy 中止在 migration 那步（滾動更新不會跑）→ 半發版風險低（映像已推但沒 rollout）。⚠️ **不能直接重跑**——golang-migrate 會把版本標 dirty、擋住 `up`。恢復步驟見下方 runbook。
 - **首次跑**：kubectl 是每次 `curl` 下載（docker:27 alpine 無內建）——想省時可改用含 kubectl 的映像。
-- **rollout 後無功能煙霧測試（部分已補）**：readiness 查 `/health/ready`（現已加深為查核心表 `"Period"`，見 `DatabaseHealthCheck`）→ schema/migration 沒套用也會被擋。仍未做的是「完整業務端點驗證」（需 auth token），對此規模刻意不加。
+- **rollout 後無功能煙霧測試（部分已補）**：readiness 查 `/health/ready`（現已加深為查核心表 `"Boss"`，見 `DatabaseHealthCheck`）→ schema/migration 沒套用也會被擋。仍未做的是「完整業務端點驗證」（需 auth token），對此規模刻意不加。
 
 ---
 

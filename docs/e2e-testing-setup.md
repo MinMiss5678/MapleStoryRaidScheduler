@@ -27,10 +27,10 @@ CI  ：e2e-playwright 容器共用 e2e-frontend 網路（network_mode）→ 走 
 | 檔 | 作用 |
 |---|---|
 | `web/playwright.config.ts` | testDir `e2e/`；`PLAYWRIGHT_BASE_URL` / `PLAYWRIGHT_NO_WEBSERVER` 可切本機/CI |
-| `web/e2e/*.spec.ts` | 8 支測試（見下） |
+| `web/e2e/*.spec.ts` | 10 支測試（見下） |
 | `web/e2e/helpers/auth.ts` | `loginAs()` — 呼叫 test-login 拿 cookie |
 | `Presentation.WebApi/Controller/TestAuthController.cs` | `POST /api/test/login`（鎖非 Production） |
-| `db/seed-e2e.sql` | E2E seed（單一未來 period + 4 隻獨立王） |
+| `db/seed-e2e.sql` | E2E seed（period-less：常設時段 + 參戰角色 + 兩隻王） |
 | `compose.e2e.yaml` | 全 stack + `e2e-playwright`(profile ci) |
 | `web/Dockerfile`（`dev` target）/ `web/Dockerfile.e2e` | 前端 dev / playwright 執行器映像 |
 | `.github/workflows/ci.yml`（`e2e` job）| ubuntu runner 內建 Docker，直接 compose 跑 E2E（PR 觸發，純文件變更會被 `changes` job 跳過） |
@@ -42,11 +42,15 @@ CI  ：e2e-playwright 容器共用 e2e-frontend 網路（network_mode）→ 走 
 
 ## Seed 模型（`db/seed-e2e.sql`）
 
-- **TRUNCATE 所有交易資料** → seed 當下只留**一個** period（`GetActivePeriodAsync` 回最新 StartDate 的）。
-- period 設 **`CURRENT_DATE + 10 ~ +17`（未來一週）**，一石二鳥：
-  - 報名截止日（period 前一週）落在未來 → 報名開著。
-  - StartDate `+10` **永遠晚於** `WeeklyPeriodJob` 會插的「下個重製日」（週二，≤ `+7`；見 `SlotDateCalculator.ResetDay`）→ 就算 backend 起來後 job 補插一顆 period（用 `/health/ready` 等待時 seed 可能早於 job 首次 tick），seed 這顆仍是**最新 StartDate = active** → 測試不受影響。
-- **四隻獨立王隔離**平行測試互相干擾：`E2E王`（讀取/報名）、`E2E王2`（補位）、`E2E王3`（重排）、`E2E王4`（管理員存檔衝突——admin-conflict 會把隊的最後一人移除觸發連帶砍團，不可跟其他測試共用同一隊，否則平行跑會互踩）。
+period-less 後**無週期概念**，候選池只讀「常設可用時段 + 角色參戰 opt-in + 通關數」，故 seed 直接寫這些新世界資料：
+
+- **TRUNCATE 新世界交易表**（`TeamSlot`/`TeamSlotCharacter`/`Character`/`Player`/`Boss`，`CASCADE` 連帶清 standing/override/lfg/charbossclear/requirement）。
+- **兩隻王**：`E2E王`（`RequireMembers=6`，leader-led/candidates/transfer/instant 用）、`E2E王滿`（`RequireMembers=1`，auto-revoke 用「一人接受即滿、另一人邀請被自動撤銷」）。
+- **候選玩家**直接寫 `PlayerAvailabilityStanding`（全週整天 `00:00–00:00`）+ `Character.IsSeekingRaid=true`：`P-Cand`(6003,英雄)、`P-Full-A`(6005)/`P-Full-B`(6006,夜使者)。
+- **申請/被轉讓玩家**只需 Player+Character（Push 直接申請，不吃常設時段）：`P-LL`(6002)、`P-Trans`(7002)。
+- **即時揪團玩家** `P-Lfg`(8101,夜使者)：`LfgIntent` 於測試中發起。
+- **profile 玩家** `P-New`(2001)：有角色未參戰，供「我的資料」勾參戰角色測試。
+- **隊長由 test-login 於測試中自建**（6001/6004/6007/7001/8102…）；**隊伍一律走 UI 開**，seed 不建任何 `TeamSlot`。
 
 ## 怎麼跑
 
@@ -56,7 +60,7 @@ docker compose -f compose.e2e.yaml up -d                 # db + backend + fronte
 # 等 backend /health/ready = 200（起完 + DB 連得到）後灌 seed：
 docker compose -f compose.e2e.yaml exec -T e2e-db \
   env PGPASSWORD=e2e psql -U postgres -d presentationdb < db/seed-e2e.sql
-cd web && npm run e2e                                     # 跑 8 支（reuse compose 前端）
+cd web && npm run e2e                                     # 跑 10 支（reuse compose 前端）
 ```
 
 ### 容器化（CI 用的機制，本機可驗）
@@ -72,26 +76,27 @@ docker compose -f compose.e2e.yaml --profile ci run --build --rm e2e-playwright
 docker compose -f compose.e2e.yaml --profile ci down -v   # 含資料一起清
 ```
 
-## 測試清單（8 支）
+## 測試清單（10 支）
 
 | spec | 驗 |
 |---|---|
 | `smoke` | 首頁未登入 Landing + 登入鈕 |
-| `auth`（×2） | 玩家 → Dashboard；admin → `/admin/schedule` |
-| `schedule` | seeded 玩家在排團結果看到自己的隊（讀取整串） |
-| `register` | 新玩家報名 → 自動分配 → 入隊（寫入整串） |
-| `fill` | 玩家補位進未滿的隊（E2E王2） |
-| `admin-rebuild` | 管理員自動排團（E2E王3） |
-| `admin-conflict` | 管理員存檔時隊伍已被異動/消失 → 顯示衝突提示，不假裝成功（E2E王4） |
+| `auth`（×2） | 玩家 → Dashboard（總覽）；admin → `/admin/config` |
+| `register` | 「我的資料」profile：設常設可用時段 + 勾參戰角色（取代舊每期報名） |
+| `leader-led` | Push 全流程：玩家申請 → 隊長核准 → 入隊 |
+| `leader-led-candidates` | Pull 全流程：開隊 → 挑候選 → 邀請 → 玩家接受 |
+| `leader-led-transfer` | 隊長轉讓：提議 → 對方接受成新隊長 |
+| `leader-led-auto-revoke` | 容量 1 的王邀兩人 → 其一接受額滿 → 另一人邀請自動撤銷 |
+| `availability-override` | 特定日期不可用 override 蓋寫常設 → 候選被排除 |
+| `instant-lfg` | 即時揪團：發 LfgIntent → 被即時團邀請 → 接受 |
 
 ## 🔴 踩過的坑（這份最值錢的部分）
 
 | 坑 | 症狀 | 解 |
 |---|---|---|
-| **`GetActivePeriodAsync` = 最新 StartDate 非「含今天」** | 多 period 並存時 `GetByDiscordId` 回空 | seed **TRUNCATE 成單一 period** |
-| **報名截止時間**（`GetDeadlineForPeriod` = period 前一週） | 報名回 500「已超過截止」 | period 設**未來一週** |
-| **報名表單 Step2 選角色後 row 重新分組**（角色 select 消失） | `.nth(1)` 找不到 | **先選 boss 再選角色** |
-| **補位場數規則**（`validateAddCharacter` #5：補位者場數 = 首位成員場數） | 補位靜默失敗、無 PUT | seed dummy 成員 `Rounds=0` |
+| **candidate 過濾吃時段** | 候選對不到開團時間就撈不到 | seed 候選給**全週整天** `00:00–00:00` 常設時段，任何開團時間都命中 |
+| **候選 = 參戰 opt-in × 常設時段** | 只 seed Player+Character 撈不到候選 | 候選玩家要 `Character.IsSeekingRaid=true` + 至少一筆 `PlayerAvailabilityStanding` |
+| **CreateTeam 擋過去時段** | 用固定過去日期開排程團 → 400 | 排程團 `SlotDateTime` 用未來時間（測試自算） |
 | **secure-context**：非 localhost HTTP 存取 → `crypto.randomUUID`（idempotency key）+ Secure cookie 失效 | 寫入測試全掛 | `e2e-playwright` 用 **`network_mode: "service:e2e-frontend"`** → 走 `localhost:3000` |
 | **前端 prod build** `NODE_ENV=production` 擋 `test` 白名單 | proxy 403 | `web/Dockerfile` 加 **`dev` target** |
 | **stale next dev 卡 3000 / stack 停掉** | test-login 500 | 殺 3000 佔用 / `up -d` 重起 |

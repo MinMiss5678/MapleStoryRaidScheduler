@@ -52,9 +52,9 @@ kubectl config use-context maple-prod
 
 ## Seed 參考資料（首次部署後**必做**）
 
-有兩張表**沒有後台 UI，也不在 migration 的 seed 裡**（值是每個 Discord 伺服器各自不同，寫不進通用 migration），全新環境必須手動塞，否則系統不可用：
+`DiscordRoleMapping` **沒有後台 UI，也不在 migration 的 seed 裡**（值是每個 Discord 伺服器各自不同，寫不進通用 migration），全新環境必須手動塞，否則沒有任何人登得進去。
 
-### 1. DiscordRoleMapping（不 seed → 沒有任何人登得進去）
+> period-less（Phase 4d）後 `JobCategory` 表已退場，不再需要 seed 職業分類。
 
 `AuthAppService.LoginAsync` 靠這張表把 Discord 身分組 ID 解析成系統角色（admin/user）；解析不到就登入失敗。角色 ID 從 Discord（開發者模式 → 右鍵身分組 → 複製 ID）取得：
 
@@ -64,18 +64,6 @@ kubectl exec -n maple-raid deployment/database -- psql -U postgres -d presentati
      (<管理員身分組ID>, '"'"'admin'"'"', 10),
      (<玩家身分組ID>,   '"'"'user'"'"',  0)
    ON CONFLICT ("DiscordRoleId") DO UPDATE SET "Role"=EXCLUDED."Role", "Priority"=EXCLUDED."Priority";'
-```
-
-### 2. JobCategory（不 seed → 補位提示的分類分組失效）
-
-只放「真的要分組喊」的職業（見 CLAUDE.md「JobCategory is display-only」）；單獨喊的職業（拳霸/夜使者…）可不放。範例：
-
-```bash
-kubectl exec -n maple-raid deployment/database -- psql -U postgres -d presentationdb -c \
-  'INSERT INTO "JobCategory" ("JobName","CategoryName") VALUES
-     ('"'"'英雄'"'"','"'"'劍士'"'"'),('"'"'黑騎士'"'"','"'"'劍士'"'"'),('"'"'聖騎士'"'"','"'"'劍士'"'"'),
-     ('"'"'火毒大魔導士'"'"','"'"'法師'"'"'),('"'"'冰雷大魔導士'"'"','"'"'法師'"'"'),('"'"'主教'"'"','"'"'法師'"'"'),
-     ('"'"'箭神'"'"','"'"'高單體'"'"'),('"'"'槍神'"'"','"'"'高單體'"'"');'
 ```
 
 ---
@@ -147,7 +135,7 @@ kubectl delete svc database -n maple-raid
 .\k8s\deploy.ps1
 ```
 
-> ⚠️ 清空 DB 會一併清掉 `DiscordRoleMapping` / `JobCategory`，重新部署後要**再做一次「Seed 參考資料」那節**，否則一樣沒人登得進去。
+> ⚠️ 清空 DB 會一併清掉 `DiscordRoleMapping`，重新部署後要**再做一次「Seed 參考資料」那節**，否則一樣沒人登得進去。
 
 ---
 
