@@ -8,81 +8,69 @@
 
 ---
 
-## 一、週期（Period）與日期
+> **period-less（Phase 4c/4d）**：舊的「每週報名 → 系統自動排團 + 範本批次重排 + 補位」子系統（`Period`／`Register`／`TeamSlotAutoAssignService`／`ScheduleService`／`BossTemplate`／報名截止）已整包退場。現行模型是 **leader-led + 即時／排程**，無週期概念。
+
+## 一、開隊（Create Team）
 
 | # | 規則 | 來源 |
 |---|---|---|
-| P1 | 官方重製日 = **週二**（單一事實來源）；改期只改 `SlotDateCalculator.ResetDay`，所有排序/日期/排程跟著推導 | `SlotDateCalculator` |
-| P2 | 重製時間 = `period.StartDate` 當日時間 = 週二 **00:00 UTC = 08:00 TPE** | `SlotDateCalculator` |
-| P3 | 一個週期 = 重製日 00:00 UTC 起、+6 天 23:59:59 止（整週） | `WeeklyPeriodJob` |
-| P4 | `WeeklyPeriodJob` 每個重製日建立下一週期（若該 `StartDate` 尚不存在才建）；每 7 天執行一次 | `WeeklyPeriodJob` |
-| P5 | **新週期建立 → 重置 `IsDeadlineNotified`**，讓截止通知能為新週期重發 | `WeeklyPeriodJob` |
-| P6 | 週期內天別排序以重製日為首：`[2,3,4,5,6,0,1]` | `SlotDateCalculator.CycleWeekdayOrder` |
-| P7 | 落在重製日當天、但時間早於重製時間（08:00）的可用時段 → 視為**上一輪殘留**，排序權重 +7（排到最後） | `SlotDateCalculator.GetBestAvailability` |
+| CT1 | **不分權**：任何登入者都可開隊；`LeaderDiscordId` 一律用登入身分，不信任 client 傳值 | `TeamSlotController.CreateTeamAsync` / `TeamLeaderService` |
+| CT2 | 兩種 `Kind`：**`Scheduled`**（約定 `SlotDateTime`，**不得早於現在**——period-less 後不解析/綁 `Period`，只驗時間合法）\| **`Instant`**（時間＝現在、`ExpiresAt = now + 3h` TTL） | `TeamLeaderService.CreateTeamAsync` |
+| CT3 | 開隊帶一組需求列（`TeamSlotRequirement`：`Count` + `MinClearCount` + `Jobs[{Job, MinAttackPower}]`）；需求**只驅動候選過濾 + 前端招募告示**，不強制隊伍職業組成 | `TeamLeaderService` / `TeamSlotRequirement` |
+| CT4 | 隊伍容量 = `Boss.RequireMembers`（唯一硬上限；需求列不改容量） | `Boss` / `ConfirmMemberAsync` |
+| CT5 | `TeamSlot.Source` 一律 `"leader"`（舊 `auto`/`admin` 來源隨自動排團退場） | `TeamSlotSource` |
 
-## 二、報名（Registration）
+## 二、成員狀態（Membership Status）
 
 | # | 規則 | 來源 |
 |---|---|---|
-| R1 | 報名（`CreateAsync`）= 建立 register + 可用時段 + 角色報名，接著**立即** `AutoAssignAsync` | `RegisterService.CreateAsync` |
-| R2 | **一人一期只能報名一次**：已存在 `(discordId, periodId)` 的報名 → 拋「您已完成本期報名，請勿重複提交」 | `RegisterService.CreateAsync`（`ExistAsync`） |
-| R3 | **報名 / 更新僅在報名截止前允許**：活躍週期的 deadline 已過 → 拋「目前已超過報名截止時間」 | `RegisterService.EnsureRegistrationOpen` |
-| R4 | **防 IDOR**：更新不信任前端傳的 `registerId`，改由 `(discordId, periodId)` 查出呼叫者自己的 id | `RegisterService.UpdateAsync` |
-| R5 | 更新可用時段 = 先刪該報名的所有 availability 再依新資料重建 | `RegisterService.UpdateAsync` |
+| MS1 | `TeamSlotCharacter.Status`：`Invited`（隊長已邀）\| `Applied`（玩家已申請）\| `Confirmed`（已入隊）\| `Rejected`（婉拒/被拒）\| `Left`（退隊） | `TeamSlotMemberStatus` |
+| MS2 | 一筆成員定案成 `Confirmed` 前，其位子不佔容量計算以外的名額；容量只數 `Confirmed`（`CountConfirmedAsync`） | `ConfirmMemberAsync` |
+| MS3 | `TeamSlotCharacter.SlotDateTime` 是開團時間的**去正規化快照**（開隊/邀請時填），供跨隊時段重疊唯一索引 | migration `000011` |
 
-## 三、隊伍來源與成員標記（模型基礎，先讀這節）
-
-> ⚠️ **舊 `IsTemporary` 布林已廢除**，改由 `TeamSlot.Source` 表示來源。下面的規則都建立在這兩個欄位上。
+## 三、候選過濾（Pull 候選池）
 
 | # | 規則 | 來源 |
 |---|---|---|
-| S1 | `TeamSlot.Source`（字串）= **`"auto"`**（玩家報名時系統自動建）\| **`"admin"`**（管理員手動開團 / 批次重排）。**取代舊 `IsTemporary`** | `TeamSlotConstants` / `TeamSlot` |
-| S2 | `Source` 驅動三件事：**空隊自動清除（僅 auto）**、**合併資格（僅 auto）**、**重排保留（admin 整隊保留）** | `TeamSlotConstants` 註解 |
-| S3 | 成員層級 `TeamSlotCharacter.IsManual`：**玩家補位 / 管理員微調 = true**；**重排自動填入 = false**。由來源端顯式決定，後端不強制 | `TeamSlotService` |
+| CD1 | **排程團**候選池 = 角色 `IsSeekingRaid=true`（參戰 opt-in）× 其玩家 `PlayerAvailabilityStanding`（常設可用時段）與開團時間 weekday+time 重疊 | `TeamCandidateQuery.GetPoolAsync` |
+| CD2 | `PlayerAvailabilityOverride`（特定日期例外）**蓋寫**常設時段：該日標不可用 → 即使常設可用也排除 | `AvailabilityOverrideService` / 候選過濾 |
+| CD3 | 需求過濾：職業符合任一需求列的 `Jobs` + 攻擊力 ≥ 該職業 `MinAttackPower` + **通關數 ≥ `MinClearCount`**（`CharacterBossClear` 同玩家跨角色對該王加總） | `TeamLeaderService.GetCandidatesAsync` |
+| CD4 | **即時團**候選來自 `LfgIntent` 看板（現在想打該王的人），**略過時段比對** | `TeamCandidateQuery.GetInstantPoolAsync` |
+| CD5 | 狀態感知去重：排除「其玩家已在本隊 active（Confirmed/Invited/Applied）」與「已在該開團時刻別隊 Confirmed（對齊 `uq_tsc_confirmed_overlap`）」者 | `TeamLeaderService.GetCandidatesAsync` |
 
-## 四、自動分配（Auto-assign）
-
-| # | 規則 | 來源 |
-|---|---|---|
-| A1 | 玩家報名即時觸發：每個角色媒合到現有隊空位；無匹配**且可用時段非空**才建新隊（`Source="auto"`）。**可用時段為空 → 跳過建隊，報名本身仍成功** | `TeamSlotAutoAssignService` |
-| A2 | 自動分配時**已被分配的角色會跳過**（`IsAlreadyAssigned`），同一角色不重複分配 | `TeamSlotAutoAssignService` |
-| A3 | **併發控制**：同一 period 的「讀隊→開新隊」以交易級 advisory lock（`pg_advisory_xact_lock`）序列化 → 兩人同時報名同一 period 不會重複開隊 | `RegistrationLock`；`architecture.md §併發控制` |
-| A4 | 不同 period 的鎖不互斥、可並行；鎖在 DB → **多 pod 安全** | `RegistrationLock` |
-
-## 五、合併（Merge）與批次重排（Re-schedule）
+## 四、組隊狀態機（Pull / Push / 退隊 / 轉讓）
 
 | # | 規則 | 來源 |
 |---|---|---|
-| M1 | 報名後嘗試合併：只在**未滿的 auto 隊**之間（`GetIncompleteTeamsAsync`）；< 2 隊則不合併 | `TeamSlotMergeService` |
-| M2 | **手動成員（IsManual）可參與合併**——合併只把兩隊併成一隊、不拆散，認識的人仍同隊；但範本比對嚴格，湊不齊會取消（TryMatchTemplate 回 null） | `TeamSlotMergeService` |
-| M3 | 合併避免同一玩家在同隊重複（同 `DiscordId` 出現 > 1 則跳過） | `TeamSlotMergeService` |
-| M4 | **批次重排的「保留隊」= `Source="admin"` 的隊 或 含任一 `IsManual` 成員的 auto 隊** → 整隊保留、只自動補滿空位；其餘 auto 隊可被重組 | `ScheduleService` |
-| M5 | 重排自動補入空位者標 `IsManual=false`（之後重排仍可調整） | `ScheduleService` |
-| M6 | 批次重排產生 `Source="admin"` 的隊，以**負 Id 代表未存檔的預覽**，存檔時走 CREATE。**無 IsTemporary / confirm 旗標** | `ScheduleService` / `TeamSlotService.UpdateAsync` |
+| SM1 | **Pull**：隊長 `InviteMember`（→`Invited`）→ 玩家 `AcceptInvite`（→`Confirmed`）/ `DeclineInvite`（→`Rejected`）；**只能接受自己的邀請** | `TeamLeaderService.Invite/Accept/Decline` |
+| SM2 | **Push**：玩家 `Apply`（用本人角色，→`Applied`）→ 隊長 `Approve`（→`Confirmed`）/ `Reject`（→`Rejected`）；**非隊長不能審核**（→403） | `TeamLeaderService.Apply/Approve/Reject` |
+| SM3 | **退隊**：`Confirmed`→`Left`，釋放位子；只能退自己在該隊的成員資格 | `TeamLeaderService.LeaveTeam` |
+| SM4 | **隊長轉讓（需同意）**：`ProposeLeaderTransfer` 設 `PendingLeaderDiscordId` → 對方 `RespondLeaderTransfer` accept（搬進 `LeaderDiscordId`）/ decline | `TeamLeaderService.Propose/RespondLeaderTransfer` |
+| SM5 | 重複邀請/申請去重：同隊同玩家一筆有效 `Applied`/`Invited`（`uq_tsc_active_membership`）；違反 → 23505 → 409 | migration `000011` |
 
-## 六、隊伍編輯授權與併發控制
-
-| # | 規則 | 來源 |
-|---|---|---|
-| E1 | 非管理員只能改**自己的成員**（`member.DiscordId == currentDiscordId`）；跨成員 / 隊伍層級操作需管理員 | `TeamSlotService.UpdateAsync` |
-| E2 | 編輯既有隊伍前先對 `(classId=1002, teamSlotId)` 取交易級 advisory lock，序列化同一隊伍的併發編輯；不同隊伍不互斥 | `RegistrationLock.AcquireTeamSlotEditLockAsync`；`architecture.md §TeamSlot 編輯併發控制` |
-| E3 | 容量不超編、同一角色不重複加入，由 `TeamSlot.AddMember`（充血聚合）統一守，**含 admin 也擋**；違反丟 `DomainException` → 400 | `TeamSlot.AddMember` |
-| E4 | 隊伍已消失（被 merge / 連帶清團砍掉）或既有成員版本衝突（`xmin` 對不上，含 row 已被刪）→ **統一**收進 `ConflictedTeamSlotIds`，不丟例外、不中斷其他隊伍的處理 | `TeamSlotService.UpdateAsync`；`architecture.md §TeamSlot 編輯併發控制` |
-| E5 | 管理員排團頁存檔後，衝突的隊伍**原地標紅、不重新排序**；未列在衝突清單的隊伍皆已成功存檔 | `web/app/admin/schedule/page.tsx` |
-
-## 七、通知（Notification）
+## 五、入隊定案的併發控制（Confirm）
 
 | # | 規則 | 來源 |
 |---|---|---|
-| N1 | 每日通知：每天 **09:00**（本地）發當日隊伍到 Discord，同隊玩家聚合成一則；當日無隊伍則不發 | `DailyNotificationService` |
-| N2 | 截止通知：截止時間已過 **且** `!IsDeadlineNotified` 時發送；設定變更時被喚醒重算 | `RegistrationDeadlineJob` |
-| N3 | 截止時間可設定（`SystemConfig.DeadlineDayOfWeek/DeadlineTime`）；**預設 = 重製日前一天（週一）** | `SystemConfigService` |
-| N4 | **改變截止日/時 → 重置 `IsDeadlineNotified`**（讓新截止能重發通知） | `SystemConfigService.UpdateAsync` |
-| N5 | 設定變更事件走 **transactional outbox**：與 `UpdateAsync` 同一交易寫 outbox 列（commit 才生效、rollback 丟棄），bot 的 `OutboxDispatcher` 讀已提交列喚醒 job → **跨行程可靠 + crash-safe**（取代原 in-process `AfterCommit`：commit 後 crash 會掉、且跨不了行程） | `Outbox` / `OutboxDispatcher`；`architecture.md §7 Transactional Outbox` |
-| N6 | Discord 通知**只由背景 job**發（讀已提交狀態），無請求內 inline 發送 → 無「發了又 rollback」風險 | `DailyNotificationService` / `RegistrationDeadlineJob` |
-| N7 | Outbox 已處理列（`ProcessedAt` 非 null）超過 **30 天**由 `OutboxRetentionJob` 每 24 小時清一次；未處理列不管多舊都不刪 | `OutboxRetentionJob`；`architecture.md §7 Transactional Outbox` |
+| CF1 | `AcceptInvite`〔玩家〕與 `Approve`〔隊長〕共用 `ConfirmMemberAsync` 定案 | `TeamLeaderService.ConfirmMemberAsync` |
+| CF2 | **同隊超編**：定案前對 `(classId=1002, teamSlotId)` 取交易級 advisory lock 序列化，鎖內**重讀** `CountConfirmed` vs `Boss.RequireMembers`，達容量 → 拋「隊伍已滿」；再以 `xmin`（`Version`）樂觀鎖改狀態 | `RegistrationLock.AcquireTeamSlotEditLockAsync` / `ConfirmMemberAsync` |
+| CF3 | **跨隊分身**：同玩家同 `SlotDateTime` 的 `Confirmed` 唯一（`uq_tsc_confirmed_overlap`）→ 第二筆 23505 → 409（per-team 鎖管不到跨隊，這是唯一原子擋） | migration `000011` |
+| CF4 | 定案使隊伍額滿 → 自動撤銷其餘待接受邀請（`RevokePendingInvitesAsync`，仍在同一把鎖內）+ 各發一則通知 | `ConfirmMemberAsync` |
+| CF5 | 入隊後清掉該玩家的 `LfgIntent`（已找到隊、不再掛即時看板）；排程 accept 無意圖 → no-op | `ConfirmMemberAsync` |
+| CF6 | `lock_timeout`（預設 5 秒）逾時拋 `AdvisoryLockTimeoutException` → 轉「隊伍忙碌中，請稍後重試」 | `RegistrationLock` |
 
-## 八、認證與授權（Auth）
+## 六、通知（Notification）
+
+| # | 規則 | 來源 |
+|---|---|---|
+| N1 | 每日通知：`DailyNotificationService` 每天發當日隊伍到 Discord，同隊玩家聚合成一則；當日無隊伍則不發 | `DailyNotificationService` |
+| N2 | **組隊通知**：leader-led 每個狀態改動（邀請/接受/核准/額滿撤銷…）與狀態寫入**同一交易** enqueue 一則 `TeamNotification` outbox 列 → bot 的 handler 撈去發 Discord DM | `TeamLeaderService.NotifyAsync` / `TeamNotificationOutboxHandler` |
+| N3 | 系統設定變更（`SystemConfig` 退團率參數）與 `UpdateAsync` 同一交易寫 `ConfigChanged` outbox → bot 喚醒重讀 | `SystemConfigService.UpdateAsync` |
+| N4 | 設定變更事件走 **transactional outbox**：commit 才生效、rollback 丟棄，bot 的 `OutboxDispatcher` 讀已提交列 → **跨行程可靠 + crash-safe**（取代原 in-process `AfterCommit`） | `Outbox` / `OutboxDispatcher`；`architecture.md §7 Transactional Outbox` |
+| N5 | Discord 通知**只由 bot 端**發（讀已提交狀態）→ 無「發了又 rollback」風險 | `OutboxDispatcher` |
+| N6 | Outbox 已處理列（`ProcessedAt` 非 null）超過 **30 天**由 `OutboxRetentionJob` 每 24 小時清一次；未處理列不管多舊都不刪 | `OutboxRetentionJob`；`architecture.md §7 Transactional Outbox` |
+
+## 七、認證與授權（Auth）
 
 | # | 規則 | 來源 |
 |---|---|---|
@@ -95,7 +83,7 @@
 | AU7 | 管理員 session 快取存 **Redis**（跨 pod 共享）→ 撤銷（登出／拔身分組／踢人）一次刪除**即在所有 pod 立即生效**；讀 miss 退回查 DB 自癒、Redis 掛則 fail-open | `RedisSessionCache`；`architecture.md §雙軌身分驗證` |
 | AU8 | 管理員 session 有效期 = **`SessionExpiry`（自己的授權政策，30 天）**，過期 → `GetAsync` 回 null → 403；**不靠 Discord token 續期**（與第三方 token TTL 解耦、驗證不依賴 Discord 端點）。活動時**節流 sliding**：剩餘 < 15 天（過半）才延展，避免每讀必寫 | `SessionService` / `SessionPolicy`；`plans/2026-07-28-session-token-decouple.md` |
 
-## 九、請求層防護（Idempotency / Rate limit / IP）
+## 八、請求層防護（Idempotency / Rate limit / IP）
 
 | # | 規則 | 來源 |
 |---|---|---|
@@ -104,7 +92,7 @@
 | G3 | 登入後按 `discordId` 限流：**100 次 / 10 秒 / 人**（固定視窗，計數存 **Redis** 故**跨 pod 共用上限**；Redis 掛則 fail-open）；未登入不在此限 | `Program.cs` RateLimiter / `RedisFixedWindowRateLimiter` |
 | G4 | 真實 client IP 由前端 proxy 從 `cf-connecting-ip` 設定；後端只信**私有網段**送來的 `X-Forwarded-For`（防偽造） | `Program.cs` ForwardedHeaders；`route.ts` |
 
-## 十、交易邊界（Transaction）
+## 九、交易邊界（Transaction）
 
 | # | 規則 | 來源 |
 |---|---|---|
@@ -113,7 +101,7 @@
 | T3 | 讀取請求（GET 等）**不開交易** | `UnitOfWorkMiddleware` |
 | T4 | 需要「Commit 後才生效」的副作用走 **outbox**：事件與業務資料同一交易寫入 → Commit 才可被派發、Rollback 一起丟棄（無鬼影事件）；投遞由 dispatcher 事後讀已提交列 | `Outbox` / `OutboxDispatcher` |
 
-## 十一、角色（Character）
+## 十、角色（Character）
 
 | # | 規則 | 來源 |
 |---|---|---|
@@ -124,6 +112,6 @@
 
 ## 維護原則
 
-- 改任一行為時，**同步更新對應規則列**（尤其 N4/N5、A2、AU4、G2 這類容易被改壞的不變量）。
+- 改任一行為時，**同步更新對應規則列**（尤其 CF2/CF3、CD3、N2/N4、AU4、G2 這類容易被改壞的不變量）。
 - 每條規則理想上對應一個測試——測試是這份清單的**可執行版本**。缺測試的規則列可視為「待補測試」清單。
 - 新功能：動手前先在 `plans/` 寫輕量 spec（目標/規則/邊界/驗收），確認後再把穩定規則收進本表。

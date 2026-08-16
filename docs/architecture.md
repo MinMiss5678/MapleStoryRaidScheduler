@@ -160,9 +160,9 @@ sequenceDiagram
 
 ### 5. 重複提交防護（非完整冪等）
 
-**決策原因**：前端連點或網路重送可能造成重複寫入（如重複報名、重複補位）。
+**決策原因**：前端連點或網路重送可能造成重複寫入（如重複申請、重複邀請）。
 
-**實作方式**：POST/PUT/DELETE 必須帶合法 UUID 的 `X-Idempotency-Key`（缺少或非 UUID 回 400）；`IdempotencyMiddleware` 以此 Key 去重，同一 Key 在 60 秒內重送直接回 **409 Conflict**、不進入業務邏輯。去重狀態存 **Redis**（`SET NX EX`，跨 pod 共享；經 `IIdempotencyStore` 抽象）——取代原本 per-pod 的 `IMemoryCache`。Redis 不可用時採 **fail-open**（放行 + 記 log，不因去重快取抖動擋掉寫入；真正的重複由報名 `ExistAsync` + auto-assign advisory lock 兜底）。
+**實作方式**：POST/PUT/DELETE 必須帶合法 UUID 的 `X-Idempotency-Key`（缺少或非 UUID 回 400）；`IdempotencyMiddleware` 以此 Key 去重，同一 Key 在 60 秒內重送直接回 **409 Conflict**、不進入業務邏輯。去重狀態存 **Redis**（`SET NX EX`，跨 pod 共享；經 `IIdempotencyStore` 抽象）——取代原本 per-pod 的 `IMemoryCache`。Redis 不可用時採 **fail-open**（放行 + 記 log，不因去重快取抖動擋掉寫入；真正的重複由 leader-led 的唯一索引 `uq_tsc_active_membership`／`uq_tsc_confirmed_overlap` 兜底）。
 
 > 注意：這是「擋重送」而非完整冪等——重試不會重播第一次的回應內容（只快取一個標記，非結果）。真冪等需快取並重播原始回應；此處刻意簡化為 de-dup，因寫入操作重送應由使用者感知（409）而非默默視為成功。
 
@@ -218,7 +218,7 @@ Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL
 
 ### 7. 設定變更的可靠投遞（Transactional Outbox）
 
-**決策原因**：設定變更（報名截止）後要喚醒背景 job 重算。原本用 `DbContext.AfterCommit`（in-process post-commit hook），有兩個問題：(1) commit 後、跑動作前 crash 會**遺失**；(2) 設定在 **API** 改、要喚醒的 `RegistrationDeadlineJob` 在 **bot**，in-process 事件**跨不了行程**（API 的 `ConfigChangeNotifier` 無訂閱者 = no-op）→ API 改設定不會即時通知 bot。
+**決策原因**：跨行程的可靠事件投遞有兩個用途——(1) 設定變更（`ConfigChanged`）要喚醒 bot 端背景 job 重讀；(2) leader-led 組隊狀態改動（`TeamNotification`）要由 bot 發 Discord DM。原本用 `DbContext.AfterCommit`（in-process post-commit hook）有兩個問題：commit 後、跑動作前 crash 會**遺失**；且事件在 **API** 產生、消費者在 **bot**，in-process 事件**跨不了行程**（API 的 notifier 無訂閱者 = no-op）。
 
 **實作方式**：改用 transactional outbox（`OutboxMessage` 表）。
 
@@ -362,121 +362,98 @@ sequenceDiagram
 
 ---
 
-## 自動分配引擎
+## Leader-led 組隊引擎
 
-這是系統最核心的業務邏輯，實際上是**兩條互相獨立的路徑**（不是同一個 `AutoAssignAsync` 被兩邊共用——這點很容易看錯，底下特別畫清楚）：
+系統核心是 **leader-led（隊長主導）+ period-less（即時／排程）** 的組隊流程——任何登入者開隊、設需求，靠 **Pull（隊長挑候選邀請）** 與 **Push（玩家申請、隊長審核）** 兩個方向把人湊齊。舊的「玩家報名 → 系統自動排團 + 範本批次重排 + 補位」引擎（`RegisterService`／`TeamSlotAutoAssignService`／`TeamSlotMergeService`／`ScheduleService`／`Period`／`BossTemplate`）已於 period-less 重構 Phase 4c/4d 整包退場（見 `plans/2026-08-12-period-less-phase4cd-cleanup.md`）。
 
-### 流程圖
+### 狀態機
+
+一筆 `TeamSlotCharacter` 的 `Status` 走這條路：
 
 ```mermaid
-flowchart TD
-    A[玩家報名] --> B["TeamSlotAutoAssignService.AutoAssignAsync\n（逐一角色處理）"]
-    B --> C{找到符合時段\n且有空位的 auto 隊}
-    C -->|是| D[加入現有隊伍 AddMember]
-    C -->|否，且可用時段非空| E[建立新隊 Source=auto]
-    D --> F["TeamSlotMergeService.MergeTeamsAsync\n（同 boss 有 ≥2 個未滿 auto 隊才嘗試合併）"]
-    E --> F
-    F --> Fend[分配完成]
-
-    G[管理員選定 boss+範本，觸發批次重排] --> H["ScheduleService.AutoScheduleWithTemplateAsync\n（完全獨立的演算法，不呼叫 AutoAssignAsync/MergeTeamsAsync）"]
-    H --> I["保留隊 = Source=admin 的隊 或 含 IsManual 成員的 auto 隊\n→ 整隊保留，FillTeamFromPool 只補空位"]
-    I --> J["其餘報名者依時段+場次分組，\n嚴格依 BossTemplateRequirement 優先序貪婪組新隊"]
-    J --> K["回傳保留隊（正 Id）+ 新隊預覽（負 Id）\n存檔時才真的 CREATE"]
+flowchart LR
+    Invited -->|玩家 AcceptInvite| Confirmed
+    Invited -->|玩家 DeclineInvite| Rejected
+    Applied -->|隊長 Approve| Confirmed
+    Applied -->|隊長 Reject| Rejected
+    Confirmed -->|玩家 LeaveTeam| Left
+    Invited -->|隊伍額滿自動撤銷| Revoked
 ```
 
-### 補位保護機制
+- **Pull（`GetCandidatesAsync` → `InviteMemberAsync` → `AcceptInviteAsync`）**：隊長從候選清單挑人邀請（`Invited`），玩家接受成 `Confirmed`。
+- **Push（`ApplyAsync` → `ApproveAsync`/`RejectAsync`）**：玩家用自己的角色申請（`Applied`），隊長審核。
+- **入隊定案**（`AcceptInviteAsync`〔玩家接受〕與 `ApproveAsync`〔隊長核准〕共用 `ConfirmMemberAsync`）：見下「入隊定案的併發控制」。
+- 其餘：`LeaveTeamAsync`（`Confirmed`→`Left`，釋放位子）、隊長轉讓（`ProposeLeaderTransferAsync` 設 `PendingLeaderDiscordId` → 對方 `RespondLeaderTransferAsync` accept/decline）。
 
-手動補位的成員標記 `IsManual = true`，批次重新分配時跳過含 `IsManual` 成員的隊伍，防止人工調整被覆蓋。
+### 開隊：Scheduled vs Instant
 
-### 併發控制（避免重複開隊）
+`CreateTeamAsync`（`Source = leader`）分兩種 `Kind`：
 
-`AutoAssignAsync` 的「讀現有隊 → 沒有就開新隊」是 **read-then-write**。兩人同時報名同一 period 時，在 READ COMMITTED 下兩交易互相看不到對方未提交的隊 → **各自開一隊 → 重複**（`MergeTeamsAsync` 只能事後補救，併發當下補不了）。
+| Kind | 時間 | 候選來源 | 到期 |
+|---|---|---|---|
+| `Scheduled` | 約定的 `SlotDateTime`（**不得早於現在**——period-less 後不再解析／綁 `Period`，改驗時間本身合法） | 參戰中角色 × 常設可用時段 overlap 開團時間 | 無（`SlotDateTime` 過了自然失效） |
+| `Instant` | 現在（`now`） | 即時揪團看板 `LfgIntent`（跳過時段比對） | `ExpiresAt = now + 3h` TTL |
 
-解法：`AutoAssignAsync` 開頭對 `(classId, periodId)` 取 **交易級 advisory lock**（`pg_advisory_xact_lock`，見 `IRegistrationLock`）：
+開隊時附一組**需求列**（`TeamSlotRequirement`：`Count` + `MinClearCount` + `Jobs[{Job, MinAttackPower}]`；子表 `TeamSlotRequirementJob`）。需求只用來**過濾候選 + 前端招募告示**，不強制隊伍職業組成（容量只認 `Boss.RequireMembers`）。
 
-- 同一 period 的自動分配**序列化** → 第二個看得到第一個建的隊
-- **不同 period 不互斥**（並行保留，per-key 粒度）
-- 交易級鎖隨 UoW commit/rollback **自動釋放**；鎖在 DB → **多 pod 安全**（不像 C# 程序內鎖，多副本會失效）
+### 候選過濾（Pull）
 
-> 選型：本規模用 advisory lock（targeted + 多 pod 安全 + 一行 SQL）即可；SERIALIZABLE 需重試迴圈、MQ 需常駐 broker，對一團數十人過重。公開路人配對、熱門本高併發 + 尖峰時，才會走「非同步配對管線（佇列 + worker）」重設計。
+`GetCandidatesAsync`：
 
-### Source 語意（provenance）
+- **Scheduled**：候選池 = `IsSeekingRaid` 的角色 × 其玩家 `PlayerAvailabilityStanding`（常設可用時段）與開團時間 weekday+time 重疊；`PlayerAvailabilityOverride`（特定日期例外）蓋過常設。再依需求列過濾：職業符合、攻擊力 ≥ 門檻、**通關數**（`CharacterBossClear` 同玩家跨角色對該王加總）≥ `MinClearCount`。
+- **Instant**：候選來自 `LfgIntent`（現在想打該王的人），略過時段比對。
+- 兩者都做**狀態感知去重**：排除「其玩家已在本隊 active（`Confirmed`/`Invited`/`Applied`）」者，以及「已在該開團時刻別隊 `Confirmed`」者（對齊跨隊重疊約束，見下）。
 
-隊伍來源，取代舊 `IsTemporary`/`IsPublished` 兩布林。驅動：空隊自動清除、合併資格、批次重排保留。
+### 通知（與狀態改動原子）
 
-| 值 | 來源 | 說明 |
-|---|---|---|
-| `auto` | `TeamSlotAutoAssignService` | 玩家報名時系統自動建立，空時可自動清除、可被合併 |
-| `admin` | Admin 手動開團 / `ScheduleService` 批次重排 | Admin 建立，空時不自動刪除、不被自動合併、重排時保留 |
+每個狀態改動（邀請、接受、核准、額滿撤銷…）在**同一 UoW 交易**內 enqueue 一則 `TeamNotification` outbox 列 → bot 端 handler 撈去發 Discord DM（見「§7 Transactional Outbox」）。崩了不遺失、跨行程送達。
 
 ---
 
-## TeamSlot 編輯併發控制
+## 入隊定案的併發控制
 
-編輯既有隊伍（`TeamSlotService.UpdateAsync`，管理員排團存檔 / 玩家補位共用這條路徑）跟上面的自動分配是**不同的併發問題、不同的鎖**：自動分配鎖的是「同一 period 讀現有隊 → 開新隊」的 race；這裡鎖的是「同一隊伍同時被兩個請求編輯」的 race（容量競爭、以及一邊清空觸發連帶砍團、另一邊還在對同一隊寫入）。兩把鎖用不同 `classId`（1001 / 1002），互不影響、可同時持有。
+`ConfirmMemberAsync`（把 `Invited`/`Applied` 定案成 `Confirmed`）要擋兩種 race：**同隊多人同時定案 → 超編**，以及**同一玩家同時段被兩隊定案 → 分身**。兩種用不同機制。
 
-兩階段合起來的完整時序（悲觀鎖序列化 + 拿到鎖後樂觀鎖檢查的三種分支）：
+### 同隊超編：per-team 悲觀鎖 + 容量重讀 + 樂觀鎖
 
 ```mermaid
 sequenceDiagram
-    participant A as 請求 A（先到）
-    participant B as 請求 B（後到，同一 teamSlotId）
+    participant A as 定案請求 A
+    participant B as 定案請求 B（同一 teamSlotId）
     participant Lock as advisory lock<br/>(classId=1002, teamSlotId)
     participant DB as TeamSlot / TeamSlotCharacter
 
-    A->>Lock: pg_advisory_xact_lock(1002, 5)
+    A->>Lock: pg_advisory_xact_lock(1002, teamSlotId)
     Lock-->>A: 取得鎖
-    B->>Lock: pg_advisory_xact_lock(1002, 5)
-    Note over B,Lock: B 卡住等待（同一隊伍序列化，不同隊伍不互擋）
-
-    A->>DB: GetByIdAsync(5)（讀「當下真相」）
-    DB-->>A: 隊伍存在，成員 X（version=v1）
-    A->>DB: 移除成員 X（隊上其他人都是空位 → 連帶砍團）
-    A->>DB: COMMIT（鎖隨交易自動釋放）
-
-    Lock-->>B: 取得鎖（A 已釋放）
-    B->>DB: GetByIdAsync(5)（重新讀，不是 B 請求開始時的舊快照）
-
-    alt 隊伍已消失（被 A 連帶砍團）
-        DB-->>B: null
-        B->>B: 略過此隊，加入 ConflictedTeamSlotIds
-    else 隊伍還在，但成員 X 版本不對（xmin ≠ v1，被別的流程動過）
-        DB-->>B: TeamSlot（成員 X 已是新版本）
-        B->>DB: UPDATE ... WHERE Id=X AND xmin=v1
-        DB-->>B: 0 rows affected
-        B->>B: 加入 ConflictedTeamSlotIds
-    else 隊伍還在、版本也對（沒衝突）
-        DB-->>B: TeamSlot（成員 X version=v1 仍符合）
-        B->>DB: 正常寫入成功
-    end
-
-    B->>DB: COMMIT（不論這隊有沒有衝突，其他隊伍照常處理、不中斷）
+    B->>Lock: pg_advisory_xact_lock(1002, teamSlotId)
+    Note over B,Lock: B 卡住等待（同隊序列化，不同隊不互擋）
+    A->>DB: 重讀 CountConfirmed vs Boss.RequireMembers
+    A->>DB: UPDATE Status=Confirmed WHERE Id=member AND xmin=version
+    A->>DB: 若此筆使隊伍額滿 → 自動撤銷其餘 pending 邀請
+    A->>DB: COMMIT（鎖隨交易釋放）
+    Lock-->>B: 取得鎖
+    B->>DB: 重讀 CountConfirmed（已達容量）→ 拋「隊伍已滿」
 ```
 
-### Phase A：悲觀鎖（序列化同隊編輯）
+`ConfirmMemberAsync` 取 `(classId=1002, teamSlotId)` 的交易級 `pg_advisory_xact_lock`（`IRegistrationLock.AcquireTeamSlotEditLockAsync`），在鎖內**重讀** `CountConfirmedAsync` 與 `Boss.RequireMembers` 比對容量，再用 `xmin`（`TeamSlotCharacter.Version`）樂觀鎖改狀態（狀態已被別人動過 → 0 rows → 「請重新整理」）。同隊定案序列化、防超編；不同隊的鎖互不阻塞。額滿時順帶 `RevokePendingInvitesAsync` 自動撤銷其餘待接受邀請（仍在同一把鎖內，不與「同時另一人接受」競態）。
 
-`UpdateAsync` 處理既有隊伍前，先對 `(classId=1002, teamSlotId)` 取交易級 `pg_advisory_xact_lock`（`IRegistrationLock.AcquireTeamSlotEditLockAsync`）：
+### 跨隊分身：`uq_tsc_confirmed_overlap` 唯一索引
 
-- 同一隊伍的併發編輯**序列化**，第二個請求會等第一個 commit/rollback 才繼續，此時重新讀到的是「當下真相」，不是自己請求開始時的舊快照
-- 不同隊伍的鎖互不阻塞，可並行
-- 擋住兩類 TOCTOU race：①容量檢查看到的空位數，跟真正寫入時的空位數不一致（超編）②一邊把隊伍最後一人移除觸發連帶砍團，另一邊對同一個（已消失）`teamSlotId` 寫入撞外鍵違反
+per-team 鎖管不到「同玩家在同時段的兩支不同隊都被定案」。這靠 DB 唯一索引原子擋（`SlotDateTime` 去正規化快照一份到 `TeamSlotCharacter` 上，因 Postgres unique 不能跨表）：
 
-### Phase B：樂觀鎖 + 統一衝突回報
+```sql
+CREATE UNIQUE INDEX uq_tsc_confirmed_overlap
+    ON "TeamSlotCharacter" ("DiscordId", "SlotDateTime")
+    WHERE "Status" = 'Confirmed' AND "DiscordId" <> 0;
+```
 
-拿到鎖之後，`UpdateAsync` 用鎖內重新讀到的 `TeamSlot`（而非請求帶來的舊資料）去做兩件事：
-
-1. **隊伍是否還存在**：`GetByIdAsync` 查無 → 隊伍已被別的流程砍掉（merge / 連帶清團），略過此隊、不拋例外中斷其他隊伍的處理
-2. **既有成員是否被別人動過**：`TeamSlotCharacterRepository.UpdateAsync` 的 `WHERE` 子句比對 `xmin = @version`（`TeamSlotCharacter.Version`）；對不上（含 row 已被刪、根本查無此 Id）→ 回傳 `false`
-
-兩種情況（隊伍消失 / 版本衝突）**統一收進 `TeamSlotUpdateResult.ConflictedTeamSlotIds`**，不是分別丟不同例外——呼叫端（前端）只需要處理一份「這些隊被略過」的清單。管理員排團頁收到後，衝突的隊伍**原地標紅、不重新排序**，不假裝存檔成功。
-
-> 選型同自動分配鎖：本規模用 advisory lock + xmin 即可，不需要 SERIALIZABLE 重試迴圈或分散式鎖服務。
+第二筆同玩家同時段的 `Confirmed` 撞 `23505` → `ExceptionHandlerMiddleware` 轉 **409**。另有 `uq_tsc_active_membership`（`TeamSlotId, DiscordId` where `Status in (Applied,Invited)`）擋重複邀請/申請。
 
 ### lock_timeout 安全邊際
 
-`RegistrationLock` 取鎖前對交易 `SET LOCAL lock_timeout`（`RegistrationLock.cs:47`），預設 5 秒，用來區分「正常排隊等一下」跟「持鎖方異常卡死」：逾時拋 `AdvisoryLockTimeoutException`，`TeamSlotService` 接住後歸類進 `ConflictedTeamSlotIds`（跟版本衝突同一份清單，UI 上不分辨）。
+`RegistrationLock` 取鎖前 `SET LOCAL lock_timeout`（預設 5 秒），區分「正常排隊等一下」跟「持鎖方卡死」：逾時拋 `AdvisoryLockTimeoutException`，`ConfirmMemberAsync` 接住轉「隊伍忙碌中，請稍後重試」。
 
-負載測試（`plans/2026-07-28-load-testing.md` Phase 2）對同一 `teamSlotId` 灌到 500 併發編輯（遠超實際使用規模，一支隊正常 6-8 人）驗證：`lock_timeout` 從未誤觸發，即使總延遲飆到 17 秒。原因是 `SET LOCAL lock_timeout` 只計算已進入交易、卡在 `pg_advisory_xact_lock` 本身的等待時間；client 端觀察到的延遲大部分花在進交易之前（Kestrel 請求排隊、等 Npgsql 連線池釋出連線），不算進這個逾時。5 秒預設值在連線池被打爆之前有充足安全邊際；真正的瓶頸是連線池，不是這個 timeout 太短（見本文件「Unit of Work 模式」節的連線池 headroom）。
+> 選型：本規模用 advisory lock + xmin + 唯一索引即可，不需 SERIALIZABLE 重試迴圈或分散式鎖服務。
 
 ---
 
@@ -497,6 +474,8 @@ classDiagram
         +string Name
         +string Job
         +int AttackPower
+        +bool IsSeekingRaid
+        +int MapleBlessingLevel
     }
     class Boss {
         +int Id
@@ -504,92 +483,83 @@ classDiagram
         +int RequireMembers
         +int RoundConsumption
     }
-    class Period {
-        +int Id
-        +DateTimeOffset StartDate
-        +DateTimeOffset EndDate
-    }
-    class Register {
-        +int Id
-        +ulong DiscordId
-        +int PeriodId
-        +List~CharacterRegister~ CharacterRegisters
-        +List~PlayerAvailability~ Availabilities
-    }
-    class CharacterRegister {
-        +int? Id
-        +int PlayerRegisterId
-        +string CharacterId
-        +int BossId
-        +int Rounds
-    }
     class TeamSlot {
         +int Id
         +int BossId
         +DateTimeOffset SlotDateTime
         +string Source
-        +int? TemplateId
+        +string Kind
+        +DateTimeOffset? ExpiresAt
+        +ulong? LeaderDiscordId
+        +ulong? PendingLeaderDiscordId
+        +string Description
         +int Capacity
         +int FilledCount
         +bool HasRoom
         +Contains(characterId) bool
         +AddMember(member)
-        +SetRoster(roster, dateTime)
-        +AbsorbMembers(members, dateTime)
     }
     class TeamSlotCharacter {
         +int? Id
         +int TeamSlotId
         +ulong DiscordId
-        +string DiscordName
         +string CharacterId
-        +string CharacterName
         +string Job
         +int AttackPower
-        +int Level
-        +int Rounds
-        +bool IsManual
+        +string Status
+        +DateTimeOffset SlotDateTime
         +string Version
     }
-    class PlayerAvailability {
+    class TeamSlotRequirement {
         +int Id
-        +int PlayerRegisterId
+        +int TeamSlotId
+        +int Count
+        +int MinClearCount
+        +List~TeamSlotRequirementJob~ Jobs
+    }
+    class TeamSlotRequirementJob {
+        +int RequirementId
+        +string Job
+        +int MinAttackPower
+    }
+    class PlayerAvailabilityStanding {
+        +ulong DiscordId
         +int Weekday
         +TimeOnly StartTime
         +TimeOnly EndTime
     }
-    class BossTemplate {
-        +int Id
+    class PlayerAvailabilityOverride {
+        +ulong DiscordId
+        +DateOnly Date
+        +TimeOnly StartTime
+        +TimeOnly EndTime
+        +bool IsAvailable
+    }
+    class LfgIntent {
+        +ulong DiscordId
+        +string CharacterId
         +int BossId
-        +string Name
-        +List~BossTemplateRequirement~ Requirements
+        +DateTimeOffset ExpiresAt
     }
-    class BossTemplateRequirement {
-        +int Id
-        +int BossTemplateId
-        +string JobCategory
-        +int Count
-        +int Priority
-    }
-    class JobCategory {
-        +string CategoryName
-        +string JobName
+    class CharacterBossClear {
+        +string CharacterId
+        +int BossId
+        +int ClearCount
     }
 
     Player "1" -- "*" Character : 擁有多個
-    Player "1" -- "0..1" Register : 登記時段
-    Register "*" -- "1" Period : 屬於特定週期
-    Register "1" -- "*" CharacterRegister : 登記具體角色與王
-    CharacterRegister "*" -- "1" Boss : 關聯副本
-    CharacterRegister "*" -- "1" Character : 關聯角色
+    Player "1" -- "*" PlayerAvailabilityStanding : 常設可用時段
+    Player "1" -- "*" PlayerAvailabilityOverride : 特定日期例外
+    Character "1" -- "*" CharacterBossClear : 各王通關數
+    Character "1" -- "*" LfgIntent : 即時找隊意圖
     TeamSlot "*" -- "1" Boss : 屬於特定副本
-    TeamSlot "1" -- "*" TeamSlotCharacter : 包含多個成員
-    Boss "1" -- "*" BossTemplate : 定義樣板
-    BossTemplate "1" -- "*" BossTemplateRequirement : 包含需求
-    TeamSlot "*" -- "0..1" BossTemplate : 基於樣板
+    TeamSlot "1" -- "*" TeamSlotCharacter : 成員（含各狀態）
+    TeamSlot "1" -- "*" TeamSlotRequirement : 招募需求
+    TeamSlotRequirement "1" -- "*" TeamSlotRequirementJob : 職業/攻擊下限
 ```
 
-> **TeamSlot 是充血聚合**：`Capacity`/`HasRoom`/`Contains`/`AddMember`/`SetRoster`/`AbsorbMembers` 統一守「不超員、不重複、不拆散手動成員」這組不變式，違反丟 `DomainException`（`ExceptionHandlerMiddleware` 映射 400）。只維護記憶體物件圖，持久化仍由 service 端命令式 Dapper 完成（無 change-tracking）。`TeamSlotCharacter.Version` 是 Postgres `xmin` 轉字串，供樂觀鎖比對（見下方「TeamSlot 編輯併發控制」）。
+> **TeamSlot 是充血聚合**：`Capacity`/`HasRoom`/`Contains`/`AddMember` 守「不超員、不重複」不變式，違反丟 `DomainException`（`ExceptionHandlerMiddleware` 映射 400）。只維護記憶體物件圖，持久化由 service 端命令式 Dapper 完成（無 change-tracking）。`TeamSlotCharacter.Version` 是 Postgres `xmin` 轉字串，供入隊定案的樂觀鎖比對（見「入隊定案的併發控制」）；`TeamSlotCharacter.SlotDateTime` 是開團時間的去正規化快照，供跨隊重疊唯一索引。
+> **候選資料來源**：`IsSeekingRaid`（角色參戰 opt-in）× `PlayerAvailabilityStanding`（常設時段，`PlayerAvailabilityOverride` 為特定日期蓋寫）× `CharacterBossClear`（通關數，過濾 `MinClearCount`）；即時團則走 `LfgIntent` 看板。
 
 ---
 
@@ -605,34 +575,14 @@ erDiagram
         string Role
     }
 
-    PlayerRegister {
-        int Id PK
-        bigint DiscordId FK
-        int PeriodId FK
-    }
-
-    PlayerAvailability {
-        int Id PK
-        int PlayerRegisterId FK
-        int Weekday
-        time StartTime
-        time EndTime
-    }
-
-    CharacterRegister {
-        int Id PK
-        int PlayerRegisterId FK
-        string CharacterId FK
-        int BossId FK
-        int Rounds
-    }
-
     Character {
         string Id PK
         bigint DiscordId FK
         string Name
         string Job
         int AttackPower
+        bool IsSeekingRaid
+        int MapleBlessingLevel
     }
 
     Boss {
@@ -642,24 +592,36 @@ erDiagram
         int RoundConsumption
     }
 
-    BossTemplate {
+    PlayerAvailabilityStanding {
         int Id PK
+        bigint DiscordId
+        int Weekday
+        time StartTime
+        time EndTime
+    }
+
+    PlayerAvailabilityOverride {
+        int Id PK
+        bigint DiscordId
+        date Date
+        time StartTime
+        time EndTime
+        bool IsAvailable
+    }
+
+    CharacterBossClear {
+        int Id PK
+        string CharacterId FK
         int BossId FK
-        string Name
+        int ClearCount
     }
 
-    BossTemplateRequirement {
+    LfgIntent {
         int Id PK
-        int BossTemplateId FK
-        string JobCategory
-        int Count
-        int Priority
-    }
-
-    Period {
-        int Id PK
-        timestamptz StartDate
-        timestamptz EndDate
+        bigint DiscordId
+        string CharacterId FK
+        int BossId FK
+        timestamptz ExpiresAt
     }
 
     TeamSlot {
@@ -667,25 +629,40 @@ erDiagram
         int BossId FK
         timestamptz SlotDateTime
         text Source
-        int TemplateId FK
+        text Kind
+        timestamptz ExpiresAt
+        bigint LeaderDiscordId
+        bigint PendingLeaderDiscordId
+        text Description
+        int RunsMin
+        int RunsMax
     }
 
     TeamSlotCharacter {
         int Id PK
         int TeamSlotId FK
         bigint DiscordId
-        string DiscordName
         string CharacterId FK
         string CharacterName
         string Job
         int AttackPower
-        int Rounds
+        text Status
+        timestamptz SlotDateTime
         bool IsManual
     }
 
-    JobCategory {
-        string JobName PK
-        string CategoryName
+    TeamSlotRequirement {
+        int Id PK
+        int TeamSlotId FK
+        int Count
+        int MinClearCount
+    }
+
+    TeamSlotRequirementJob {
+        int Id PK
+        int RequirementId FK
+        string Job
+        int MinAttackPower
     }
 
     DiscordRoleMapping {
@@ -702,9 +679,10 @@ erDiagram
 
     SystemConfig {
         int Id PK
-        int DeadlineDayOfWeek
-        interval DeadlineTime
-        bool IsDeadlineNotified
+        bool LeaveRateWarnEnabled
+        int LeaveRateWindowMonths
+        int LeaveRateThreshold
+        int LeaveRateMinSample
     }
 
     OutboxMessage {
@@ -717,18 +695,16 @@ erDiagram
         text LastError
     }
 
-    Player ||--o{ PlayerRegister : ""
-    Period ||--o{ PlayerRegister : ""
-    PlayerRegister ||--o{ PlayerAvailability : ""
-    PlayerRegister ||--o{ CharacterRegister : ""
-    Character ||--o{ CharacterRegister : ""
-    Boss ||--o{ CharacterRegister : ""
     Player ||--o{ Character : ""
-    Boss ||--o{ BossTemplate : ""
-    BossTemplate ||--o{ BossTemplateRequirement : ""
+    Player ||--o{ PlayerAvailabilityStanding : ""
+    Player ||--o{ PlayerAvailabilityOverride : ""
+    Character ||--o{ CharacterBossClear : ""
+    Character ||--o{ LfgIntent : ""
+    Boss ||--o{ CharacterBossClear : ""
     Boss ||--o{ TeamSlot : ""
-    BossTemplate ||--o{ TeamSlot : ""
     TeamSlot ||--o{ TeamSlotCharacter : ""
+    TeamSlot ||--o{ TeamSlotRequirement : ""
+    TeamSlotRequirement ||--o{ TeamSlotRequirementJob : ""
 ```
 ---
 
@@ -764,9 +740,9 @@ sequenceDiagram
 
 | 功能 | 說明 |
 |---|---|
-| **每日提醒** | 背景作業每天掃描當日 `TeamSlot`，Bot 標記玩家提醒行程 |
-| **截止提醒** | 報名截止日自動觸發，附上排團結果 URL |
-| **身分組同步** | 登入時透過 Bot Token 查詢 Discord Guild Member，判斷 `Admin` / `User` |
+| **每日提醒** | `DailyNotificationService` 每天掃描當日 `TeamSlot`，Bot 提醒成員今日行程 |
+| **組隊通知（DM）** | leader-led 狀態改動（邀請/接受/核准/額滿撤銷…）經 transactional outbox → `TeamNotificationOutboxHandler` 發 Discord 私訊給對應玩家 |
+| **身分組同步** | 登入時透過 Bot Token 查詢 Discord Guild Member，判斷 `Admin` / `User`；`MemberUpdated`/`MemberRemoved` 事件即時撤銷 session |
 
 ---
 
@@ -774,14 +750,16 @@ sequenceDiagram
 
 | 服務 | 職責 |
 |---|---|
-| `RegisterService` | 玩家報名寫入，報名後觸發即時自動分配 |
-| `TeamSlotAutoAssignService` | 自動分配核心：即時分配 + 批次重排 |
-| `TeamSlotMergeService` | 合併零散隊伍，根據 BossTemplate 優化陣容 |
-| `TeamSlotCharacterService` | 補位、移除成員，設定 `IsManual` 保護旗標 |
+| `TeamLeaderService` | Leader-led 組隊核心：開隊、候選過濾、Pull 邀請 / Push 申請、入隊定案、退隊、隊長轉讓 |
+| `ProfileService` | 玩家「我的資料」：常設可用時段 + 角色參戰 opt-in（`IsSeekingRaid`）讀寫 |
+| `LfgService` | 即時揪團看板：`LfgIntent` 發起 / 撤銷（即時團候選來源） |
+| `AvailabilityOverrideService` | 特定日期可用時段例外（蓋寫常設時段） |
+| `CharacterService` | 角色 CRUD + per 角色 per 王通關數（`CharacterBossClear`）自填（帶擁有權檢查） |
+| `BossService` | Boss CRUD |
+| `SystemConfigService` | 系統設定（候選退團率警示參數）；變更走 outbox 通知 bot |
 | `AuthAppService` | Discord OAuth2 流程、角色判斷、憑證核發 |
 | `JwtService` / `SessionService` | JWT 核發驗證 / DB Session 管理 |
 | `DiscordOAuthClient` | Discord REST API 呼叫（token 兌換、身分組查詢） |
-| `ScheduleService` | 背景作業協調（每日提醒、截止提醒） |
 
 ---
 
@@ -852,7 +830,7 @@ flowchart LR
     gate -->|動到程式碼| ci["format → build → unit/integration-test\n→ frontend-test(lint+test+build) → coverage → e2e"]
     skip --> checks{"required status checks\n（含 enforce_admins，admin 也不能繞過）"}
     ci -->|全綠| checks
-    checks -->|通過| merge["squash merge 進 main"]
+    checks -->|通過| merge["rebase merge 進 main"]
     merge --> mainci["main push 觸發同一份 ci.yml\n（post-merge 再驗一次，非 deploy 的一部分）"]
     merge -.->|另一條、需人工觸發| dispatch["workflow_dispatch：deploy.yml"]
     dispatch --> envgate["production Environment\n（可設 required reviewers）"]
