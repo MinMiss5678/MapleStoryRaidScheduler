@@ -392,7 +392,7 @@ flowchart LR
 | Kind | 時間 | 候選來源 | 到期 |
 |---|---|---|---|
 | `Scheduled` | 約定的 `SlotDateTime`（**不得早於現在**——period-less 後不再解析／綁 `Period`，改驗時間本身合法） | 參戰中角色 × 常設可用時段 overlap 開團時間 | 無（`SlotDateTime` 過了自然失效） |
-| `Instant` | 現在（`now`） | 即時揪團看板 `LfgIntent`（跳過時段比對） | `ExpiresAt = now + 3h` TTL |
+| `Instant` | 現在（`now`） | 玩家掛的找隊意圖 `LfgIntent`（隊長 pull 為候選、跳過時段比對；**非公開看板**） | `ExpiresAt = now + 3h` TTL |
 
 開隊時附一組**需求列**（`TeamSlotRequirement`：`Count` + `MinClearCount` + `Jobs[{Job, MinAttackPower}]`；子表 `TeamSlotRequirementJob`）。需求只用來**過濾候選 + 前端招募告示**，不強制隊伍職業組成（容量只認 `Boss.RequireMembers`）。
 
@@ -403,6 +403,14 @@ flowchart LR
 - **Scheduled**：候選池 = `IsSeekingRaid` 的角色 × 其玩家 `PlayerAvailabilityStanding`（常設可用時段）與開團時間 weekday+time 重疊；`PlayerAvailabilityOverride`（特定日期例外）蓋過常設。再依需求列過濾：職業符合、攻擊力 ≥ 門檻、**通關數**（`CharacterBossClear` 同玩家跨角色對該王加總）≥ `MinClearCount`。
 - **Instant**：候選來自 `LfgIntent`（現在想打該王的人），略過時段比對。
 - 兩者都做**狀態感知去重**：排除「其玩家已在本隊 active（`Confirmed`/`Invited`/`Applied`）」者，以及「已在該開團時刻別隊 `Confirmed`」者（對齊跨隊重疊約束，見下）。
+
+### 招募缺口・隊員組成・顯示身分
+
+- **招募缺口**（`GetRecruitmentGapAsync`）：對每條需求列數已 `Confirmed` 的同職業成員，`還缺 = Count − 已配`（**逐列貪婪**、限定職業列先配再配不限）；前端在候選/審核頁顯示「還缺 主教×1…」，並依需求職業分組、缺的排前。軟提示——不改容量、不強制組成。
+- **隊員組成**（`GetTeamMembersAsync`）：已 `Confirmed` 成員或隊長可看該隊成員（角色/職業/攻擊/祝福、標記隊長）；外人 403。**尋隊**（公開面 `GetOpenTeamsAsync`）則只回成員能力、**不露身分**（§9.12）。
+- **顯示身分**：面向「別人」的清單（候選/審核/隊員/轉讓）一律以 `discordName` 呈現（認的是「人」）；「自己的角色」情境（我的角色、我的邀請/已加入卡、開隊/申請選角）才顯示角色名。
+- **即時找隊 leader-led**：玩家在 `/teams/instant` 只管理自己的 `LfgIntent`（`GetBoardAsync` 只回本人，不公開他人）；別人一律由隊長開即時團經候選（`GetInstantPoolAsync`）邀。`LfgIntent` 同角色同王（含任意王 `NULL`）唯一（`uq_lfgintent_char_boss`，NULLS NOT DISTINCT，migration `000020`），重貼走 upsert 刷新 TTL。
+- **解散隊伍**（`DeleteTeamAsync`）：隊長刪整隊 + 通知在籍成員（排除隊長本人）。
 
 ### 通知（與狀態改動原子）
 
@@ -740,8 +748,7 @@ sequenceDiagram
 
 | 功能 | 說明 |
 |---|---|
-| **每日提醒** | `DailyNotificationService` 每天掃描當日 `TeamSlot`，Bot 提醒成員今日行程 |
-| **組隊通知（DM）** | leader-led 狀態改動（邀請/接受/核准/額滿撤銷…）經 transactional outbox → `TeamNotificationOutboxHandler` 發 Discord 私訊給對應玩家 |
+| **組隊通知（DM）** | leader-led 狀態改動（邀請/接受/核准/額滿撤銷/解散…）經 transactional outbox → `TeamNotificationOutboxHandler` 發 Discord 私訊給對應玩家。**無每日頻道廣播**——通知一律走個人 DM | 
 | **身分組同步** | 登入時透過 Bot Token 查詢 Discord Guild Member，判斷 `Admin` / `User`；`MemberUpdated`/`MemberRemoved` 事件即時撤銷 session |
 
 ---
@@ -752,7 +759,7 @@ sequenceDiagram
 |---|---|
 | `TeamLeaderService` | Leader-led 組隊核心：開隊、候選過濾、Pull 邀請 / Push 申請、入隊定案、退隊、隊長轉讓 |
 | `ProfileService` | 玩家「我的資料」：常設可用時段 + 角色參戰 opt-in（`IsSeekingRaid`）讀寫 |
-| `LfgService` | 即時揪團看板：`LfgIntent` 發起 / 撤銷（即時團候選來源） |
+| `LfgService` | 即時找隊意圖：玩家發起 / 撤銷自己的 `LfgIntent`（即時團候選來源；**非公開看板**，只回本人。同角色同王唯一 + upsert，見 migration `000020`） |
 | `AvailabilityOverrideService` | 特定日期可用時段例外（蓋寫常設時段） |
 | `CharacterService` | 角色 CRUD + per 角色 per 王通關數（`CharacterBossClear`）自填（帶擁有權檢查） |
 | `BossService` | Boss CRUD |

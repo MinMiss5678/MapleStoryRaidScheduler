@@ -19,6 +19,7 @@
 | CT3 | 開隊帶一組需求列（`TeamSlotRequirement`：`Count` + `MinClearCount` + `Jobs[{Job, MinAttackPower}]`）；需求**只驅動候選過濾 + 前端招募告示**，不強制隊伍職業組成 | `TeamLeaderService` / `TeamSlotRequirement` |
 | CT4 | 隊伍容量 = `Boss.RequireMembers`（唯一硬上限；需求列不改容量） | `Boss` / `ConfirmMemberAsync` |
 | CT5 | `TeamSlot.Source` 一律 `"leader"`（舊 `auto`/`admin` 來源隨自動排團退場） | `TeamSlotSource` |
+| CT6 | 開隊可**帶自己角色**（`LeaderCharacterId`，須本人角色）→ 佔 1 位、同交易自動 `Confirmed`；不帶＝只揪人不佔位 | `TeamLeaderService.CreateTeamAsync` |
 
 ## 二、成員狀態（Membership Status）
 
@@ -35,8 +36,10 @@
 | CD1 | **排程團**候選池 = 角色 `IsSeekingRaid=true`（參戰 opt-in）× 其玩家 `PlayerAvailabilityStanding`（常設可用時段）與開團時間 weekday+time 重疊 | `TeamCandidateQuery.GetPoolAsync` |
 | CD2 | `PlayerAvailabilityOverride`（特定日期例外）**蓋寫**常設時段：該日標不可用 → 即使常設可用也排除 | `AvailabilityOverrideService` / 候選過濾 |
 | CD3 | 需求過濾：職業符合任一需求列的 `Jobs` + 攻擊力 ≥ 該職業 `MinAttackPower` + **通關數 ≥ `MinClearCount`**（`CharacterBossClear` 同玩家跨角色對該王加總） | `TeamLeaderService.GetCandidatesAsync` |
-| CD4 | **即時團**候選來自 `LfgIntent` 看板（現在想打該王的人），**略過時段比對** | `TeamCandidateQuery.GetInstantPoolAsync` |
+| CD4 | **即時團**候選來自玩家掛的 `LfgIntent`（現在想打該王的人），**略過時段比對** | `TeamCandidateQuery.GetInstantPoolAsync` |
 | CD5 | 狀態感知去重：排除「其玩家已在本隊 active（Confirmed/Invited/Applied）」與「已在該開團時刻別隊 Confirmed（對齊 `uq_tsc_confirmed_overlap`）」者 | `TeamLeaderService.GetCandidatesAsync` |
+| CD6 | **即時找隊 leader-led（非公開看板）**：玩家在 `/teams/instant` 只**管理自己**的找隊意圖（後端只回本人），別人一律由隊長開即時團時經 CD4 撈為候選、web 內 invite→accept——不對外公開他人身分 | `LfgQuery.GetBoardAsync`（僅回本人） |
+| CD7 | 找隊意圖去重：同角色同王（含任意王 `BossId=NULL`）唯一（`uq_lfgintent_char_boss`，NULLS NOT DISTINCT）；重貼走 upsert **只刷新 TTL、不新增列** | migration `000020` / `LfgIntentRepository.CreateAsync` |
 
 ## 四、組隊狀態機（Pull / Push / 退隊 / 轉讓）
 
@@ -46,7 +49,8 @@
 | SM2 | **Push**：玩家 `Apply`（用本人角色，→`Applied`）→ 隊長 `Approve`（→`Confirmed`）/ `Reject`（→`Rejected`）；**非隊長不能審核**（→403） | `TeamLeaderService.Apply/Approve/Reject` |
 | SM3 | **退隊**：`Confirmed`→`Left`，釋放位子；只能退自己在該隊的成員資格 | `TeamLeaderService.LeaveTeam` |
 | SM4 | **隊長轉讓（需同意）**：`ProposeLeaderTransfer` 設 `PendingLeaderDiscordId` → 對方 `RespondLeaderTransfer` accept（搬進 `LeaderDiscordId`）/ decline | `TeamLeaderService.Propose/RespondLeaderTransfer` |
-| SM5 | 重複邀請/申請去重：同隊同玩家一筆有效 `Applied`/`Invited`（`uq_tsc_active_membership`）；違反 → 23505 → 409 | migration `000011` |
+| SM5 | 重複邀請/申請去重：同隊同玩家一筆有效 `Applied`/`Invited`（`uq_tsc_active_membership`）；違反 → 23505 → 409。另 `Apply` 前擋「已在本隊 active」（直打 API 兜底） | migration `000011` / `TeamLeaderService.ApplyAsync` |
+| SM6 | **解散隊伍**：隊長 `DeleteTeam` 刪整隊（連成員列）；通知所有在籍（Confirmed/Invited/Applied）成員、但**排除隊長本人**（是他按的） | `TeamLeaderService.DeleteTeamAsync` |
 
 ## 五、入隊定案的併發控制（Confirm）
 
@@ -56,14 +60,13 @@
 | CF2 | **同隊超編**：定案前對 `(classId=1002, teamSlotId)` 取交易級 advisory lock 序列化，鎖內**重讀** `CountConfirmed` vs `Boss.RequireMembers`，達容量 → 拋「隊伍已滿」；再以 `xmin`（`Version`）樂觀鎖改狀態 | `RegistrationLock.AcquireTeamSlotEditLockAsync` / `ConfirmMemberAsync` |
 | CF3 | **跨隊分身**：同玩家同 `SlotDateTime` 的 `Confirmed` 唯一（`uq_tsc_confirmed_overlap`）→ 第二筆 23505 → 409（per-team 鎖管不到跨隊，這是唯一原子擋） | migration `000011` |
 | CF4 | 定案使隊伍額滿 → 自動撤銷其餘待接受邀請（`RevokePendingInvitesAsync`，仍在同一把鎖內）+ 各發一則通知 | `ConfirmMemberAsync` |
-| CF5 | 入隊後清掉該玩家的 `LfgIntent`（已找到隊、不再掛即時看板）；排程 accept 無意圖 → no-op | `ConfirmMemberAsync` |
+| CF5 | 入隊後清掉該玩家的 `LfgIntent`（已找到隊、不再列為即時候選）；排程 accept 無意圖 → no-op | `ConfirmMemberAsync` |
 | CF6 | `lock_timeout`（預設 5 秒）逾時拋 `AdvisoryLockTimeoutException` → 轉「隊伍忙碌中，請稍後重試」 | `RegistrationLock` |
 
 ## 六、通知（Notification）
 
 | # | 規則 | 來源 |
 |---|---|---|
-| N1 | 每日通知：`DailyNotificationService` 每天發當日隊伍到 Discord，同隊玩家聚合成一則；當日無隊伍則不發 | `DailyNotificationService` |
 | N2 | **組隊通知**：leader-led 每個狀態改動（邀請/接受/核准/額滿撤銷…）與狀態寫入**同一交易** enqueue 一則 `TeamNotification` outbox 列 → bot 的 handler 撈去發 Discord DM | `TeamLeaderService.NotifyAsync` / `TeamNotificationOutboxHandler` |
 | N3 | 系統設定變更（`SystemConfig` 退團率參數）與 `UpdateAsync` 同一交易寫 `ConfigChanged` outbox → bot 喚醒重讀 | `SystemConfigService.UpdateAsync` |
 | N4 | 設定變更事件走 **transactional outbox**：commit 才生效、rollback 丟棄，bot 的 `OutboxDispatcher` 讀已提交列 → **跨行程可靠 + crash-safe**（取代原 in-process `AfterCommit`） | `Outbox` / `OutboxDispatcher`；`architecture.md §7 Transactional Outbox` |
@@ -107,6 +110,15 @@
 |---|---|---|
 | C1 | 修改角色**只更新 Name + AttackPower**：`UpdateAsync` 的 SQL 不寫入 Job、Id(code) 是識別鍵不更動 → **職業與代碼不可改，前端繞過也無效（後端強制）** | `CharacterRepository.UpdateAsync` + `CharacterForm`（前端鎖欄位） |
 | C2 | 名稱最長 20 字、代碼最長 5 字（前端輸入限制） | `CharacterForm` |
+
+## 十一、顯示與可見性（Visibility）
+
+| # | 規則 | 來源 |
+|---|---|---|
+| V1 | **招募缺口**：隊長在候選/審核頁看「還缺什麼職業」＝各需求列 `Count` − 已 `Confirmed` 且職業落在該列的人數（**逐列貪婪配對**、先配限定職業列再配不限；軟提示、不強制組成） | `TeamLeaderService.GetRecruitmentGapAsync` |
+| V2 | **隊員組成**：**已 `Confirmed` 成員或隊長**可查該隊成員（角色/職業/攻擊/祝福、標記隊長）；外人 → 403 | `TeamLeaderService.GetTeamMembersAsync` |
+| V3 | **尋隊（公開面）**回已 `Confirmed` 成員能力（職業/攻擊/祝福）供判斷配置，但**不露 Discord/角色身分**（§9.12） | `TeamMembershipQuery.GetOpenTeamsAsync` |
+| V4 | 顯示「**別人**」一律以 `discordName` 呈現（候選/審核/隊員/轉讓，認的是「人」）；「**自己的角色**」情境（我的角色、我的邀請/已加入卡、開隊/申請選角）才顯示角色名 | 各查詢 / 前端 |
 
 ---
 
