@@ -7,11 +7,14 @@ export type Membership = {
     slotDateTime: string; // ISO 字串
     characterId: string | null;
     characterName: string | null;
+    discordName: string | null; // 審核佇列顯示「人」用；其他情境為本人
     job: string | null;
     attackPower: number;
     status: string; // Applied | Invited | Confirmed | Rejected
     requireMembers: number; // 隊伍容量
     confirmedCount: number; // 已入隊數（用來判斷是否已滿）
+    mapleBlessingLevel: number; // 祝福等級（僅隊長審核佇列有值，其餘為 0）
+    bossClearCount: number; // 該玩家本王總通關（僅隊長審核佇列有值，其餘為 0）
 };
 
 export type OpenTeamRequirementJob = { job: string; minAttackPower: number };
@@ -25,7 +28,11 @@ export type OpenTeam = {
     confirmedCount: number;
     description: string | null;
     requirements: OpenTeamRequirement[];
+    confirmedMembers: OpenTeamMember[]; // 已確認成員能力（職業/攻擊/祝福，不露身分）——尋隊看組成+戰力
 };
+
+// 尋隊看得到的已確認成員能力（不含身分）
+export type OpenTeamMember = { job: string | null; attackPower: number; mapleBlessingLevel: number };
 
 export type InvitationAction = 'accept' | 'decline';
 
@@ -33,6 +40,12 @@ export type InvitationAction = 'accept' | 'decline';
 export type LeaderTransfer = { teamSlotId: number; bossName: string | null; slotDateTime: string };
 export type RosterMember = { memberId: number; characterName: string | null; discordName: string | null };
 export type ApplicationAction = 'approve' | 'reject';
+
+// 招募缺口一列（隊長挑候選時看「還缺什麼職業」；jobs 空=不限職業）
+export type RecruitmentGapRow = { jobs: string[]; required: number; remaining: number };
+
+// 隊伍組成一列（已入隊成員看隊友；以 discordName 呈現「人」，characterName 僅 fallback）
+export type TeamMember = { discordName: string | null; characterName: string | null; job: string | null; attackPower: number; mapleBlessingLevel: number; isLeader: boolean };
 
 // 隊長「我開的隊」hub 一列（對齊後端 LedTeamDto）
 export type LedTeam = {
@@ -67,5 +80,6 @@ export type CreateTeamCommand = {
     slotDateTime: string;
     kind?: "Scheduled" | "Instant";   // period-less §8 Phase 3：即時團=Instant
     description?: string;
+    leaderCharacterId?: string;        // 隊長帶自己下去打的角色（佔 1 位、自動 Confirmed）；不帶=只揪人
     requirements: CreateTeamRequirementInput[];
 };

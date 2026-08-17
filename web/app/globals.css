@@ -46,3 +46,12 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* 原生 <select> 下拉：選項清單沿用主題色。
+   部分瀏覽器（尤其 Windows Chrome）不會把 select 的背景繼承到彈出的 <option> 清單，
+   深色模式下會露出白底白字 → 這裡對所有 select/option 統一補上主題色，免逐一標 class。 */
+select,
+option {
+  background: var(--background);
+  color: var(--foreground);
+}

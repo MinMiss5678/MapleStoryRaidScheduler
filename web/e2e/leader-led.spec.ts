@@ -52,7 +52,7 @@ test('隊長開隊 → 玩家申請 → 隊長核准 → 玩家看到已加入',
   await expect(hubCard).toBeVisible();                        // 確保 hub 載入完成再點
   await hubCard.getByRole('link', { name: /審核申請/ }).click();
   await page.waitForURL(/\/teams\/\d+\/applications/);
-  await expect(page.getByText('C-LL')).toBeVisible();        // 申請者角色名
+  await expect(page.getByText('P-LL')).toBeVisible();        // 申請者顯示名（discordName，不再顯示角色名）
   await page.getByRole('button', { name: '核准' }).click();
   await expect(page.getByText('目前沒有待審核的申請')).toBeVisible();
 

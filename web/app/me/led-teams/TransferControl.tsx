@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { UserCog } from "lucide-react";
 import { leaderService } from "@/services/leaderService";
+import { invalidateTeamQueries } from "@/lib/invalidateTeamQueries";
 import { ApiError } from "@/services/apiClient";
 
 // 帶隊卡的「轉讓隊長」控制：展開後取本隊 Confirmed 名冊、選一個成員送出提議（需對方接受）。
@@ -27,7 +28,7 @@ export function TransferControl({ teamSlotId }: { teamSlotId: number }) {
             setMemberId("");
         },
         onError: (e) => toast.error(e instanceof ApiError ? e.message : "轉讓失敗，請稍後再試"),
-        onSettled: () => qc.invalidateQueries({ queryKey: ["ledTeams"] }),
+        onSettled: () => invalidateTeamQueries(qc),
     });
 
     if (!open) {
@@ -51,7 +52,7 @@ export function TransferControl({ teamSlotId }: { teamSlotId: number }) {
                 <option value="">選擇要轉讓給的成員…</option>
                 {roster.map((m) => (
                     <option key={m.memberId} value={m.memberId}>
-                        {m.discordName ?? m.characterName}（{m.characterName}）
+                        {m.discordName || m.characterName}
                     </option>
                 ))}
             </select>

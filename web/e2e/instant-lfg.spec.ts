@@ -33,7 +33,7 @@ test('發找隊 → 開即時團 → 候選來自看板 → 邀請 → 接受入
   const hub = page.locator('li').filter({ hasText: 'E2E王' }).first();
   await hub.getByRole('link', { name: /挑候選/ }).click();
   await page.waitForURL(/\/teams\/\d+\/candidates/);
-  const candRow = page.locator('li').filter({ hasText: 'C-Lfg' });
+  const candRow = page.locator('li').filter({ hasText: 'P-Lfg' });   // 候選以 discordName 呈現（不再顯示角色名）
   await expect(candRow).toBeVisible();
   await Promise.all([
     page.waitForResponse(r => r.url().includes('/Invitations') && r.request().method() === 'POST' && r.ok()),

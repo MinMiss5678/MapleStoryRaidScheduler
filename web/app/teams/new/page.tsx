@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Crown, Plus, Trash2, Swords, Bookmark, Star, X } from "lucide-react";
 import { useBosses } from "@/hooks/queries/useBosses";
+import { useCharacters } from "@/hooks/queries/useCharacters";
 import toast from "react-hot-toast";
 import { leaderService } from "@/services/leaderService";
+import { invalidateTeamQueries } from "@/lib/invalidateTeamQueries";
 import { ApiError } from "@/services/apiClient";
 import { JOBS } from "@/constants/jobs";
 import { CreateTeamRequirementInput } from "@/types/leaderLed";
@@ -37,7 +39,9 @@ const cloneRows = (rows: CreateTeamRequirementInput[]): CreateTeamRequirementInp
 
 export default function NewTeamPage() {
     const router = useRouter();
+    const qc = useQueryClient();
     const { data: bosses = [] } = useBosses();
+    const { data: characters = [] } = useCharacters();
 
     const [bossId, setBossId] = useState(0);
     const [slotDateTime, setSlotDateTime] = useState("");
@@ -45,6 +49,9 @@ export default function NewTeamPage() {
     const [description, setDescription] = useState("");
     const [rows, setRows] = useState<CreateTeamRequirementInput[]>([emptyRow()]);
     const [presets, setPresets] = useState<Preset[]>([]);
+    // 隊長參戰：帶自己一隻角色下去打（佔 1 位、自動入隊）；沒角色或勾「只揪人」則不帶。
+    const [leaderCharacterId, setLeaderCharacterId] = useState("");
+    const [organizerOnly, setOrganizerOnly] = useState(false);
 
     useEffect(() => setPresets(loadPresets()), []);
 
@@ -95,13 +102,20 @@ export default function NewTeamPage() {
                 slotDateTime: isInstant ? new Date().toISOString() : new Date(slotDateTime).toISOString(),
                 kind: isInstant ? "Instant" : "Scheduled",
                 description: description.trim() || undefined,
+                // 帶自己下去打 → 佔 1 位自動入隊；勾「只揪人」則不帶
+                leaderCharacterId: organizerOnly ? undefined : (leaderCharacterId || undefined),
                 requirements: rows,
             }),
         onSuccess: () => router.push("/me/led-teams"),
         onError: (e) => toast.error(e instanceof ApiError ? e.message : "開隊失敗，請稍後再試"),
+        // 開隊後把隊伍相關快取全失效——否則跳到「我開的隊」看到的是舊快取、要重整才有新隊。
+        onSettled: () => invalidateTeamQueries(qc),
     });
 
-    const canSubmit = bossId > 0 && (isInstant || slotDateTime !== "") && rows.every((r) => r.count >= 1);
+    // 有角色又不是「只揪人」→ 必須選一隻要帶的角色（避免忘了把自己排進去）
+    const needLeaderChar = !organizerOnly && characters.length > 0;
+    const canSubmit = bossId > 0 && (isInstant || slotDateTime !== "") && rows.every((r) => r.count >= 1)
+        && (!needLeaderChar || leaderCharacterId !== "");
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-8">
@@ -169,6 +183,33 @@ export default function NewTeamPage() {
                             className="px-3 py-2 bg-background border border-border rounded-xl text-sm resize-none"
                         />
                     </label>
+
+                    {/* 隊長參戰：帶自己一隻角色下去打（佔 1 位、自動入隊） */}
+                    <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+                        <span className="text-sm font-medium flex items-center gap-1.5"><Crown size={14} /> 我帶哪隻角色下去打</span>
+                        {characters.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">你還沒有角色——到「角色管理」新增後才能帶自己下去打；目前只能純揪人。</p>
+                        ) : organizerOnly ? (
+                            <p className="text-xs text-muted-foreground">只揪人模式：你不佔位、只負責組隊與審核。</p>
+                        ) : (
+                            <select
+                                value={leaderCharacterId}
+                                onChange={(e) => setLeaderCharacterId(e.target.value)}
+                                className="px-3 py-2 bg-background border border-border rounded-xl text-sm"
+                            >
+                                <option value="">選擇你要帶的角色…</option>
+                                {characters.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.name}（{c.job}）</option>
+                                ))}
+                            </select>
+                        )}
+                        {characters.length > 0 && (
+                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5 cursor-pointer">
+                                <input type="checkbox" checked={organizerOnly} onChange={(e) => setOrganizerOnly(e.target.checked)} />
+                                我只揪人、自己不打（不佔位）
+                            </label>
+                        )}
+                    </div>
                 </div>
 
                 {/* 條件 builder */}

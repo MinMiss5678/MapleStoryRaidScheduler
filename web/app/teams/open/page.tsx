@@ -2,31 +2,15 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Compass, Swords, Clock, Users, Send, Trophy } from "lucide-react";
+import { Compass, Swords, Clock, Users, Send, Zap, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 import { useOpenTeams } from "@/hooks/queries/useOpenTeams";
 import { useCharacters } from "@/hooks/queries/useCharacters";
 import { leaderService } from "@/services/leaderService";
-import { OpenTeam, OpenTeamRequirement } from "@/types/leaderLed";
+import { invalidateTeamQueries } from "@/lib/invalidateTeamQueries";
+import { OpenTeam } from "@/types/leaderLed";
 import { ApiError } from "@/services/apiClient";
 import { formatSlot } from "@/utils/dateTimeUtil";
-
-function RequirementLine({ req }: { req: OpenTeamRequirement }) {
-    const jobs = req.jobs.length
-        ? req.jobs.map((j) => `${j.job}${j.minAttackPower > 0 ? `≥${j.minAttackPower}` : ""}`).join(" / ")
-        : "不限職業";
-    return (
-        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <span className="font-medium text-foreground">{req.count} 位</span>
-            <span>{jobs}</span>
-            {req.minClearCount > 0 && (
-                <span className="flex items-center gap-0.5">
-                    <Trophy size={11} /> 通關≥{req.minClearCount}
-                </span>
-            )}
-        </div>
-    );
-}
 
 function OpenTeamCard({ team }: { team: OpenTeam }) {
     const qc = useQueryClient();
@@ -41,10 +25,8 @@ function OpenTeamCard({ team }: { team: OpenTeam }) {
         },
         onError: (e) => toast.error(e instanceof ApiError ? e.message : "申請失敗，請稍後再試"),
         // 成功/失敗都刷新：失敗多半是隊伍已滿 → 讓卡片人數/剩餘與伺服器對齊
-        onSettled: () => qc.invalidateQueries({ queryKey: ["openTeams"] }),
+        onSettled: () => invalidateTeamQueries(qc),
     });
-
-    const remaining = team.requireMembers - team.confirmedCount;
 
     return (
         <li className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-3">
@@ -55,7 +37,6 @@ function OpenTeamCard({ team }: { team: OpenTeam }) {
                 </div>
                 <span className="flex items-center gap-1 text-sm text-muted-foreground">
                     <Users size={14} /> {team.confirmedCount}/{team.requireMembers}
-                    <span className="text-green-600 dark:text-green-400">（缺 {remaining}）</span>
                 </span>
             </div>
 
@@ -67,10 +48,14 @@ function OpenTeamCard({ team }: { team: OpenTeam }) {
                 <p className="text-sm bg-muted/50 rounded-lg px-3 py-2 whitespace-pre-wrap">{team.description}</p>
             )}
 
-            {team.requirements.length > 0 && (
+            {team.confirmedMembers.length > 0 && (
                 <div className="flex flex-col gap-1 border-t border-border pt-2">
-                    {team.requirements.map((req, i) => (
-                        <RequirementLine key={i} req={req} />
+                    {team.confirmedMembers.map((m, i) => (
+                        <div key={i} className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                            <span className="text-foreground">{m.job}</span>
+                            <span className="flex items-center gap-0.5"><Zap size={11} /> {m.attackPower}</span>
+                            <span className="flex items-center gap-0.5"><Sparkles size={11} /> 祝福 {m.mapleBlessingLevel}</span>
+                        </div>
                     ))}
                 </div>
             )}

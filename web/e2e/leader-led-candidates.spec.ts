@@ -32,10 +32,10 @@ test('隊長開隊 → 挑候選邀請 → 玩家接受入隊（Pull）', async 
   await expect(hubCard).toBeVisible();
   await hubCard.getByRole('link', { name: /挑候選/ }).click();
   await page.waitForURL(/\/teams\/\d+\/candidates/);
-  const candRow = page.locator('li').filter({ hasText: 'C-Cand' });
+  const candRow = page.locator('li').filter({ hasText: 'P-Cand' });
   await expect(candRow).toBeVisible();
-  // 透明化：候選卡顯示玩家顯示名（公會暱稱優先）——seed 的 P-Cand
-  await expect(candRow).toContainText('@P-Cand');
+  // 候選卡以玩家顯示名（discordName，公會暱稱優先）呈現——seed 的 P-Cand，不再顯示角色名
+  await expect(candRow).toContainText('P-Cand');
   await Promise.all([
     page.waitForResponse(r => r.url().includes('/Invitations') && r.request().method() === 'POST' && r.ok()),
     candRow.getByRole('button', { name: '邀請' }).click(),
@@ -45,7 +45,7 @@ test('隊長開隊 → 挑候選邀請 → 玩家接受入隊（Pull）', async 
   // 狀態感知去重：邀請後（C-Cand 變 Invited）重整候選頁 → 不再列出（唯一候選 → 空狀態）
   await page.reload();
   await expect(page.getByText('沒有符合條件的候選')).toBeVisible();
-  await expect(page.getByText('C-Cand')).toHaveCount(0);
+  await expect(page.getByText('P-Cand')).toHaveCount(0);
 
   // ── 3) 候選玩家接受邀請 → 已加入 ──
   await loginAs(page, { discordId: 6003, name: 'P-Cand', role: 'user' });
