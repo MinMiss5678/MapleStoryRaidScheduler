@@ -23,12 +23,6 @@ public class DiscordService : IDiscordService
         _discordOptions = discordOptions.Value;
     }
 
-    public async Task SendMessageAsync(string message)
-    {
-        var channel = await _discordClient.GetChannelAsync(Convert.ToUInt64(_discordOptions.ChannelId));
-        await channel.SendMessageAsync(message);
-    }
-
     public async Task SendDirectMessageAsync(ulong discordId, string message)
     {
         // 快取命中 → 熱路徑只打 1 次 REST（送訊本體）。DM 頻道理論上永不失效；萬一 404（頻道失效）→ 清快取、退回完整路徑重建一次。

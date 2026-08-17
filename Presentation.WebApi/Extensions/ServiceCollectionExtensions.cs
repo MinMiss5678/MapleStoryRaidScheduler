@@ -56,7 +56,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPlayerAvailabilityOverrideRepository, PlayerAvailabilityOverrideRepository>();
         services.AddScoped<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();
         services.AddScoped<ITeamSlotRepository, TeamSlotRepository>();
-        services.AddScoped<ITeamSlotQuery, TeamSlotQuery>();
         services.AddScoped<ITeamSlotCharacterRepository, TeamSlotCharacterRepository>();
         services.AddScoped<ITeamSlotRequirementRepository, TeamSlotRequirementRepository>();
         services.AddScoped<ICharacterBossClearRepository, CharacterBossClearRepository>();
