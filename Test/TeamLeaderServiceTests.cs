@@ -148,19 +148,6 @@ public class TeamLeaderServiceTests
     }
 
     [Fact]
-    public async Task GetLedTeamsAsync_QueriesByLeader_NoPeriodGate()
-    {
-        // period-less §8 Phase 4a：時間窗取代 period → 不再吃 active period（直接查）
-        var teams = new[] { new LedTeamDto { TeamSlotId = 100, BossName = "王", AppliedCount = 2 } };
-        _membershipQueryMock.Setup(q => q.GetLedTeamsAsync(999)).ReturnsAsync(teams);
-
-        var result = await _service.GetLedTeamsAsync(999);
-
-        Assert.Same(teams, result);
-        _membershipQueryMock.Verify(q => q.GetLedTeamsAsync(999), Times.Once);
-    }
-
-    [Fact]
     public async Task DeleteTeamAsync_DeletesAndNotifiesActiveMembers_WhenLeaderOwns()
     {
         _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))

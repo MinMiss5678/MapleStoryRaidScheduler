@@ -9,7 +9,7 @@ public interface ITeamMembershipQuery
     Task<IEnumerable<MembershipDto>> GetByDiscordIdAndStatusAsync(ulong discordId, string status);
 
     /// <summary>某隊的申請佇列（Applied）——隊長審核用。</summary>
-    Task<IEnumerable<MembershipDto>> GetApplicationsAsync(int teamSlotId);
+    Task<IEnumerable<ApplicantDto>> GetApplicationsAsync(int teamSlotId);
 
     /// <summary>尚有空位的 leader 開放隊（含條件）——玩家 Push 發現用；排除 currentDiscordId 自己開的隊。</summary>
     Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync(ulong currentDiscordId);

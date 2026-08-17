@@ -439,20 +439,11 @@ public class TeamLeaderService : ITeamLeaderService
     public Task<IEnumerable<MembershipDto>> GetMyTeamsAsync(ulong discordId)
         => _membershipQuery.GetByDiscordIdAndStatusAsync(discordId, TeamSlotMemberStatus.Confirmed);
 
-    public async Task<IEnumerable<MembershipDto>> GetApplicationsAsync(int teamSlotId, ulong leaderDiscordId)
+    public async Task<IEnumerable<ApplicantDto>> GetApplicationsAsync(int teamSlotId, ulong leaderDiscordId)
     {
         await EnsureLeaderOwnsTeamAsync(teamSlotId, leaderDiscordId, "只有隊長能查看申請。");
         return await _membershipQuery.GetApplicationsAsync(teamSlotId);
     }
-
-    public async Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync(ulong currentDiscordId)
-        // period-less §8 Phase 4a：時間窗取代 period（未來排程 + 未過期即時），不再吃 active period。
-        // 排除呼叫者自己開的隊——玩家 Push 發現是「找別人的隊申請」，看到自己的隊沒意義。
-        => await _membershipQuery.GetOpenTeamsAsync(currentDiscordId);
-
-    public async Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId)
-        // period-less §8 Phase 4a：時間窗取代 period。
-        => await _membershipQuery.GetLedTeamsAsync(leaderDiscordId);
 
     public async Task LeaveTeamAsync(int teamSlotId, ulong currentDiscordId)
     {

@@ -1,5 +1,6 @@
 ﻿using Application.DTOs;
 using Application.Interface;
+using Application.Queries;
 using Microsoft.AspNetCore.Mvc;
 using Presentation.WebApi.Extensions;
 
@@ -10,10 +11,12 @@ namespace Presentation.WebApi.Controller;
 public class TeamSlotController : ControllerBase
 {
     private readonly ITeamLeaderService _teamLeaderService;
+    private readonly ITeamMembershipQuery _membershipQuery; // 純讀（尋隊/我開的隊）直接打 query，不經 service 轉發
 
-    public TeamSlotController(ITeamLeaderService teamLeaderService)
+    public TeamSlotController(ITeamLeaderService teamLeaderService, ITeamMembershipQuery membershipQuery)
     {
         _teamLeaderService = teamLeaderService;
+        _membershipQuery = membershipQuery;
     }
 
     // 隊長開隊 + 條件（leader-led，§5「不分權」→ 任何登入者可開隊）。LeaderDiscordId 用登入身分、不信任 client。
@@ -46,7 +49,7 @@ public class TeamSlotController : ControllerBase
         if (!this.TryGetCurrentDiscordId(out var discordId))
             return Unauthorized(new { error = "NotAuthenticated" });
 
-        return Ok(await _teamLeaderService.GetOpenTeamsAsync(discordId));
+        return Ok(await _membershipQuery.GetOpenTeamsAsync(discordId));
     }
 
     // Push：某隊的申請佇列（隊長審核；服務內驗隊長擁有）。
@@ -86,7 +89,7 @@ public class TeamSlotController : ControllerBase
         if (!this.TryGetCurrentDiscordId(out var discordId))
             return Unauthorized(new { error = "NotAuthenticated" });
 
-        return Ok(await _teamLeaderService.GetLedTeamsAsync(discordId));
+        return Ok(await _membershipQuery.GetLedTeamsAsync(discordId));
     }
 
     // Pull：某隊符合條件的候選清單（回能力欄、不含 discord 身分，§9.12）。

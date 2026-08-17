@@ -45,13 +45,7 @@ public interface ITeamLeaderService
     Task<IEnumerable<MembershipDto>> GetMyTeamsAsync(ulong discordId);
 
     /// <summary>某隊的申請佇列（隊長審核；驗隊長擁有）。</summary>
-    Task<IEnumerable<MembershipDto>> GetApplicationsAsync(int teamSlotId, ulong leaderDiscordId);
-
-    /// <summary>尚有空位的 leader 開放隊（Push 玩家端發現）；排除呼叫者自己開的隊（不會申請自己的隊）。</summary>
-    Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync(ulong currentDiscordId);
-
-    /// <summary>本期我當隊長開的隊（含各狀態計數，隊長 hub 入口）。</summary>
-    Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId);
+    Task<IEnumerable<ApplicantDto>> GetApplicationsAsync(int teamSlotId, ulong leaderDiscordId);
 
     /// <summary>玩家自助退隊（Confirmed→Left，釋放位子、可重邀）：只能退自己在該隊的成員資格；xmin 樂觀鎖；通知隊長。</summary>
     Task LeaveTeamAsync(int teamSlotId, ulong currentDiscordId);

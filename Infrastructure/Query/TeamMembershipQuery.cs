@@ -32,29 +32,25 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         return await _dbContext.QueryAsync<MembershipDto>(sql, new { discordId = (long)discordId, status });
     }
 
-    public async Task<IEnumerable<MembershipDto>> GetApplicationsAsync(int teamSlotId)
+    public async Task<IEnumerable<ApplicantDto>> GetApplicationsAsync(int teamSlotId)
     {
+        // 審核佇列：認「人」（DiscordName）+ 能力（攻擊快照 / 祝福 join Character / 本王通關跨角色加總）。
         const string sql = """
-            SELECT tsc."Id" AS "MemberId", tsc."TeamSlotId" AS "TeamSlotId", b."Name" AS "BossName",
-                   ts."SlotDateTime" AS "SlotDateTime", tsc."CharacterId" AS "CharacterId",
-                   tsc."CharacterName" AS "CharacterName", p."DiscordName" AS "DiscordName", tsc."Job" AS "Job",
-                   tsc."AttackPower" AS "AttackPower", tsc."Status" AS "Status",
-                   b."RequireMembers" AS "RequireMembers",
+            SELECT tsc."Id" AS "MemberId", tsc."CharacterId" AS "CharacterId",
+                   tsc."CharacterName" AS "CharacterName", p."DiscordName" AS "DiscordName",
+                   tsc."Job" AS "Job", tsc."AttackPower" AS "AttackPower",
                    COALESCE(ch."MapleBlessingLevel", 0) AS "MapleBlessingLevel",
                    COALESCE((SELECT SUM(cbc."ClearCount") FROM "CharacterBossClear" cbc
                              JOIN "Character" c2 ON c2."Id" = cbc."CharacterId"
-                             WHERE c2."DiscordId" = tsc."DiscordId" AND cbc."BossId" = ts."BossId"), 0)::int AS "BossClearCount",
-                   (SELECT COUNT(*) FROM "TeamSlotCharacter" c
-                    WHERE c."TeamSlotId" = ts."Id" AND c."Status" = 'Confirmed')::int AS "ConfirmedCount"
+                             WHERE c2."DiscordId" = tsc."DiscordId" AND cbc."BossId" = ts."BossId"), 0)::int AS "BossClearCount"
             FROM "TeamSlotCharacter" tsc
             JOIN "TeamSlot" ts ON ts."Id" = tsc."TeamSlotId"
-            JOIN "Boss" b      ON b."Id" = ts."BossId"
             JOIN "Player" p    ON p."DiscordId" = tsc."DiscordId"
             LEFT JOIN "Character" ch ON ch."Id" = tsc."CharacterId"
             WHERE tsc."TeamSlotId" = @teamSlotId AND tsc."Status" = 'Applied'
             ORDER BY tsc."Id";
             """;
-        return await _dbContext.QueryAsync<MembershipDto>(sql, new { teamSlotId });
+        return await _dbContext.QueryAsync<ApplicantDto>(sql, new { teamSlotId });
     }
 
     public async Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync(ulong currentDiscordId)
@@ -96,19 +92,8 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             """;
         var reqRows = (await _dbContext.QueryAsync<ReqRow>(reqSql, new { ids })).ToList();
 
-        var byTeam = reqRows.GroupBy(r => r.TeamSlotId).ToDictionary(g => g.Key, g =>
-            g.GroupBy(r => r.RequirementId).Select(rg =>
-            {
-                var f = rg.First();
-                return new OpenTeamRequirementDto
-                {
-                    Count = f.Count,
-                    MinClearCount = f.MinClearCount,
-                    Jobs = rg.Where(x => x.Job != null)
-                        .Select(x => new OpenTeamRequirementJobDto { Job = x.Job!, MinAttackPower = x.MinAttackPower })
-                        .ToList()
-                };
-            }).ToList());
+        var byTeam = reqRows.GroupBy(r => r.TeamSlotId)
+            .ToDictionary(g => g.Key, g => AssembleRequirements(g));
 
         // 一次撈這些隊的已確認成員能力（職業/攻擊快照 + 祝福 join Character；不含身分——尋隊公開面 §9.12）
         const string memSql = """
@@ -208,8 +193,14 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             WHERE r."TeamSlotId" = @teamSlotId
             ORDER BY r."Id";
             """;
-        var rows = (await _dbContext.QueryAsync<ReqRow>(sql, new { teamSlotId })).ToList();
-        return rows.GroupBy(r => r.RequirementId).Select(rg =>
+        var rows = await _dbContext.QueryAsync<ReqRow>(sql, new { teamSlotId });
+        return AssembleRequirements(rows);
+    }
+
+    // 一組 ReqRow（一隊或全部）→ 依 RequirementId 收斂成需求列（含各列可接受職業）。
+    // GetOpenTeamsAsync / GetRequirementsAsync 共用，避免兩處組裝邏輯各改各的走鐘。
+    private static List<OpenTeamRequirementDto> AssembleRequirements(IEnumerable<ReqRow> rows) =>
+        rows.GroupBy(r => r.RequirementId).Select(rg =>
         {
             var f = rg.First();
             return new OpenTeamRequirementDto
@@ -221,7 +212,6 @@ public class TeamMembershipQuery : ITeamMembershipQuery
                     .ToList()
             };
         }).ToList();
-    }
 
     public async Task<IEnumerable<string>> GetConfirmedJobsAsync(int teamSlotId)
     {
