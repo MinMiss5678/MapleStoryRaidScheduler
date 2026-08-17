@@ -12,14 +12,25 @@ public class MembershipDto
     public DateTimeOffset SlotDateTime { get; set; }
     public string? CharacterId { get; set; }
     public string? CharacterName { get; set; }
-    public string? DiscordName { get; set; } // 申請審核佇列用（隊長認「人」）；「我的邀請／我的隊」情境為本人、前端不顯示
     public string? Job { get; set; }
     public int AttackPower { get; set; }
     public string Status { get; set; } = "";
     public int RequireMembers { get; set; }   // 隊伍容量（Boss.RequireMembers）——供前端顯示 confirmed/require、判斷是否已滿
     public int ConfirmedCount { get; set; }    // 已入隊真實成員數（占容量者）
-    public int MapleBlessingLevel { get; set; } // 祝福等級——僅隊長審核佇列需要（其他情境為 0）
-    public int BossClearCount { get; set; }     // 該玩家本王總通關（跨其角色加總）——僅隊長審核佇列需要（其他情境為 0）
+}
+
+/// <summary>隊長審核佇列的一筆申請（Push）：認「人」（DiscordName）+ 決策所需能力（攻擊/通關/祝福）。
+/// 與 <see cref="MembershipDto"/>（本人自視：我的邀請／我的隊）分開，避免「欄位只有某情境有值」的不誠實契約。</summary>
+public class ApplicantDto
+{
+    public int MemberId { get; set; }
+    public string? CharacterId { get; set; }
+    public string? CharacterName { get; set; }
+    public string? DiscordName { get; set; }
+    public string? Job { get; set; }
+    public int AttackPower { get; set; }
+    public int BossClearCount { get; set; }     // 該玩家本王總通關（跨其角色加總）
+    public int MapleBlessingLevel { get; set; }
 }
 
 /// <summary>

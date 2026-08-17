@@ -1,5 +1,6 @@
 // leader-led 前端型別（對齊後端 camelCase JSON）
 
+// 本人自視（我的邀請 / 我的隊）；審核佇列另用 Applicant
 export type Membership = {
     memberId: number;
     teamSlotId: number;
@@ -7,14 +8,23 @@ export type Membership = {
     slotDateTime: string; // ISO 字串
     characterId: string | null;
     characterName: string | null;
-    discordName: string | null; // 審核佇列顯示「人」用；其他情境為本人
     job: string | null;
     attackPower: number;
     status: string; // Applied | Invited | Confirmed | Rejected
     requireMembers: number; // 隊伍容量
     confirmedCount: number; // 已入隊數（用來判斷是否已滿）
-    mapleBlessingLevel: number; // 祝福等級（僅隊長審核佇列有值，其餘為 0）
-    bossClearCount: number; // 該玩家本王總通關（僅隊長審核佇列有值，其餘為 0）
+};
+
+// 隊長審核佇列的一筆申請（Push）：認「人」+ 決策所需能力
+export type Applicant = {
+    memberId: number;
+    characterId: string | null;
+    characterName: string | null;
+    discordName: string | null;
+    job: string | null;
+    attackPower: number;
+    bossClearCount: number;
+    mapleBlessingLevel: number;
 };
 
 export type OpenTeamRequirementJob = { job: string; minAttackPower: number };

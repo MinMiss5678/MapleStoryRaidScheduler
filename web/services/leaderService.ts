@@ -1,5 +1,6 @@
 import { apiClient } from './apiClient';
 import {
+    Applicant,
     ApplicationAction,
     CreateTeamCommand,
     InvitationAction,
@@ -48,7 +49,7 @@ export const leaderService = {
     invite: (teamSlotId: number, characterId: string) =>
         apiClient.post(`/api/teamSlot/${teamSlotId}/Invitations`, { characterId }),
     getApplications: (teamSlotId: number) =>
-        apiClient.get<Membership[]>(`/api/teamSlot/${teamSlotId}/Applications`),
+        apiClient.get<Applicant[]>(`/api/teamSlot/${teamSlotId}/Applications`),
     respondApplication: (teamSlotId: number, memberId: number, action: ApplicationAction) =>
         apiClient.put(`/api/teamSlot/${teamSlotId}/Applications/${memberId}`, { action }),
 };
