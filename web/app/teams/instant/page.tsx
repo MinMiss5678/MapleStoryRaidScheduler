@@ -7,15 +7,15 @@ import toast from "react-hot-toast";
 import { lfgService } from "@/services/lfgService";
 import { characterService } from "@/services/characterService";
 import { bossService } from "@/services/bossService";
+import { invalidateTeamQueries } from "@/lib/invalidateTeamQueries";
 import { ApiError } from "@/services/apiClient";
 
 export default function InstantLfgPage() {
     const qc = useQueryClient();
-    // 即時看板：定時刷新製造「即時」感
+    // leader-led：只列「我掛著的找隊」（不再公開別人）。別人由隊長開即時團時在候選看到並邀。
     const { data: board = [], isLoading } = useQuery({
         queryKey: ["lfgBoard"],
         queryFn: () => lfgService.getBoard(),
-        refetchInterval: 10000,
     });
     const { data: characters = [] } = useQuery({ queryKey: ["myCharacters"], queryFn: () => characterService.getCharacters() });
     const { data: bosses = [] } = useQuery({ queryKey: ["bosses"], queryFn: () => bossService.getAllBosses() });
@@ -25,17 +25,15 @@ export default function InstantLfgPage() {
 
     const post = useMutation({
         mutationFn: () => lfgService.post({ characterId, bossId: bossId === "" ? null : Number(bossId) }),
-        onSuccess: () => {
-            toast.success("已發布找隊");
-            qc.invalidateQueries({ queryKey: ["lfgBoard"] });
-        },
+        onSuccess: () => toast.success("已發布找隊"),
         onError: (e) => toast.error(e instanceof ApiError ? e.message : "發布失敗，請稍後再試"),
+        onSettled: () => invalidateTeamQueries(qc),
     });
 
     const cancel = useMutation({
         mutationFn: (id: number) => lfgService.cancel(id),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ["lfgBoard"] }),
         onError: (e) => toast.error(e instanceof ApiError ? e.message : "取消失敗，請稍後再試"),
+        onSettled: () => invalidateTeamQueries(qc),
     });
 
     const submit = () => {
@@ -53,8 +51,8 @@ export default function InstantLfgPage() {
                     <Radar size={24} />
                 </div>
                 <div>
-                    <h1 className="text-2xl font-bold">即時揪團</h1>
-                    <p className="text-sm text-muted-foreground">現在想打就發個找隊訊號，隊長開即時隊時看得到你（約 3 小時後自動失效）。</p>
+                    <h1 className="text-2xl font-bold">即時找隊</h1>
+                    <p className="text-sm text-muted-foreground">掛上你現在想打的王，隊長開即時團時會在候選看到你、直接邀你入隊（約 3 小時後自動失效）。</p>
                 </div>
             </div>
 
@@ -91,31 +89,31 @@ export default function InstantLfgPage() {
                 <p className="text-muted-foreground py-12 text-center">載入中…</p>
             ) : board.length === 0 ? (
                 <div className="bg-card border border-border rounded-2xl p-10 text-center text-muted-foreground">
-                    目前沒有人在找隊。第一個發布吧！
+                    你目前沒有掛任何找隊。上面選角色與王發一個吧！
                 </div>
             ) : (
-                <ul className="space-y-3">
-                    {board.map((item) => (
-                        <li key={item.id}
-                            className={`bg-card border rounded-2xl p-4 shadow-sm flex items-center gap-3 flex-wrap ${item.isMine ? "border-rose-400" : "border-border"}`}>
-                            <span className="font-medium">{item.characterName}</span>
-                            <span className="text-sm text-muted-foreground">{item.job}</span>
-                            <span className="text-xs text-muted-foreground">@{item.discordName}</span>
-                            <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                                <Swords size={14} /> {item.bossName ?? "任意王"}
-                            </span>
-                            <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
-                                <Zap size={14} /> {item.attackPower}
-                            </span>
-                            {item.isMine && (
+                <>
+                    <h2 className="text-sm font-semibold text-muted-foreground mb-3">我掛著的找隊（{board.length}）</h2>
+                    <ul className="space-y-3">
+                        {board.map((item) => (
+                            <li key={item.id}
+                                className="bg-card border border-rose-400 rounded-2xl p-4 shadow-sm flex items-center gap-3 flex-wrap">
+                                <span className="font-medium">{item.characterName}</span>
+                                <span className="text-sm text-muted-foreground">{item.job}</span>
+                                <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                                    <Swords size={14} /> {item.bossName ?? "任意王"}
+                                </span>
+                                <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
+                                    <Zap size={14} /> {item.attackPower}
+                                </span>
                                 <button disabled={cancel.isPending} onClick={() => cancel.mutate(item.id)}
                                     className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg disabled:opacity-50">
                                     <Trash2 size={16} />
                                 </button>
-                            )}
-                        </li>
-                    ))}
-                </ul>
+                            </li>
+                        ))}
+                    </ul>
+                </>
             )}
         </div>
     );

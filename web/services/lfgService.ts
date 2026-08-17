@@ -4,12 +4,10 @@ export interface LfgBoardItem {
     id: number;
     characterId: string;
     characterName: string;
-    discordName: string;
     job: string;
     attackPower: number;
     bossId: number | null;
     bossName: string | null;
-    isMine: boolean;
 }
 
 export interface LfgPostInput {

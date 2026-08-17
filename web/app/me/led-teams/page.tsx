@@ -1,13 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { Crown, Swords, Clock, Users, UserSearch, Inbox, Plus } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { Crown, Swords, Clock, Users, UserSearch, Inbox, Plus, Trash2 } from "lucide-react";
 import { useLedTeams } from "@/hooks/queries/useLedTeams";
+import { leaderService } from "@/services/leaderService";
+import { invalidateTeamQueries } from "@/lib/invalidateTeamQueries";
+import { ApiError } from "@/services/apiClient";
 import { formatSlot } from "@/utils/dateTimeUtil";
 import { TransferControl } from "./TransferControl";
 
 export default function LedTeamsPage() {
     const { data: teams = [], isLoading } = useLedTeams();
+    const qc = useQueryClient();
+    const disband = useMutation({
+        mutationFn: (teamSlotId: number) => leaderService.deleteTeam(teamSlotId),
+        onSuccess: () => toast.success("已解散隊伍"),
+        onSettled: () => invalidateTeamQueries(qc),
+        onError: (e) => toast.error(e instanceof ApiError ? e.message : "解散失敗，請稍後再試"),
+    });
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-8">
@@ -80,6 +92,16 @@ export default function LedTeamsPage() {
                                 <p className="text-xs text-muted-foreground">已送出 {t.invitedCount} 則邀請，等待玩家回覆。</p>
                             )}
                             <TransferControl teamSlotId={t.teamSlotId} />
+                            <button
+                                onClick={() => {
+                                    if (confirm(`確定要解散「${t.bossName ?? "王"}」的隊伍嗎？已入隊成員會收到通知。`))
+                                        disband.mutate(t.teamSlotId);
+                                }}
+                                disabled={disband.isPending}
+                                className="self-start flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
+                            >
+                                <Trash2 size={14} /> 解散隊伍
+                            </button>
                         </li>
                     ))}
                 </ul>

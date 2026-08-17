@@ -30,7 +30,7 @@ test('容量 1 隊：一人接受額滿 → 另一人邀請自動撤銷', async 
   const hubCard = page.locator('li').filter({ hasText: desc });
   await hubCard.getByRole('link', { name: /挑候選/ }).click();
   await page.waitForURL(/\/teams\/\d+\/candidates/);
-  for (const name of ['C-Full-A', 'C-Full-B']) {
+  for (const name of ['P-Full-A', 'P-Full-B']) {
     const row = page.locator('li').filter({ hasText: name });
     await expect(row).toBeVisible();
     await Promise.all([
@@ -63,7 +63,7 @@ test('容量 1 隊：一人接受額滿 → 另一人邀請自動撤銷', async 
   await page.goto('/me/led-teams');
   await page.locator('li').filter({ hasText: desc }).getByRole('link', { name: /挑候選/ }).click();
   await page.waitForURL(/\/teams\/\d+\/candidates/);
-  const bRow = page.locator('li').filter({ hasText: 'C-Full-B' });
+  const bRow = page.locator('li').filter({ hasText: 'P-Full-B' });
   await expect(bRow).toBeVisible();
   await Promise.all([
     page.waitForResponse(r => r.url().includes('/Invitations') && r.request().method() === 'POST' && r.status() === 400),
