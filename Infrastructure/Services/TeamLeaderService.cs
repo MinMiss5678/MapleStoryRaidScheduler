@@ -99,7 +99,47 @@ public class TeamLeaderService : ITeamLeaderService
             });
         }
 
+        // 隊長帶自己的角色下去打 → 佔 1 位、自動 Confirmed（null = 只揪人、自己不打）。
+        if (!string.IsNullOrEmpty(command.LeaderCharacterId))
+        {
+            var character = await _characterQuery.GetByIdAsync(command.LeaderCharacterId);
+            if (character == null || character.DiscordId != command.LeaderDiscordId)
+                throw new NotFoundException($"Character {command.LeaderCharacterId} not found");
+
+            // 直接 Confirmed（隊長自己不用邀請/審核）。跨隊同時段重疊由 uq_tsc_confirmed_overlap → 23505 → 409 擋。
+            await _memberRepository.CreateAsync(new TeamSlotCharacter
+            {
+                TeamSlotId = teamSlotId,
+                DiscordId = command.LeaderDiscordId,
+                DiscordName = "",
+                CharacterId = character.Id,
+                CharacterName = character.Name,
+                Job = character.Job,
+                AttackPower = character.AttackPower,
+                Status = TeamSlotMemberStatus.Confirmed,
+                SlotDateTime = command.SlotDateTime,
+                IsManual = true
+            });
+        }
+
         return teamSlotId;
+    }
+
+    public async Task DeleteTeamAsync(int teamSlotId, ulong leaderDiscordId)
+    {
+        var team = await EnsureLeaderOwnsTeamAsync(teamSlotId, leaderDiscordId, "只有隊長能刪除隊伍。");
+
+        // 先撈 active 成員（Confirmed/Invited/Applied）——刪隊後成員列就沒了，撈不到。
+        var affected = await _memberRepository.GetActiveMemberDiscordIdsAsync(teamSlotId);
+
+        // 連帶清成員列 + 隊伍本身（TeamSlotRepository.DeleteAsync 先刪 TeamSlotCharacter 再刪 TeamSlot）。
+        await _teamSlotRepository.DeleteAsync(teamSlotId);
+
+        // 通知每位受影響成員：隊伍已解散（他們的 Confirmed/邀請/申請都一併失效）。
+        // 排除隊長本人——是他按的解散，不用通知自己。
+        foreach (var discordId in affected.Where(id => id != leaderDiscordId))
+            await NotifyAsync(team.BossId, team.SlotDateTime, discordId,
+                (boss, time) => $"隊長已解散「{boss}」{time} 的隊伍。");
     }
 
     public async Task<IEnumerable<TeamCandidateDto>> GetCandidatesAsync(int teamSlotId)
@@ -322,7 +362,13 @@ public class TeamLeaderService : ITeamLeaderService
         if (character == null || character.DiscordId != applicantDiscordId)
             throw new NotFoundException($"Character {characterId} not found");
 
-        // 重複申請（同隊同人已有 Applied/Invited）由 DB unique uq_tsc_active_membership → 23505 → 409。
+        // 已在此隊 active（Confirmed/Invited/Applied）→ 擋。uq_tsc_active_membership 只擋 Applied/Invited 重複，
+        // 擋不住「已 Confirmed 又來申請」→ 這裡補上不變式（前端尋隊也已排除，這是直打 API 的兜底）。
+        var active = await _memberRepository.GetActiveMemberDiscordIdsAsync(teamSlotId);
+        if (active.Contains(applicantDiscordId))
+            throw new BusinessException("你已在此隊、或已有待處理的申請／邀請。");
+
+        // 重複申請（同隊同人已有 Applied/Invited）另由 DB unique uq_tsc_active_membership → 23505 → 409 兜底。
         await _memberRepository.CreateAsync(new TeamSlotCharacter
         {
             TeamSlotId = teamSlotId,
@@ -399,9 +445,10 @@ public class TeamLeaderService : ITeamLeaderService
         return await _membershipQuery.GetApplicationsAsync(teamSlotId);
     }
 
-    public async Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync()
+    public async Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync(ulong currentDiscordId)
         // period-less §8 Phase 4a：時間窗取代 period（未來排程 + 未過期即時），不再吃 active period。
-        => await _membershipQuery.GetOpenTeamsAsync();
+        // 排除呼叫者自己開的隊——玩家 Push 發現是「找別人的隊申請」，看到自己的隊沒意義。
+        => await _membershipQuery.GetOpenTeamsAsync(currentDiscordId);
 
     public async Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId)
         // period-less §8 Phase 4a：時間窗取代 period。
@@ -474,6 +521,54 @@ public class TeamLeaderService : ITeamLeaderService
     public async Task<IEnumerable<RosterMemberDto>> GetTeamRosterAsync(int teamSlotId, ulong leaderDiscordId)
     {
         await EnsureLeaderOwnsTeamAsync(teamSlotId, leaderDiscordId, "只有隊長能查看名冊。");
-        return await _membershipQuery.GetConfirmedRosterAsync(teamSlotId);
+        return await _membershipQuery.GetRosterAsync(teamSlotId, leaderDiscordId);
+    }
+
+    public async Task<IEnumerable<TeamMemberDto>> GetTeamMembersAsync(int teamSlotId, ulong requesterDiscordId)
+    {
+        var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
+        if (team == null)
+            throw new NotFoundException($"TeamSlot {teamSlotId} not found");
+
+        // 授權：本隊 Confirmed 成員、或隊長本人才可看組成（隊長可能只揪人、自己沒佔位）。
+        var self = await _memberRepository.GetConfirmedMemberAsync(teamSlotId, requesterDiscordId);
+        if (self == null && team.LeaderDiscordId != requesterDiscordId)
+            throw new ForbiddenException("只有隊員能看隊伍組成。");
+
+        return await _membershipQuery.GetConfirmedMembersAsync(teamSlotId);
+    }
+
+    public async Task<IEnumerable<RecruitmentGapRowDto>> GetRecruitmentGapAsync(int teamSlotId, ulong leaderDiscordId)
+    {
+        await EnsureLeaderOwnsTeamAsync(teamSlotId, leaderDiscordId, "只有隊長能查看招募缺口。");
+
+        var requirements = (await _membershipQuery.GetRequirementsAsync(teamSlotId)).ToList();
+        // 已 Confirmed 成員的職業當作「已填的格」（含隊長自帶的角色）；進隊即填該格，不再看攻擊/通關門檻。
+        var confirmedJobs = (await _membershipQuery.GetConfirmedJobsAsync(teamSlotId)).ToList();
+
+        // 逐列貪婪配對（軟提示，不強制組成）：先配「限定職業」的列、再配「不限職業」的列，
+        // 讓專職成員優先填掉專職需求、剩的人才去補不限位。重疊只求近似、不上匈牙利。
+        var pool = confirmedJobs.ToList();
+        var result = new List<RecruitmentGapRowDto>();
+        foreach (var req in requirements.OrderByDescending(r => r.Jobs.Count > 0))
+        {
+            var acceptable = req.Jobs.Select(j => j.Job).ToHashSet();
+            var matched = 0;
+            for (var i = pool.Count - 1; i >= 0 && matched < req.Count; i--)
+            {
+                if (acceptable.Count == 0 || acceptable.Contains(pool[i]))
+                {
+                    pool.RemoveAt(i);
+                    matched++;
+                }
+            }
+            result.Add(new RecruitmentGapRowDto
+            {
+                Jobs = acceptable.ToList(),
+                Required = req.Count,
+                Remaining = req.Count - matched
+            });
+        }
+        return result;
     }
 }

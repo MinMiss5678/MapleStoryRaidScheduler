@@ -419,13 +419,19 @@ public class TeamLeaderServiceIntegrationTests
         Assert.Equal("主教", apps[0].Job);
 
         // 開放隊（尚有空位）+ 條件
-        var open = (await q.GetOpenTeamsAsync()).ToList();
+        // 以「與此隊無任何成員關係的玩家」身分發現（103）→ 看得到 999 開的隊
+        var open = (await q.GetOpenTeamsAsync(103)).ToList();
         Assert.Single(open);
         Assert.Equal(teamId, open[0].TeamSlotId);
         Assert.Equal(0, open[0].ConfirmedCount);
         Assert.Equal(6, open[0].RequireMembers);
         Assert.Single(open[0].Requirements);
         Assert.Contains(open[0].Requirements[0].Jobs, j => j.Job == "箭神" && j.MinAttackPower == 900);
+
+        // 排除：隊長本人（999）、已被邀請的 101（Invited）、已申請的 102（Applied）都看不到這支隊
+        Assert.Empty(await q.GetOpenTeamsAsync(999));
+        Assert.Empty(await q.GetOpenTeamsAsync(101));
+        Assert.Empty(await q.GetOpenTeamsAsync(102));
     }
 
     private static async Task<int> GetMemberIdAsync(string cs, int teamSlotId, string charId)

@@ -12,11 +12,14 @@ public class MembershipDto
     public DateTimeOffset SlotDateTime { get; set; }
     public string? CharacterId { get; set; }
     public string? CharacterName { get; set; }
+    public string? DiscordName { get; set; } // 申請審核佇列用（隊長認「人」）；「我的邀請／我的隊」情境為本人、前端不顯示
     public string? Job { get; set; }
     public int AttackPower { get; set; }
     public string Status { get; set; } = "";
     public int RequireMembers { get; set; }   // 隊伍容量（Boss.RequireMembers）——供前端顯示 confirmed/require、判斷是否已滿
     public int ConfirmedCount { get; set; }    // 已入隊真實成員數（占容量者）
+    public int MapleBlessingLevel { get; set; } // 祝福等級——僅隊長審核佇列需要（其他情境為 0）
+    public int BossClearCount { get; set; }     // 該玩家本王總通關（跨其角色加總）——僅隊長審核佇列需要（其他情境為 0）
 }
 
 /// <summary>
@@ -44,7 +47,18 @@ public class LeaderTransferDto
     public DateTimeOffset SlotDateTime { get; set; }
 }
 
-/// <summary>某隊 Confirmed 成員一列（隊長轉讓挑人用）：memberId 當轉讓目標（不外流 raw discordId）+ 顯示名。</summary>
+/// <summary>隊伍組成一列（已入隊成員看隊友用）：角色 + 職業 + 是否隊長；不含 Discord 身分（§9.12）。</summary>
+public class TeamMemberDto
+{
+    public string? DiscordName { get; set; } // 隊友以「人」呈現；CharacterName 僅 DiscordName 空時 fallback
+    public string? CharacterName { get; set; }
+    public string? Job { get; set; }
+    public int AttackPower { get; set; }        // 隊友戰力（成員可看）——攻擊快照
+    public int MapleBlessingLevel { get; set; } // 隊友戰力——祝福等級
+    public bool IsLeader { get; set; }
+}
+
+/// <summary>某隊 Confirmed 成員一列（隊長轉讓挑人用）：memberId 當轉讓目標（不外流 raw discordId）+ 顯示名（人的 DiscordName，隊長轉讓是換「人」；CharacterName 僅 DiscordName 空時 fallback）。</summary>
 public class RosterMemberDto
 {
     public int MemberId { get; set; }
@@ -63,6 +77,16 @@ public class OpenTeamDto
     public int ConfirmedCount { get; set; }
     public string? Description { get; set; }
     public List<OpenTeamRequirementDto> Requirements { get; set; } = [];
+    /// <summary>已確認成員的能力（職業/攻擊/祝福等級，不含身分）——讓尋隊者看組成+戰力、判斷要不要申請。§9.12：公開面不露 Discord/角色名。</summary>
+    public List<OpenTeamMemberDto> ConfirmedMembers { get; set; } = [];
+}
+
+/// <summary>尋隊看得到的一個已確認成員能力：只職業/攻擊/祝福，不含任何身分（§9.12 公開面）。</summary>
+public class OpenTeamMemberDto
+{
+    public string? Job { get; set; }
+    public int AttackPower { get; set; }
+    public int MapleBlessingLevel { get; set; }
 }
 
 public class OpenTeamRequirementDto
@@ -76,4 +100,13 @@ public class OpenTeamRequirementJobDto
 {
     public required string Job { get; set; }
     public int MinAttackPower { get; set; }
+}
+
+/// <summary>招募缺口一列（隊長挑候選時看「還缺什麼職業」）：一組可接受職業 + 還缺幾位。
+/// 軟提示，不強制組成；已 Confirmed 成員以「職業」計入（進隊即填該格，不再看攻擊/通關門檻）。</summary>
+public class RecruitmentGapRowDto
+{
+    public List<string> Jobs { get; set; } = []; // 空 = 不限職業
+    public int Required { get; set; }
+    public int Remaining { get; set; }
 }

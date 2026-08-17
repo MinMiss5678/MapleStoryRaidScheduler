@@ -1,4 +1,5 @@
 using Application.DTOs;
+using Application.Events;
 using Application.Interface;
 using Application.Queries;
 using Domain.Entities;
@@ -20,6 +21,7 @@ public class TeamLeaderServiceTests
     private readonly Mock<IRegistrationLock> _registrationLockMock = new();
     private readonly Mock<ITeamMembershipQuery> _membershipQueryMock = new();
     private readonly Mock<ISystemConfigService> _systemConfigServiceMock = new();
+    private readonly Mock<Application.Interface.IOutbox> _outboxMock = new();
     private readonly TeamLeaderService _service;
 
     public TeamLeaderServiceTests()
@@ -33,7 +35,7 @@ public class TeamLeaderServiceTests
             _memberRepositoryMock.Object,
             _characterQueryMock.Object,
             _registrationLockMock.Object,
-            new Mock<Application.Interface.IOutbox>().Object,
+            _outboxMock.Object,
             _membershipQueryMock.Object,
             _systemConfigServiceMock.Object,
             _lfgIntentRepositoryMock.Object);
@@ -82,6 +84,43 @@ public class TeamLeaderServiceTests
         // 條件列連同其職業一起寫入
         _requirementRepositoryMock.Verify(r => r.CreateAsync(It.Is<TeamSlotRequirement>(rq =>
             rq.TeamSlotId == 100 && rq.Count == 1 && rq.MinClearCount == 1 && rq.Jobs.Count == 2)), Times.Once);
+        // ValidCommand 無 LeaderCharacterId → 只揪人、不把隊長排進去
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateTeamAsync_EnrollsLeaderAsConfirmed_WhenLeaderCharacterProvided()
+    {
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1))
+            .ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
+        _teamSlotRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<TeamSlot>())).ReturnsAsync(100);
+        _characterQueryMock.Setup(q => q.GetByIdAsync("myChar"))
+            .ReturnsAsync(new Character { Id = "myChar", DiscordId = 999, Name = "隊長角色", Job = "英雄", AttackPower = 1500 });
+        var cmd = ValidCommand();
+        cmd.LeaderCharacterId = "myChar";
+
+        await _service.CreateTeamAsync(cmd);
+
+        // 隊長帶自己下去打 → 佔 1 位、自動 Confirmed
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.Is<TeamSlotCharacter>(m =>
+            m.TeamSlotId == 100 && m.DiscordId == 999UL && m.CharacterId == "myChar"
+            && m.Status == TeamSlotMemberStatus.Confirmed)), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateTeamAsync_ThrowsNotFound_WhenLeaderCharacterNotOwned()
+    {
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1))
+            .ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
+        _teamSlotRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<TeamSlot>())).ReturnsAsync(100);
+        // 角色屬於別人（888），不是隊長 999
+        _characterQueryMock.Setup(q => q.GetByIdAsync("notMine"))
+            .ReturnsAsync(new Character { Id = "notMine", DiscordId = 888, Name = "X", Job = "英雄", AttackPower = 0 });
+        var cmd = ValidCommand();
+        cmd.LeaderCharacterId = "notMine";
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.CreateTeamAsync(cmd));
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
     }
 
     [Fact]
@@ -119,6 +158,161 @@ public class TeamLeaderServiceTests
 
         Assert.Same(teams, result);
         _membershipQueryMock.Verify(q => q.GetLedTeamsAsync(999), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteTeamAsync_DeletesAndNotifiesActiveMembers_WhenLeaderOwns()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 999, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
+        // active 含隊長自己（999，帶自己角色下去打）+ 兩位成員
+        _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10))
+            .ReturnsAsync(new HashSet<ulong> { 999, 101, 102 });
+
+        await _service.DeleteTeamAsync(10, leaderDiscordId: 999);
+
+        _teamSlotRepositoryMock.Verify(r => r.DeleteAsync(10), Times.Once);
+        // 只通知非隊長的成員（排除按解散的隊長本人）→ 2 則，不是 3
+        _outboxMock.Verify(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task DeleteTeamAsync_ThrowsForbidden_WhenNotLeader()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 888, SlotDateTime = DateTimeOffset.UtcNow });
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(
+            () => _service.DeleteTeamAsync(10, leaderDiscordId: 999));
+        _teamSlotRepositoryMock.Verify(r => r.DeleteAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteTeamAsync_ThrowsNotFound_WhenTeamMissing()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(It.IsAny<int>())).ReturnsAsync((TeamSlot?)null);
+
+        await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(
+            () => _service.DeleteTeamAsync(10, leaderDiscordId: 999));
+        _teamSlotRepositoryMock.Verify(r => r.DeleteAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    // ---- 招募缺口（GetRecruitmentGapAsync）逐列貪婪配對 ----
+
+    private static OpenTeamRequirementDto Req(int count, params string[] jobs) => new()
+    {
+        Count = count,
+        Jobs = jobs.Select(j => new OpenTeamRequirementJobDto { Job = j }).ToList()
+    };
+
+    private void SetupGap(int teamSlotId, IEnumerable<OpenTeamRequirementDto> reqs, IEnumerable<string> confirmedJobs)
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId))
+            .ReturnsAsync(new TeamSlot { Id = teamSlotId, BossId = 1, LeaderDiscordId = 999, SlotDateTime = DateTimeOffset.UtcNow });
+        _membershipQueryMock.Setup(q => q.GetRequirementsAsync(teamSlotId)).ReturnsAsync(reqs);
+        _membershipQueryMock.Setup(q => q.GetConfirmedJobsAsync(teamSlotId)).ReturnsAsync(confirmedJobs);
+    }
+
+    [Fact]
+    public async Task GetRecruitmentGapAsync_ReturnsPerRowShortfall()
+    {
+        SetupGap(10, [Req(2, "主教"), Req(1, "夜使者")], ["主教"]);
+
+        var gap = (await _service.GetRecruitmentGapAsync(10, leaderDiscordId: 999)).ToList();
+
+        Assert.Equal(1, gap.Single(g => g.Jobs.Contains("主教")).Remaining);   // 要 2 只有 1 → 缺 1
+        Assert.Equal(1, gap.Single(g => g.Jobs.Contains("夜使者")).Remaining); // 要 1 有 0 → 缺 1
+    }
+
+    [Fact]
+    public async Task GetRecruitmentGapAsync_FillsSpecificRowsBeforeUnlimited()
+    {
+        // 限定職業列先配，剩下的人才補「不限職業」列 → 兩列都滿足
+        SetupGap(10, [Req(1, "主教"), Req(1)], ["主教", "夜使者"]);
+
+        var gap = await _service.GetRecruitmentGapAsync(10, leaderDiscordId: 999);
+
+        Assert.All(gap, g => Assert.Equal(0, g.Remaining));
+    }
+
+    [Fact]
+    public async Task GetRecruitmentGapAsync_ClampsRemainingAtZero_WhenOverfilled()
+    {
+        SetupGap(10, [Req(1, "主教")], ["主教", "主教"]);
+
+        var gap = await _service.GetRecruitmentGapAsync(10, leaderDiscordId: 999);
+
+        Assert.Equal(0, gap.Single().Remaining); // 不會變負數
+    }
+
+    [Fact]
+    public async Task GetRecruitmentGapAsync_ThrowsForbidden_WhenNotLeader()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 888, SlotDateTime = DateTimeOffset.UtcNow });
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(
+            () => _service.GetRecruitmentGapAsync(10, leaderDiscordId: 999));
+    }
+
+    // ---- 隊伍組成（GetTeamMembersAsync）授權：成員/隊長可看、外人擋 ----
+
+    private void SetupMembers(int teamSlotId, ulong leader)
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(teamSlotId))
+            .ReturnsAsync(new TeamSlot { Id = teamSlotId, BossId = 1, LeaderDiscordId = leader, SlotDateTime = DateTimeOffset.UtcNow });
+        _membershipQueryMock.Setup(q => q.GetConfirmedMembersAsync(teamSlotId))
+            .ReturnsAsync([new TeamMemberDto { CharacterName = "小飛", Job = "箭神", IsLeader = true }]);
+    }
+
+    [Fact]
+    public async Task GetTeamMembersAsync_ReturnsComposition_WhenRequesterIsConfirmedMember()
+    {
+        SetupMembers(10, leader: 999);
+        _memberRepositoryMock.Setup(r => r.GetConfirmedMemberAsync(10, 555UL))
+            .ReturnsAsync(new TeamSlotCharacter { TeamSlotId = 10, DiscordId = 555, DiscordName = "", Job = "箭神", Status = TeamSlotMemberStatus.Confirmed });
+
+        var members = await _service.GetTeamMembersAsync(10, requesterDiscordId: 555);
+
+        Assert.Single(members);
+    }
+
+    [Fact]
+    public async Task GetTeamMembersAsync_ReturnsComposition_WhenRequesterIsLeaderEvenIfNotConfirmed()
+    {
+        SetupMembers(10, leader: 999);
+        _memberRepositoryMock.Setup(r => r.GetConfirmedMemberAsync(10, 999UL)).ReturnsAsync((TeamSlotCharacter?)null);
+
+        var members = await _service.GetTeamMembersAsync(10, requesterDiscordId: 999);
+
+        Assert.Single(members);
+    }
+
+    [Fact]
+    public async Task GetTeamMembersAsync_ThrowsForbidden_WhenRequesterNotMemberNorLeader()
+    {
+        SetupMembers(10, leader: 999);
+        _memberRepositoryMock.Setup(r => r.GetConfirmedMemberAsync(10, 777UL)).ReturnsAsync((TeamSlotCharacter?)null);
+
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(
+            () => _service.GetTeamMembersAsync(10, requesterDiscordId: 777));
+    }
+
+    [Fact]
+    public async Task ApplyAsync_ThrowsBusiness_WhenAlreadyActiveInTeam()
+    {
+        // 已在此隊 active（Confirmed/Invited/Applied）→ 不得再申請（uq_tsc_active_membership 擋不住已 Confirmed 的情況）
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, SlotDateTime = DateTimeOffset.UtcNow });
+        _characterQueryMock.Setup(q => q.GetByIdAsync("c1"))
+            .ReturnsAsync(new Character { Id = "c1", DiscordId = 101, Name = "C", Job = "箭神", AttackPower = 900 });
+        _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10))
+            .ReturnsAsync(new HashSet<ulong> { 101 }); // 101 已在此隊 active
+
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(
+            () => _service.ApplyAsync(10, "c1", applicantDiscordId: 101));
+        _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
     }
 
     private static TeamSlotCharacter ConfirmedMember() => new()

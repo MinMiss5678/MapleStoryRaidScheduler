@@ -28,14 +28,25 @@ public class TeamSlotController : ControllerBase
         return Ok(new { teamSlotId });
     }
 
-    // Push：本期尚有空位的 leader 開放隊（玩家發現要申請哪隊）。
+    // 隊長解散自己開的隊（連帶清成員；服務內驗隊長擁有）。
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> DeleteTeamAsync(int id)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        await _teamLeaderService.DeleteTeamAsync(id, discordId);
+        return Ok();
+    }
+
+    // Push：尚有空位的 leader 開放隊（玩家發現要申請哪隊）；排除自己開的隊。
     [HttpGet("Open")]
     public async Task<IActionResult> GetOpenAsync()
     {
-        if (!this.TryGetCurrentDiscordId(out _))
+        if (!this.TryGetCurrentDiscordId(out var discordId))
             return Unauthorized(new { error = "NotAuthenticated" });
 
-        return Ok(await _teamLeaderService.GetOpenTeamsAsync());
+        return Ok(await _teamLeaderService.GetOpenTeamsAsync(discordId));
     }
 
     // Push：某隊的申請佇列（隊長審核；服務內驗隊長擁有）。
@@ -86,6 +97,16 @@ public class TeamSlotController : ControllerBase
             return Unauthorized(new { error = "NotAuthenticated" });
 
         return Ok(await _teamLeaderService.GetCandidatesAsync(id));
+    }
+
+    // Pull：本隊招募缺口（還缺哪些職業幾位，對照候選）。只有隊長本人可查。
+    [HttpGet("{id:int}/RecruitmentGap")]
+    public async Task<IActionResult> GetRecruitmentGapAsync(int id)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetRecruitmentGapAsync(id, discordId));
     }
 
     // Pull：隊長邀請候選（→Invited）。只有隊長本人可邀。
@@ -150,6 +171,16 @@ public class TeamSlotController : ControllerBase
             return Unauthorized(new { error = "NotAuthenticated" });
 
         return Ok(await _teamLeaderService.GetTeamRosterAsync(id, discordId));
+    }
+
+    // 已入隊成員看本隊組成（角色/職業/誰是隊長；不露 Discord 身分）。服務內驗「成員或隊長」。
+    [HttpGet("{id:int}/Members")]
+    public async Task<IActionResult> GetTeamMembersAsync(int id)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetTeamMembersAsync(id, discordId));
     }
 
     // 隊長轉讓——提議轉給某成員（→PendingLeaderDiscordId，需對方接受）。

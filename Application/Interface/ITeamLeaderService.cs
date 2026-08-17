@@ -8,8 +8,17 @@ public interface ITeamLeaderService
     /// <summary>隊長開隊 + 條件，回新隊 id。</summary>
     Task<int> CreateTeamAsync(CreateTeamCommand command);
 
+    /// <summary>隊長解散自己開的隊（連帶清成員列，通知 active 成員）。只有隊長本人能刪。</summary>
+    Task DeleteTeamAsync(int teamSlotId, ulong leaderDiscordId);
+
     /// <summary>Pull：某隊符合條件的候選（時段重疊 + 職業/攻擊 + 通關數；回能力欄、不含 discord 身分）。</summary>
     Task<IEnumerable<TeamCandidateDto>> GetCandidatesAsync(int teamSlotId);
+
+    /// <summary>本隊招募缺口（還缺哪些職業幾位）——隊長挑候選時對照組成。僅隊長本人可查。</summary>
+    Task<IEnumerable<RecruitmentGapRowDto>> GetRecruitmentGapAsync(int teamSlotId, ulong leaderDiscordId);
+
+    /// <summary>本隊已確認組成（角色/職業/誰是隊長）——已入隊成員或隊長可查（不露 Discord 身分）。</summary>
+    Task<IEnumerable<TeamMemberDto>> GetTeamMembersAsync(int teamSlotId, ulong requesterDiscordId);
 
     /// <summary>Pull：隊長邀請候選（→Invited）。重複邀請由 DB unique 擋成 409。</summary>
     Task InviteMemberAsync(int teamSlotId, string characterId, ulong leaderDiscordId);
@@ -38,8 +47,8 @@ public interface ITeamLeaderService
     /// <summary>某隊的申請佇列（隊長審核；驗隊長擁有）。</summary>
     Task<IEnumerable<MembershipDto>> GetApplicationsAsync(int teamSlotId, ulong leaderDiscordId);
 
-    /// <summary>本期尚有空位的 leader 開放隊（Push 玩家端發現）。</summary>
-    Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync();
+    /// <summary>尚有空位的 leader 開放隊（Push 玩家端發現）；排除呼叫者自己開的隊（不會申請自己的隊）。</summary>
+    Task<IEnumerable<OpenTeamDto>> GetOpenTeamsAsync(ulong currentDiscordId);
 
     /// <summary>本期我當隊長開的隊（含各狀態計數，隊長 hub 入口）。</summary>
     Task<IEnumerable<LedTeamDto>> GetLedTeamsAsync(ulong leaderDiscordId);

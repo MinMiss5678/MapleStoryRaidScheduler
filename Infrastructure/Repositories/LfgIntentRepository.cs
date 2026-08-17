@@ -15,9 +15,14 @@ public class LfgIntentRepository : ILfgIntentRepository
 
     public async Task CreateAsync(LfgIntent intent)
     {
+        // 同角色同王（含任意王=NULL）已有意圖 → 只刷新 TTL，不新增列（uq_lfgintent_char_boss，NULLS NOT DISTINCT）。
         const string sql = """
             INSERT INTO "LfgIntent"("DiscordId","CharacterId","BossId","ExpiresAt")
-            VALUES (@DiscordId, @CharacterId, @BossId, @ExpiresAt);
+            VALUES (@DiscordId, @CharacterId, @BossId, @ExpiresAt)
+            ON CONFLICT ("CharacterId","BossId") DO UPDATE
+                SET "ExpiresAt" = EXCLUDED."ExpiresAt",
+                    "CreatedAt" = now(),
+                    "DiscordId" = EXCLUDED."DiscordId";
             """;
         await _dbContext.ExecuteAsync(sql, new
         {
