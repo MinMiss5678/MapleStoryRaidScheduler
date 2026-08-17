@@ -21,6 +21,9 @@ public class CreateTeamCommand
     [MaxLength(500)]
     public string? Description { get; set; }
 
+    /// <summary>隊長自己要帶下去打的角色（佔 1 位、自動 Confirmed）；null = 只揪人、自己不打。須為本人角色。</summary>
+    public string? LeaderCharacterId { get; set; }
+
     public List<CreateTeamRequirementDto> Requirements { get; set; } = [];
 }
 

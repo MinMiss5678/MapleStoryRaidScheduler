@@ -14,10 +14,8 @@ public class LfgBoardItemDto
     public int Id { get; set; }
     public string CharacterId { get; set; } = "";
     public string CharacterName { get; set; } = "";
-    public string DiscordName { get; set; } = "";
     public string Job { get; set; } = "";
     public int AttackPower { get; set; }
     public int? BossId { get; set; }
     public string? BossName { get; set; }
-    public bool IsMine { get; set; }
 }
