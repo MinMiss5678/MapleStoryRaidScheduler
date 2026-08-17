@@ -81,7 +81,6 @@ public class Program
                  services.AddSingleton<IUnitOfWork, UnitOfWork>();
                  services.AddSingleton<DbContext>();
                  services.AddSingleton<IDiscordService, DiscordService>();
-                 services.AddSingleton<ITeamSlotQuery, TeamSlotQuery>();
                  services.AddSingleton<ISessionService, SessionService>();
                  services.AddSingleton<ISessionRepository, SessionRepository>();
                  services.AddSingleton<ISessionQuery, SessionQuery>();
@@ -127,7 +126,6 @@ public class Program
 
                  // 註冊自動執行的 Background Services
                  services.AddHostedService<DiscordBotService>();       // Discord 啟動管理
-                 services.AddHostedService<DailyNotificationService>(); // 每日通知排程
 
                  services.Configure<DiscordOptions>(
                      config.GetSection("Discord"));
