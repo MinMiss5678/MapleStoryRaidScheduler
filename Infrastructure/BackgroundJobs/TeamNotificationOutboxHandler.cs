@@ -9,7 +9,9 @@ namespace Infrastructure.BackgroundJobs;
 /// <summary>
 /// 處理 <see cref="OutboxEventType.TeamNotification"/>：對指定玩家發 Discord DM（leader-led §11）。
 /// 只註冊在 bot 行程（DiscordClient 在那）——正是 outbox 要跨的行程界線（寫在 API、送在 bot）。
-/// 冪等：重送頂多多發一則相同 DM（可接受）。
+/// 非嚴格冪等：Discord DM 無 idempotency key、送出是外部非交易副作用，無法真去重。
+/// 重送（crash 於送出與批次 commit 之間／送出後斷線）頂多多發相同 DM——dispatcher 整批一交易，
+/// 最多重送該批（BatchSize）筆；可接受，因站內「我的邀請/我的隊」清單才是權威（§11），不漏資料。
 /// </summary>
 public class TeamNotificationOutboxHandler : IOutboxHandler
 {
