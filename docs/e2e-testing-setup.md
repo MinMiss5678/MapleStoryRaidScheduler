@@ -123,8 +123,9 @@ gh run watch <run-id> --exit-status                      # 阻塞等待 run 完�
 gh run view <run-id> --json jobs                          # 看各 job 的 status/conclusion（含 skipped）
 gh run view <run-id> --log-failed                         # 只看失敗 job 的 log
 gh api repos/<owner>/<repo>/actions/jobs/<job-id>/logs    # 抓單一 job 的完整原始 log（run 未結束時也可用單 job）
-gh workflow run deploy.yml                                # 手動觸發 deploy（workflow_dispatch）
 ```
+
+> 部署一律本機手動 SSH（無 GitHub 部署 workflow），見 `docs/deployment.md`。
 
 ## 未決
 

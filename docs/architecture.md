@@ -823,12 +823,11 @@ graph TD
 ```
 
 - **CI**（GitHub Actions，`ci.yml`）：PR 綠燈才 merge，純文件變更自動跳過重量級 job。細節見下方流程圖 + `docs/e2e-testing-setup.md`。
-- **CD**（GitHub Actions，`deploy.yml`，跟 CI 完全獨立）：`workflow_dispatch` 人工手動觸發，SHA 版本化映像 + Kustomize 滾動更新。細節見 `docs/cd-deploy-setup.md`。
-- **手動部署**（不走 CI，本機直接操作）：`docs/deployment.md`（`deploy.ps1` / `rollout.ps1`）。
+- **部署（手動 SSH）**：本機 `k8s/deploy.ps1` / `rollout.ps1`，經 SSH tunnel 連 Lightsail k3s → 推 SHA 版本化映像 + Kustomize 滾動更新。步驟見 `docs/deployment.md`；rollback / migrate 失敗恢復 / 向後相容見 `docs/cd-deploy-setup.md`。
 
 ### CI/CD 流程（總覽）
 
-CI 已遷 **GitHub Actions**（`.github/workflows/ci.yml` + `deploy.yml`），跟 `cd-deploy-setup` / `e2e-testing-setup` 兩份筆記對照：
+CI 走 **GitHub Actions**（`.github/workflows/ci.yml`；部署一律手動 SSH），跟 `deployment.md` / `cd-deploy-setup.md`（部署 runbook）/ `e2e-testing-setup.md` 對照：
 
 ```mermaid
 flowchart LR
@@ -838,10 +837,9 @@ flowchart LR
     skip --> checks{"required status checks\n（含 enforce_admins，admin 也不能繞過）"}
     ci -->|全綠| checks
     checks -->|通過| merge["rebase merge 進 main"]
-    merge --> mainci["main push 觸發同一份 ci.yml\n（post-merge 再驗一次，非 deploy 的一部分）"]
-    merge -.->|另一條、需人工觸發| dispatch["workflow_dispatch：deploy.yml"]
-    dispatch --> envgate["production Environment\n（可設 required reviewers）"]
-    envgate --> deploy["推 SHA 版本化映像 minqq/*"]
+    merge --> mainci["main push 觸發同一份 ci.yml\n（post-merge 再驗一次）"]
+    merge -.->|部署另走手動 SSH，非 CI 一部分| ssh["本機 deploy.ps1 / rollout.ps1\n（SSH tunnel → Lightsail k3s）"]
+    ssh --> deploy["推 SHA 版本化映像 minqq/*"]
     deploy --> mig["migrate Job"]
     mig --> k["Kustomize：kubectl apply -k"]
     k --> roll["k8s 滾動更新（readiness 綠才收舊 pod）"]
@@ -849,4 +847,4 @@ flowchart LR
 
 > **PR 閘**：`changes` job 用 `dorny/paths-filter` 判斷這次改動是否只碰文件；純文件時其餘 job 用 `if:` 條件跳過（標 skipped），不是在 `on:` 用 `paths-ignore`——後者會讓 workflow 整個不觸發，required status checks 永遠等不到回報、PR 會卡死。GitHub 把 skipped 視為通過，required checks 照樣滿足。
 > **`main` 分支保護**：required status checks（上述 7 個 job）+ 禁止 force push/刪除 + **`enforce_admins` 開啟**（admin 帳號也一樣得走 PR，不能直接推）。
-> **CI 跟 deploy 是兩條獨立流程**：push 進 `main` 只會重跑一次 `ci.yml`（post-merge 守門，不是 deploy 的前置步驟）；`deploy.yml` 是完全獨立、`workflow_dispatch` 手動觸發、掛 `production` Environment 當核准閘。映像以 git SHA 版本化 → 可追溯、可真 rollback（`kubectl rollout undo` 或指定 SHA）。
+> **CI 跟部署是兩條獨立流程**：push 進 `main` 只會重跑一次 `ci.yml`（post-merge 守門）；**部署一律本機手動 SSH**（`deploy.ps1` / `rollout.ps1` 經 tunnel 連 k3s）。映像以 git SHA 版本化 → 可追溯、可真 rollback（`kubectl rollout undo` 或指定 SHA）。
