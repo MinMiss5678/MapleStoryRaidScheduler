@@ -68,8 +68,8 @@
 | # | 規則 | 來源 |
 |---|---|---|
 | N2 | **組隊通知**：leader-led 每個狀態改動（邀請/接受/核准/額滿撤銷…）與狀態寫入**同一交易** enqueue 一則 `TeamNotification` outbox 列 → bot 的 handler 撈去發 Discord DM | `TeamLeaderService.NotifyAsync` / `TeamNotificationOutboxHandler` |
-| N3 | 系統設定變更（`SystemConfig` 退團率參數）與 `UpdateAsync` 同一交易寫 `ConfigChanged` outbox → bot 喚醒重讀 | `SystemConfigService.UpdateAsync` |
-| N4 | 設定變更事件走 **transactional outbox**：commit 才生效、rollback 丟棄，bot 的 `OutboxDispatcher` 讀已提交列 → **跨行程可靠 + crash-safe**（取代原 in-process `AfterCommit`） | `Outbox` / `OutboxDispatcher`；`architecture.md §7 Transactional Outbox` |
+| N3 | 系統設定（`SystemConfig` 退團率參數）變更即時寫 DB；讀取端（`TeamLeaderService.GetCandidatesAsync`）每次直接讀最新值，**無需 outbox 喚醒**（原 `ConfigChanged` outbox 給已退場的報名截止 job 用，period-less 後拔除，見 `plans/2026-08-20-configchanged-outbox-deadcode-cleanup.md`） | `SystemConfigService.UpdateAsync` |
+| N4 | 組隊通知事件走 **transactional outbox**：commit 才生效、rollback 丟棄，bot 的 `OutboxDispatcher` 讀已提交列 → **跨行程可靠 + crash-safe**（取代原 in-process `AfterCommit`） | `Outbox` / `OutboxDispatcher`；`architecture.md §7 Transactional Outbox` |
 | N5 | Discord 通知**只由 bot 端**發（讀已提交狀態）→ 無「發了又 rollback」風險 | `OutboxDispatcher` |
 | N6 | Outbox 已處理列（`ProcessedAt` 非 null）超過 **30 天**由 `OutboxRetentionJob` 每 24 小時清一次；未處理列不管多舊都不刪 | `OutboxRetentionJob`；`architecture.md §7 Transactional Outbox` |
 

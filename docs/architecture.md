@@ -216,9 +216,9 @@ Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL
 
 `down.sql` 是開發工具，不是 production rollback 機制。Production rollback 依賴 infrastructure 層（DB snapshot），而非應用層 migration。
 
-### 7. 設定變更的可靠投遞（Transactional Outbox）
+### 7. 組隊通知的可靠投遞（Transactional Outbox）
 
-**決策原因**：跨行程的可靠事件投遞有兩個用途——(1) 設定變更（`ConfigChanged`）要喚醒 bot 端背景 job 重讀；(2) leader-led 組隊狀態改動（`TeamNotification`）要由 bot 發 Discord DM。原本用 `DbContext.AfterCommit`（in-process post-commit hook）有兩個問題：commit 後、跑動作前 crash 會**遺失**；且事件在 **API** 產生、消費者在 **bot**，in-process 事件**跨不了行程**（API 的 notifier 無訂閱者 = no-op）。
+**決策原因**：leader-led 組隊狀態改動（邀請/申請/核准/額滿撤銷…）要由 **bot** 發 Discord DM（`TeamNotification`），但狀態改動發生在 **API**。原本用 `DbContext.AfterCommit`（in-process post-commit hook）有兩個問題：commit 後、跑動作前 crash 會**遺失**；且事件在 **API** 產生、消費者在 **bot**（發 DM 的 DSharpPlus client 在 bot），in-process 事件**跨不了行程**。（另有一條 `ConfigChanged` 設定變更事件，原給已退場的報名截止 job 用，period-less 後拔除——見 `plans/2026-08-20-configchanged-outbox-deadcode-cleanup.md`。）
 
 **實作方式**：改用 transactional outbox（`OutboxMessage` 表）。
 
@@ -231,14 +231,14 @@ Migration image 以 `db/Dockerfile.migrate` 自製（golang-migrate 基底 + SQL
 
 ```mermaid
 sequenceDiagram
-    participant API as API（SystemConfigService）
+    participant API as API（TeamLeaderService）
     participant DB as Postgres（OutboxMessage）
     participant Bot as Bot（OutboxDispatcher，另一個行程）
     participant H as IOutboxHandler
 
     Note over API,DB: 寫入端：跟業務資料同一個 UoW 交易
-    API->>DB: UPDATE SystemConfig
-    API->>DB: INSERT OutboxMessage(Type=ConfigChanged, ProcessedAt=NULL)
+    API->>DB: UPDATE 組隊狀態（如 InviteMember → Invited）
+    API->>DB: INSERT OutboxMessage(Type=TeamNotification, ProcessedAt=NULL)
     API->>DB: COMMIT（兩者原子生效；rollback 則兩者都不留痕跡）
 
     Note over Bot,DB: 派發端：獨立行程、專屬連線，事後輪詢（非即時推送）
@@ -265,7 +265,7 @@ sequenceDiagram
 ```
 
 - **多 pod 分工**：`SELECT ... FOR UPDATE SKIP LOCKED` → 多個 dispatcher 各撈不相交批、互不重投、免選 leader。
-- **at-least-once + 冪等**：投遞成功、標 processed 前崩 → 重送；靠 handler 冪等（`ConfigChanged` 只是喚醒 job 重讀）吸收。
+- **at-least-once + 冪等**：投遞成功、標 processed 前崩 → 重送。DM handler 非天生冪等（重送＝多一則一樣的 DM），實務靠「crash 窗口小 + 重複一則傷害低」可接受；要嚴格去重可在 handler 記已送過的 event id。
 - partial index（`WHERE "ProcessedAt" IS NULL`）撈取快；重試上限後放棄、記 `LastError`。
 - **保留列清理**：`OutboxDispatcher` 只標 `ProcessedAt`、從不刪列，`OutboxMessage` 會無限成長。`OutboxRetentionJob`（同樣跑 bot、自開專屬連線）每 24 小時清一次「已處理超過 30 天」的列；未處理列不管多舊都不動（還沒投遞完，刪了就真的遺失事件）。
 
