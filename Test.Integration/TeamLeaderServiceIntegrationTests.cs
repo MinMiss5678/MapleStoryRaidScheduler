@@ -33,7 +33,7 @@ public class TeamLeaderServiceIntegrationTests
             new RegistrationLock(db),
             new Outbox(db),
             new TeamMembershipQuery(db),
-            new SystemConfigService(db, new Outbox(db)),
+            new SystemConfigService(db),
             new LfgIntentRepository(db));
     }
 

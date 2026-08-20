@@ -1,5 +1,4 @@
-﻿using Application.Events;
-using Application.Interface;
+﻿using Application.Interface;
 using Application.Services;
 using Domain.Repositories;
 using Infrastructure.Dapper;
@@ -16,7 +15,6 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
         services.AddScoped<IAuthAppService, AuthAppService>();
-        services.AddSingleton<ConfigChangeNotifier>();
         return services;
     }
 
@@ -25,7 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AuthenticationMiddleware>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<DbContext>();
-        // outbox 寫入端：把設定變更事件寫進當前請求交易（與資料原子）。API 只寫、不派發。
+        // outbox 寫入端：把組隊通知事件寫進當前請求交易（與資料原子）。API 只寫、bot 才派發。
         services.AddScoped<IOutbox, Outbox>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ISessionService, SessionService>();

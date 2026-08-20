@@ -35,14 +35,14 @@ public class OutboxIntegrationTests : IAsyncLifetime
         // rollback → 不留列
         var rolledBack = _fx.CreateDbContext();
         await rolledBack.BeginAsync();
-        await new Outbox(rolledBack).EnqueueAsync("ConfigChanged", new { a = 1 });
+        await new Outbox(rolledBack).EnqueueAsync("TestEvent", new { a = 1 });
         await rolledBack.RollbackAsync();
         Assert.Equal(0, await CountAsync(""));
 
         // commit → 留一列、未處理
         var committed = _fx.CreateDbContext();
         await committed.BeginAsync();
-        await new Outbox(committed).EnqueueAsync("ConfigChanged", new { a = 1 });
+        await new Outbox(committed).EnqueueAsync("TestEvent", new { a = 1 });
         await committed.CommitAsync();
         Assert.Equal(1, await CountAsync(""));
         Assert.Equal(1, await CountAsync("""WHERE "ProcessedAt" IS NULL"""));
@@ -51,9 +51,9 @@ public class OutboxIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Dispatcher_投遞到handler_標processed_再跑不重投()
     {
-        await EnqueueCommittedAsync("ConfigChanged");
+        await EnqueueCommittedAsync("TestEvent");
 
-        var handler = new RecordingHandler("ConfigChanged");
+        var handler = new RecordingHandler("TestEvent");
         var dispatcher = new OutboxDispatcher(_fx.ConnectionString, new[] { handler }, NullLogger<OutboxDispatcher>.Instance);
 
         var n1 = await dispatcher.ProcessBatchAsync(CancellationToken.None);
@@ -72,7 +72,7 @@ public class OutboxIntegrationTests : IAsyncLifetime
         await EnqueueCommittedAsync("UnknownType");
 
         var dispatcher = new OutboxDispatcher(_fx.ConnectionString,
-            new[] { new RecordingHandler("ConfigChanged") }, NullLogger<OutboxDispatcher>.Instance);
+            new[] { new RecordingHandler("TestEvent") }, NullLogger<OutboxDispatcher>.Instance);
 
         await dispatcher.ProcessBatchAsync(CancellationToken.None);
 
@@ -84,7 +84,7 @@ public class OutboxIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task SkipLocked_A鎖住_B撈不到同列_模擬多pod不重投()
     {
-        await EnqueueCommittedAsync("ConfigChanged");
+        await EnqueueCommittedAsync("TestEvent");
 
         const string claim = """
             SELECT "Id" FROM "OutboxMessage" WHERE "ProcessedAt" IS NULL
@@ -119,8 +119,8 @@ public class OutboxIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task CrashBeforeCommit_模擬崩潰未提交_重啟後重送_Handler被呼叫兩次()
     {
-        await EnqueueCommittedAsync("ConfigChanged");
-        var handler = new RecordingHandler("ConfigChanged");
+        await EnqueueCommittedAsync("TestEvent");
+        var handler = new RecordingHandler("TestEvent");
 
         // 「崩潰前」的這次嘗試：claim 該列、呼叫 handler、但不 commit（模擬 commit 前中斷）
         await using (var conn = new NpgsqlConnection(_fx.ConnectionString))
@@ -174,7 +174,7 @@ public class OutboxIntegrationTests : IAsyncLifetime
         return await conn.ExecuteScalarAsync<long>(
             """
             INSERT INTO "OutboxMessage"("Type","Payload","ProcessedAt")
-            VALUES ('ConfigChanged', '{}', @processedAt) RETURNING "Id";
+            VALUES ('TestEvent', '{}', @processedAt) RETURNING "Id";
             """,
             new { processedAt });
     }

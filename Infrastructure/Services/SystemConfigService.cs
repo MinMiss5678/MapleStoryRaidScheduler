@@ -1,5 +1,4 @@
-﻿using Application.Events;
-using Application.Interface;
+﻿using Application.Interface;
 using Domain.Entities;
 using Infrastructure.Dapper;
 using Infrastructure.Entities;
@@ -9,12 +8,10 @@ namespace Infrastructure.Services;
 public class SystemConfigService : ISystemConfigService
 {
     private readonly DbContext _dbContext;
-    private readonly IOutbox _outbox;
 
-    public SystemConfigService(DbContext dbContext, IOutbox outbox)
+    public SystemConfigService(DbContext dbContext)
     {
         _dbContext = dbContext;
-        _outbox = outbox;
     }
 
     public async Task<SystemConfig> GetAsync()
@@ -61,10 +58,8 @@ public class SystemConfigService : ISystemConfigService
             await repository.UpdateAsync(existing);
         }
 
-        // 設定變更事件走 transactional outbox：把事件寫進「與本次 UPDATE 同一筆交易」的 outbox 列
-        //  → 與資料原子提交/rollback（就不會有鬼影事件）。
-        // 取代原本的 in-process AfterCommit：那個 (1) commit 後 crash 會遺失、(2) 跨不了行程
-        //  （設定在 API 改、喚醒的 job 在 bot）。outbox 由 bot 的 OutboxDispatcher 讀已提交列去投遞。
-        await _outbox.EnqueueAsync(OutboxEventType.ConfigChanged, config);
+        // 設定即時寫 DB；讀取端（TeamLeaderService.GetCandidatesAsync）每次直接讀最新值，
+        // 無記憶體快取要失效、無背景 job 要喚醒 → 不需要跨行程通知。
+        // （原本的 ConfigChanged outbox 是給已退場的報名截止 job 用的，period-less 後拔除。）
     }
 }

@@ -1,5 +1,4 @@
 ﻿using System.Data;
-using Application.Events;
 using Application.Interface;
 using Application.Options;
 using Application.Queries;
@@ -85,7 +84,6 @@ public class Program
                  services.AddSingleton<ISessionRepository, SessionRepository>();
                  services.AddSingleton<ISessionQuery, SessionQuery>();
                  services.AddSingleton<IDiscordOAuthClient, DiscordOAuthClient>();
-                 services.AddSingleton<ConfigChangeNotifier>();
                  services.AddSingleton<ISystemConfigService, SystemConfigService>();
                  services.AddSingleton<IPlayerRepository, PlayerRepository>();
                  services.AddSingleton<IPlayerService, PlayerService>();
@@ -107,11 +105,9 @@ public class Program
                  services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
                  services.AddSingleton<ISessionCache, RedisSessionCache>();
 
-                 // Outbox：bot 是消費端。寫入端（IOutbox）給 SystemConfigService 用；
-                 // handler（ConfigChanged→喚醒 job）+ dispatcher 只在 bot（訂閱 notifier 的 job 在這）。
+                 // Outbox：bot 是純消費端——dispatcher 輪詢已提交列、派給 handler 發 Discord DM。
+                 // 寫入端（IOutbox.Enqueue）在 API（TeamLeaderService 發 TeamNotification）；bot 不 enqueue。
                  // dispatcher 自開專屬連線（不共用 singleton IDbConnection，免與 Discord 事件/計時器互踩）。
-                 services.AddSingleton<IOutbox, Outbox>();
-                 services.AddSingleton<IOutboxHandler, ConfigChangedOutboxHandler>();
                  services.AddSingleton<IOutboxHandler, TeamNotificationOutboxHandler>();  // leader-led 組隊通知 → Discord DM
                  services.AddHostedService(sp => new OutboxDispatcher(
                      connectionString,
