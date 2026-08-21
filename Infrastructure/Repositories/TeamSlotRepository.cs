@@ -44,61 +44,28 @@ public class TeamSlotRepository : ITeamSlotRepository
 
     public async Task<TeamSlot?> GetByIdAsync(int id)
     {
-        // 原本是「查 TeamSlot」+「查 Characters」兩次往返，合併成一次 LEFT JOIN：
-        // 併發控制迴圈裡每個既有隊伍都會呼叫一次，逐隊各打兩次是可避免的 N+1（見 architecture.md）。
+        // 隊伍不再是充血聚合、成員清單由 query 端各自負責（確認人數走 TeamMembershipQuery），
+        // 故此處只讀 TeamSlot 單表；不再 JOIN TeamSlotCharacter。
         var sql = new QueryBuilder()
             .Select<TeamSlotDbModel>(x => new { x.Id, x.BossId, x.SlotDateTime, x.Source, x.LeaderDiscordId, x.PendingLeaderDiscordId, x.Kind, x.ExpiresAt, x.RunsMin, x.RunsMax })
-            .Select<TeamSlotCharacterDbModel>(x => new
-            {
-                CharacterRowId = x.Id,
-                x.DiscordId,
-                x.DiscordName,
-                x.CharacterId,
-                x.CharacterName,
-                x.Job,
-                x.AttackPower,
-                x.Rounds,
-                x.IsManual
-            }, "b")
             .From<TeamSlotDbModel>()
-            .LeftJoin<TeamSlotCharacterDbModel>("""a."Id" = b."TeamSlotId" """)
             .Where<TeamSlotDbModel>(x => x.Id == id);
 
-        var rows = (await _dbContext.QueryAsync<TeamSlotWithCharacterRow>(sql)).ToList();
-        if (rows.Count == 0) return null;
-
-        var first = rows[0];
-        // 空隊的 LEFT JOIN 會產生 CharacterRowId=0 的 ghost row（Dapper 對 int? NULL 映射成 int 的慣例），需過濾掉
-        var characters = rows
-            .Where(r => r.CharacterRowId != 0)
-            .Select(r => new TeamSlotCharacter
-            {
-                Id = r.CharacterRowId,
-                TeamSlotId = id,
-                DiscordId = (ulong)r.DiscordId,
-                DiscordName = r.DiscordName ?? "",
-                CharacterId = r.CharacterId,
-                CharacterName = r.CharacterName,
-                Job = r.Job ?? "",
-                AttackPower = r.AttackPower,
-                Rounds = r.Rounds,
-                IsManual = r.IsManual
-            })
-            .ToList();
+        var row = await _dbContext.QuerySingleOrDefaultAsync<TeamSlotDbModel>(sql);
+        if (row == null) return null;
 
         return new TeamSlot
         {
-            Id = first.Id,
-            BossId = first.BossId,
-            SlotDateTime = first.SlotDateTime,
-            Source = first.Source,
-            LeaderDiscordId = first.LeaderDiscordId.HasValue ? (ulong?)first.LeaderDiscordId.Value : null,
-            PendingLeaderDiscordId = first.PendingLeaderDiscordId.HasValue ? (ulong?)first.PendingLeaderDiscordId.Value : null,
-            Kind = first.Kind,
-            ExpiresAt = first.ExpiresAt,
-            RunsMin = first.RunsMin,
-            RunsMax = first.RunsMax,
-            Characters = characters
+            Id = row.Id,
+            BossId = row.BossId,
+            SlotDateTime = row.SlotDateTime,
+            Source = row.Source,
+            LeaderDiscordId = row.LeaderDiscordId.HasValue ? (ulong?)row.LeaderDiscordId.Value : null,
+            PendingLeaderDiscordId = row.PendingLeaderDiscordId.HasValue ? (ulong?)row.PendingLeaderDiscordId.Value : null,
+            Kind = row.Kind,
+            ExpiresAt = row.ExpiresAt,
+            RunsMin = row.RunsMin,
+            RunsMax = row.RunsMax
         };
     }
 
@@ -116,27 +83,5 @@ public class TeamSlotRepository : ITeamSlotRepository
         await _dbContext.ExecuteAsync(sql, new { id = teamSlotId, leader = (long)newLeaderDiscordId });
     }
 
-    private class TeamSlotWithCharacterRow
-    {
-        public int Id { get; set; }
-        public int BossId { get; set; }
-        public DateTimeOffset SlotDateTime { get; set; }
-        public string Source { get; set; } = "";
-        public long? LeaderDiscordId { get; set; }
-        public long? PendingLeaderDiscordId { get; set; }
-        public string Kind { get; set; } = "Scheduled";
-        public DateTimeOffset? ExpiresAt { get; set; }
-        public int? RunsMin { get; set; }
-        public int? RunsMax { get; set; }
-        public int CharacterRowId { get; set; }
-        public long DiscordId { get; set; }
-        public string? DiscordName { get; set; }
-        public string? CharacterId { get; set; }
-        public string? CharacterName { get; set; }
-        public string? Job { get; set; }
-        public int AttackPower { get; set; }
-        public int Rounds { get; set; }
-        public bool IsManual { get; set; }
-    }
 
 }

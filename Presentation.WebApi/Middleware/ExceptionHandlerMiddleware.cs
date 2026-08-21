@@ -1,5 +1,4 @@
 using Application.Exceptions;
-using Domain.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 
@@ -30,7 +29,6 @@ public class ExceptionHandlerMiddleware(RequestDelegate next, ILogger<ExceptionH
         {
             NotFoundException => (StatusCodes.Status404NotFound, "Not Found"),
             BusinessException => (StatusCodes.Status400BadRequest, "Bad Request"),
-            DomainException => (StatusCodes.Status400BadRequest, "Bad Request"),   // 領域不變式違反
             ForbiddenException => (StatusCodes.Status403Forbidden, "Forbidden"),
             AppException => (StatusCodes.Status400BadRequest, "Bad Request"),
             // DB 後防：unique 違反多為並發 race（idempotency、同時報名、重複申請/邀請）→ 預期、非 bug → 409。
