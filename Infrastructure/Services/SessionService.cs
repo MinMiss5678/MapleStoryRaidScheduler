@@ -33,7 +33,7 @@ public class SessionService : ISessionService
         var cached = await _sessionCache.GetAsync(discordId);
         if (cached != null)
         {
-            if (!IsValid(cached))
+            if (cached.SessionId != sessionId || !IsValid(cached))
                 return null;
             // sliding：只有「過門檻才續」時才寫（DB + 快取）；否則純讀命中，不寫（不打架讀穿快取）。
             if (await TrySlideAsync(sessionId, cached))
