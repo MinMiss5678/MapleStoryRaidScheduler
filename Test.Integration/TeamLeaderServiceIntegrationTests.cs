@@ -20,21 +20,38 @@ public class TeamLeaderServiceIntegrationTests
     private readonly PostgresFixture _fx;
     public TeamLeaderServiceIntegrationTests(PostgresFixture fx) => _fx = fx;
 
-    private TeamLeaderService CreateService()
+    private TeamLeaderService CreateService() => ServiceWith(_fx.CreateDbContext());
+
+    private static TeamLeaderService ServiceWith(Infrastructure.Dapper.DbContext db) => new(
+        new BossRepository(db),
+        new TeamSlotRepository(db),
+        new TeamSlotRequirementRepository(db),
+        new TeamCandidateQuery(db),
+        new TeamSlotCharacterRepository(db),
+        new CharacterQuery(db),
+        new TeamSlotEditLock(db),
+        new Outbox(db),
+        new TeamMembershipQuery(db),
+        new SystemConfigService(db),
+        new LfgIntentRepository(db));
+
+    // 併發 accept 忠實模擬 UoW middleware：各自 Begin/Commit → advisory lock（交易級）才真的序列化。
+    // 回傳是否定案成功；被擋（隊伍已滿 / 邀請已撤 / 版本衝突）回 false。
+    private async Task<bool> AcceptInTxAsync(int memberId, ulong discordId)
     {
         var db = _fx.CreateDbContext();
-        return new TeamLeaderService(
-            new BossRepository(db),
-            new TeamSlotRepository(db),
-            new TeamSlotRequirementRepository(db),
-            new TeamCandidateQuery(db),
-            new TeamSlotCharacterRepository(db),
-            new CharacterQuery(db),
-            new TeamSlotEditLock(db),
-            new Outbox(db),
-            new TeamMembershipQuery(db),
-            new SystemConfigService(db),
-            new LfgIntentRepository(db));
+        await db.BeginAsync();
+        try
+        {
+            await ServiceWith(db).AcceptInviteAsync(memberId, discordId);
+            await db.CommitAsync();
+            return true;
+        }
+        catch
+        {
+            await db.RollbackAsync();
+            return false;
+        }
     }
 
     [Fact]
@@ -257,6 +274,48 @@ public class TeamLeaderServiceIntegrationTests
         // 接受 B（同玩家同時段）→ uq_tsc_confirmed_overlap 觸發 23505（middleware 會轉 409）
         var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => CreateService().AcceptInviteAsync(mB, 101));
         Assert.Equal("23505", ex.SqlState);
+    }
+
+    // 併發定案不超編：容量 3 的隊被邀了 6 個不同玩家，同時 accept → 恰好 3 個 Confirmed、其餘被擋。
+    // 證明「advisory lock 序列化 + 鎖內重讀容量」在真併發下擋得住超編（不是只靠推論；容量檢查無 DB 約束兜底）。
+    [Fact]
+    public async Task ConfirmMember_ConcurrentAcceptsBeyondCapacity_NeverOverfills()
+    {
+        await _fx.ResetAsync();
+        var cs = _fx.ConnectionString;
+        const int capacity = 3;
+        const int contenders = 6;
+
+        var bossId = await Seed.BossAsync(cs, requireMembers: capacity);
+        await Seed.PlayerAsync(cs, 999, "隊長");
+        var slot = DateTimeOffset.UtcNow.AddDays(3);
+        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        {
+            LeaderDiscordId = 999,
+            BossId = bossId,
+            SlotDateTime = slot,
+            Requirements = [ new CreateTeamRequirementDto { Count = capacity,
+                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
+        });
+
+        // 6 個不同玩家/角色，全部被邀（Invited）
+        var members = new List<(int memberId, ulong discordId)>();
+        for (var i = 0; i < contenders; i++)
+        {
+            long did = 1000 + i;
+            var charId = $"c{i}";
+            await Seed.PlayerAsync(cs, did, $"P{did}");
+            await Seed.CharacterAsync(cs, charId, did, "C", "箭神", 950);
+            await CreateService().InviteMemberAsync(teamId, charId, leaderDiscordId: 999);
+            members.Add((await GetMemberIdAsync(cs, teamId, charId), (ulong)did));
+        }
+
+        // 全部同時 accept
+        var results = await Task.WhenAll(members.Select(m => AcceptInTxAsync(m.memberId, m.discordId)));
+
+        // 恰好 capacity 個成功；DB 最終 Confirmed 數 = capacity，無超編
+        Assert.Equal(capacity, results.Count(ok => ok));
+        Assert.Equal(capacity, await new TeamSlotCharacterRepository(_fx.CreateDbContext()).CountConfirmedAsync(teamId));
     }
 
     [Fact]
