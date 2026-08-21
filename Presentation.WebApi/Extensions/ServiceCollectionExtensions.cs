@@ -60,7 +60,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITeamLeaderService, TeamLeaderService>();
         services.AddScoped<ITeamCandidateQuery, TeamCandidateQuery>();
         services.AddScoped<ITeamMembershipQuery, TeamMembershipQuery>();
-        services.AddScoped<IRegistrationLock, RegistrationLock>();
+        services.AddScoped<ITeamSlotEditLock, TeamSlotEditLock>();
         return services;
     }
 }

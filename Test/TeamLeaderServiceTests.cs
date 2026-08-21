@@ -18,7 +18,7 @@ public class TeamLeaderServiceTests
     private readonly Mock<ITeamCandidateQuery> _candidateQueryMock = new();
     private readonly Mock<ITeamSlotCharacterRepository> _memberRepositoryMock = new();
     private readonly Mock<ICharacterQuery> _characterQueryMock = new();
-    private readonly Mock<IRegistrationLock> _registrationLockMock = new();
+    private readonly Mock<ITeamSlotEditLock> _registrationLockMock = new();
     private readonly Mock<ITeamMembershipQuery> _membershipQueryMock = new();
     private readonly Mock<ISystemConfigService> _systemConfigServiceMock = new();
     private readonly Mock<Application.Interface.IOutbox> _outboxMock = new();

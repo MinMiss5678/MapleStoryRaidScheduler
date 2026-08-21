@@ -5,7 +5,7 @@ using Npgsql;
 
 namespace Infrastructure.Repositories;
 
-public class RegistrationLock : IRegistrationLock
+public class TeamSlotEditLock : ITeamSlotEditLock
 {
     // advisory lock 的命名空間 classId（避免與其他 advisory lock 撞號）；objId 用 teamSlotId。
     // （classId 1001 的 auto-assign 鎖已隨 period-less 4d 自動排團退場，號碼保留不重用。）
@@ -21,7 +21,7 @@ public class RegistrationLock : IRegistrationLock
     // 用字串內插組 SQL 沒有注入風險（SET 系語句本身也不支援 bind 參數）。
     private readonly string _lockTimeout;
 
-    public RegistrationLock(DbContext dbContext, string lockTimeout = "5s")
+    public TeamSlotEditLock(DbContext dbContext, string lockTimeout = "5s")
     {
         _dbContext = dbContext;
         _lockTimeout = lockTimeout;
