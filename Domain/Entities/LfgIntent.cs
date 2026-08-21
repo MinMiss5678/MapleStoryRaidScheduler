@@ -9,6 +9,6 @@ public class LfgIntent
     public int Id { get; set; }
     public ulong DiscordId { get; set; }
     public required string CharacterId { get; set; }
-    public int? BossId { get; set; }   // null = 任意王
+    public int BossId { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
 }

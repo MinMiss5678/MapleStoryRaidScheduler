@@ -76,7 +76,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
 
     public async Task<IEnumerable<CandidatePoolItem>> GetInstantPoolAsync(int bossId)
     {
-        // 即時團候選 = 未過期的找隊意圖（該王或任意王）。無常設時段（他們是「現在」要打）。
+        // 即時團候選 = 未過期、找該王的意圖。無常設時段（他們是「現在」要打）。
         const string sql = """
             WITH clear_total AS (
                 SELECT ch."DiscordId", SUM(cbc."ClearCount") AS total
@@ -98,7 +98,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             JOIN "Character" c       ON c."Id" = li."CharacterId"
             JOIN "Player" p          ON p."DiscordId" = c."DiscordId"
             LEFT JOIN clear_total ct ON ct."DiscordId" = c."DiscordId"
-            WHERE li."ExpiresAt" > now() AND (li."BossId" IS NULL OR li."BossId" = @bossId);
+            WHERE li."ExpiresAt" > now() AND li."BossId" = @bossId;
             """;
         var rows = await _dbContext.QueryAsync<PoolRow>(sql, new { bossId });
         return rows

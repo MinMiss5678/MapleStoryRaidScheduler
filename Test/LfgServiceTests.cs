@@ -35,7 +35,16 @@ public class LfgServiceTests
         _characterQuery.Setup(q => q.GetByDiscordIdAsync(999)).ReturnsAsync(new[] { Char("c1") });
 
         await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() =>
-            _service.PostAsync(new LfgIntentCreateCommand { DiscordId = 999, CharacterId = "cX" }));
+            _service.PostAsync(new LfgIntentCreateCommand { DiscordId = 999, CharacterId = "cX", BossId = 5 }));
+        _repo.Verify(r => r.CreateAsync(It.IsAny<LfgIntent>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PostAsync_ThrowsBusiness_WhenNoBoss()
+    {
+        // 無「任意王」：必須指定一隻王（BossId <= 0 → 4xx），且在擁有權檢查之前就擋。
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() =>
+            _service.PostAsync(new LfgIntentCreateCommand { DiscordId = 999, CharacterId = "c1" }));
         _repo.Verify(r => r.CreateAsync(It.IsAny<LfgIntent>()), Times.Never);
     }
 

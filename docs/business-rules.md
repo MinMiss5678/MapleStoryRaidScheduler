@@ -39,7 +39,7 @@
 | CD4 | **即時團**候選來自玩家掛的 `LfgIntent`（現在想打該王的人），**略過時段比對** | `TeamCandidateQuery.GetInstantPoolAsync` |
 | CD5 | 狀態感知去重：排除「其玩家已在本隊 active（Confirmed/Invited/Applied）」與「已在該開團時刻別隊 Confirmed（對齊 `uq_tsc_confirmed_overlap`）」者 | `TeamLeaderService.GetCandidatesAsync` |
 | CD6 | **即時找隊 leader-led（非公開看板）**：玩家在 `/teams/instant` 只**管理自己**的找隊意圖（後端只回本人），別人一律由隊長開即時團時經 CD4 撈為候選、web 內 invite→accept——不對外公開他人身分 | `LfgQuery.GetBoardAsync`（僅回本人） |
-| CD7 | 找隊意圖去重：同角色同王（含任意王 `BossId=NULL`）唯一（`uq_lfgintent_char_boss`，NULLS NOT DISTINCT）；重貼走 upsert **只刷新 TTL、不新增列** | migration `000020` / `LfgIntentRepository.CreateAsync` |
+| CD7 | 找隊意圖去重：同角色同王唯一（`uq_lfgintent_char_boss`；`BossId` 必填）；重貼走 upsert **只刷新 TTL、不新增列** | `LfgIntentRepository.CreateAsync` |
 
 ## 四、組隊狀態機（Pull / Push / 退隊 / 轉讓）
 

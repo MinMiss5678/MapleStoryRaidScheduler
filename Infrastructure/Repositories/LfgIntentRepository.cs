@@ -15,7 +15,7 @@ public class LfgIntentRepository : ILfgIntentRepository
 
     public async Task CreateAsync(LfgIntent intent)
     {
-        // 同角色同王（含任意王=NULL）已有意圖 → 只刷新 TTL，不新增列（uq_lfgintent_char_boss，NULLS NOT DISTINCT）。
+        // 同角色同王已有意圖 → 只刷新 TTL，不新增列（uq_lfgintent_char_boss）。
         const string sql = """
             INSERT INTO "LfgIntent"("DiscordId","CharacterId","BossId","ExpiresAt")
             VALUES (@DiscordId, @CharacterId, @BossId, @ExpiresAt)
