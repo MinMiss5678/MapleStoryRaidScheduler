@@ -6,7 +6,7 @@ namespace Domain.Repositories;
 /// 取交易級 advisory lock 讓同一隊伍的定案序列化，第二個在鎖內重讀 Confirmed 數就會正確看到已滿。
 /// （period-less 4d 前另有 auto-assign 鎖序列化同一 period 的自動排團，已隨自動排團退場。）
 /// </summary>
-public interface IRegistrationLock
+public interface ITeamSlotEditLock
 {
     /// <summary>
     /// 序列化同一隊伍的入隊定案（ConfirmMember）。

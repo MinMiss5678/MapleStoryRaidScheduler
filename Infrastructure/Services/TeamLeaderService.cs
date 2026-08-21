@@ -18,7 +18,7 @@ public class TeamLeaderService : ITeamLeaderService
     private readonly ITeamCandidateQuery _candidateQuery;
     private readonly ITeamSlotCharacterRepository _memberRepository;
     private readonly ICharacterQuery _characterQuery;
-    private readonly IRegistrationLock _registrationLock;
+    private readonly ITeamSlotEditLock _teamSlotEditLock;
     private readonly IOutbox _outbox;
     private readonly ITeamMembershipQuery _membershipQuery;
     private readonly ISystemConfigService _systemConfigService;
@@ -31,7 +31,7 @@ public class TeamLeaderService : ITeamLeaderService
         ITeamCandidateQuery candidateQuery,
         ITeamSlotCharacterRepository memberRepository,
         ICharacterQuery characterQuery,
-        IRegistrationLock registrationLock,
+        ITeamSlotEditLock teamSlotEditLock,
         IOutbox outbox,
         ITeamMembershipQuery membershipQuery,
         ISystemConfigService systemConfigService,
@@ -43,7 +43,7 @@ public class TeamLeaderService : ITeamLeaderService
         _candidateQuery = candidateQuery;
         _memberRepository = memberRepository;
         _characterQuery = characterQuery;
-        _registrationLock = registrationLock;
+        _teamSlotEditLock = teamSlotEditLock;
         _outbox = outbox;
         _membershipQuery = membershipQuery;
         _systemConfigService = systemConfigService;
@@ -160,7 +160,7 @@ public class TeamLeaderService : ITeamLeaderService
         // 不可分身：排除「已在該開團時刻別隊 Confirmed」者（對齊 uq_tsc_confirmed_overlap；否則邀了也接受不了）。
         var bookedIds = await _memberRepository.GetConfirmedDiscordIdsAtAsync(team.SlotDateTime);
 
-        // 團時間 → weekday/time/date（TPE），比照 TeamSlotAutoAssignService 慣例
+        // 團時間 → weekday/time/date（TPE）換算。
         var twTime = team.SlotDateTime.ToOffset(TimeSpan.FromHours(8));
         int teamWeekday = SlotDateCalculator.ToIsoWeekday(twTime.DayOfWeek);
         var teamTime = TimeOnly.FromDateTime(twTime.DateTime);
@@ -296,7 +296,7 @@ public class TeamLeaderService : ITeamLeaderService
     {
         try
         {
-            await _registrationLock.AcquireTeamSlotEditLockAsync(member.TeamSlotId);
+            await _teamSlotEditLock.AcquireTeamSlotEditLockAsync(member.TeamSlotId);
         }
         catch (AdvisoryLockTimeoutException)
         {

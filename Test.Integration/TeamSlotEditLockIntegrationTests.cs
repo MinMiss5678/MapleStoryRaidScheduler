@@ -11,7 +11,7 @@ namespace Test.Integration;
 /// <summary>
 /// 驗 TeamSlot 編輯的 advisory lock 真的互斥（對真 Postgres）：同一隊伍的併發編輯會序列化。
 /// 用 pg_try_advisory_xact_lock（非阻塞）從另一條連線觀察：持鎖時拿不到、釋放後拿得到——確定性、無時序 race。
-/// classId 1002 對齊 RegistrationLock.AcquireTeamSlotEditLockAsync。
+/// classId 1002 對齊 TeamSlotEditLock.AcquireTeamSlotEditLockAsync。
 /// </summary>
 [Collection("pg")]
 [Trait("Category", "Integration")]
@@ -39,7 +39,7 @@ public class TeamSlotEditLockIntegrationTests
         await conn1.OpenAsync();
         var ctx1 = new DbContext(conn1);
         await ctx1.BeginAsync();
-        await new RegistrationLock(ctx1).AcquireTeamSlotEditLockAsync(teamSlotId);
+        await new TeamSlotEditLock(ctx1).AcquireTeamSlotEditLockAsync(teamSlotId);
 
         // 持鎖中：另一條連線搶同一隊伍 → 拿不到（互斥成立）
         Assert.False(await TryLockFromOtherConnection(teamSlotId));
@@ -59,7 +59,7 @@ public class TeamSlotEditLockIntegrationTests
         await conn1.OpenAsync();
         var ctx1 = new DbContext(conn1);
         await ctx1.BeginAsync();
-        await new RegistrationLock(ctx1).AcquireTeamSlotEditLockAsync(1);
+        await new TeamSlotEditLock(ctx1).AcquireTeamSlotEditLockAsync(1);
 
         // 不同隊伍（2）不受影響 → 拿得到（不同 objId 互不阻塞、可並行）
         Assert.True(await TryLockFromOtherConnection(2));
@@ -83,7 +83,7 @@ public class TeamSlotEditLockIntegrationTests
         await connA.OpenAsync();
         var ctxA = new DbContext(connA);
         await ctxA.BeginAsync();
-        await new RegistrationLock(ctxA).AcquireTeamSlotEditLockAsync(teamSlotId);
+        await new TeamSlotEditLock(ctxA).AcquireTeamSlotEditLockAsync(teamSlotId);
 
         // B：短逾時去搶同一把鎖 → 應該在遠低於「無限等待」的時間內丟例外
         await using var connB = new NpgsqlConnection(_fx.ConnectionString);
@@ -93,7 +93,7 @@ public class TeamSlotEditLockIntegrationTests
 
         var sw = Stopwatch.StartNew();
         await Assert.ThrowsAsync<AdvisoryLockTimeoutException>(
-            () => new RegistrationLock(ctxB, "300ms").AcquireTeamSlotEditLockAsync(teamSlotId));
+            () => new TeamSlotEditLock(ctxB, "300ms").AcquireTeamSlotEditLockAsync(teamSlotId));
         sw.Stop();
 
         // 真的被短 timeout 擋下，不是巧合瞬間成功又被誤判；給寬鬆上限，不是精確計時斷言

@@ -30,7 +30,7 @@ public class TeamLeaderServiceIntegrationTests
             new TeamCandidateQuery(db),
             new TeamSlotCharacterRepository(db),
             new CharacterQuery(db),
-            new RegistrationLock(db),
+            new TeamSlotEditLock(db),
             new Outbox(db),
             new TeamMembershipQuery(db),
             new SystemConfigService(db),
