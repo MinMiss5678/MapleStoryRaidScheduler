@@ -23,6 +23,9 @@ public class LfgService : ILfgService
 
     public async Task PostAsync(LfgIntentCreateCommand command)
     {
+        // 必須指定一隻王（無「任意王」）。BossId 存在性由 DB FK 兜。
+        if (command.BossId <= 0)
+            throw new BusinessException("必須指定一隻王");
         // 擁有權：找隊用的角色必須是本人的（否則 IDOR）。
         var owned = (await _characterQuery.GetByDiscordIdAsync(command.DiscordId)).Any(c => c.Id == command.CharacterId);
         if (!owned)

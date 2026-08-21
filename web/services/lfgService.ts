@@ -6,13 +6,13 @@ export interface LfgBoardItem {
     characterName: string;
     job: string;
     attackPower: number;
-    bossId: number | null;
-    bossName: string | null;
+    bossId: number;
+    bossName: string;
 }
 
 export interface LfgPostInput {
     characterId: string;
-    bossId: number | null;
+    bossId: number;
 }
 
 export const lfgService = {

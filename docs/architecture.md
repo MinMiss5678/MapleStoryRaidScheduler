@@ -409,7 +409,7 @@ flowchart LR
 - **招募缺口**（`GetRecruitmentGapAsync`）：對每條需求列數已 `Confirmed` 的同職業成員，`還缺 = Count − 已配`（**逐列貪婪**、限定職業列先配再配不限）；前端在候選/審核頁顯示「還缺 主教×1…」，並依需求職業分組、缺的排前。軟提示——不改容量、不強制組成。
 - **隊員組成**（`GetTeamMembersAsync`）：已 `Confirmed` 成員或隊長可看該隊成員（角色/職業/攻擊/祝福、標記隊長）；外人 403。**尋隊**（公開面 `GetOpenTeamsAsync`）則只回成員能力、**不露身分**（§9.12）。
 - **顯示身分**：面向「別人」的清單（候選/審核/隊員/轉讓）一律以 `discordName` 呈現（認的是「人」）；「自己的角色」情境（我的角色、我的邀請/已加入卡、開隊/申請選角）才顯示角色名。
-- **即時找隊 leader-led**：玩家在 `/teams/instant` 只管理自己的 `LfgIntent`（`GetBoardAsync` 只回本人，不公開他人）；別人一律由隊長開即時團經候選（`GetInstantPoolAsync`）邀。`LfgIntent` 同角色同王（含任意王 `NULL`）唯一（`uq_lfgintent_char_boss`，NULLS NOT DISTINCT，migration `000020`），重貼走 upsert 刷新 TTL。
+- **即時找隊 leader-led**：玩家在 `/teams/instant` 只管理自己的 `LfgIntent`（`GetBoardAsync` 只回本人，不公開他人）；別人一律由隊長開即時團經候選（`GetInstantPoolAsync`）邀。`LfgIntent` 同角色同王唯一（`uq_lfgintent_char_boss`；`BossId` 必填），重貼走 upsert 刷新 TTL。
 - **解散隊伍**（`DeleteTeamAsync`）：隊長刪整隊 + 通知在籍成員（排除隊長本人）。
 
 ### 通知（與狀態改動原子）

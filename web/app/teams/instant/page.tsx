@@ -24,7 +24,7 @@ export default function InstantLfgPage() {
     const [bossId, setBossId] = useState<number | "">("");
 
     const post = useMutation({
-        mutationFn: () => lfgService.post({ characterId, bossId: bossId === "" ? null : Number(bossId) }),
+        mutationFn: () => lfgService.post({ characterId, bossId: Number(bossId) }),
         onSuccess: () => toast.success("已發布找隊"),
         onError: (e) => toast.error(e instanceof ApiError ? e.message : "發布失敗，請稍後再試"),
         onSettled: () => invalidateTeamQueries(qc),
@@ -39,6 +39,10 @@ export default function InstantLfgPage() {
     const submit = () => {
         if (!characterId) {
             toast.error("請選角色");
+            return;
+        }
+        if (bossId === "") {
+            toast.error("請選王");
             return;
         }
         post.mutate();
@@ -72,7 +76,7 @@ export default function InstantLfgPage() {
                     想打的王
                     <select value={bossId} onChange={(e) => setBossId(e.target.value === "" ? "" : Number(e.target.value))}
                         className="border border-border rounded-lg px-3 py-2 bg-background">
-                        <option value="">任意王</option>
+                        <option value="">選王…</option>
                         {bosses.map((b) => (
                             <option key={b.id} value={b.id}>{b.name}</option>
                         ))}
@@ -101,7 +105,7 @@ export default function InstantLfgPage() {
                                 <span className="font-medium">{item.characterName}</span>
                                 <span className="text-sm text-muted-foreground">{item.job}</span>
                                 <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                                    <Swords size={14} /> {item.bossName ?? "任意王"}
+                                    <Swords size={14} /> {item.bossName}
                                 </span>
                                 <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
                                     <Zap size={14} /> {item.attackPower}

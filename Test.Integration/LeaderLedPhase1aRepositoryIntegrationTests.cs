@@ -59,12 +59,12 @@ public class LeaderLedPhase1aRepositoryIntegrationTests
         await Seed.PlayerAsync(cs, 999, "P999");
         await Seed.CharacterAsync(cs, "c999", 999, "C", "英雄", 900);
         var bossId = await Seed.BossAsync(cs);
+        var bossId2 = await Seed.BossAsync(cs);
         await using (var conn = new Npgsql.NpgsqlConnection(cs))
         {
             await conn.OpenAsync();
-            // 兩筆需在 (CharacterId,BossId) 不同組，否則撞 000020 唯一索引（uq_lfgintent_char_boss，NULLS NOT DISTINCT）：
-            // 過期那筆掛某王、未過期那筆掛任意王(NULL) → 不同組。
-            await Dapper.SqlMapper.ExecuteAsync(conn, $"""INSERT INTO "LfgIntent"("DiscordId","CharacterId","BossId","ExpiresAt") VALUES (999,'c999',{bossId}, now() - interval '1 hour'), (999,'c999',NULL, now() + interval '1 hour');""");
+            // 兩筆需在 (CharacterId,BossId) 不同組，否則撞唯一索引 uq_lfgintent_char_boss → 掛兩隻不同王。
+            await Dapper.SqlMapper.ExecuteAsync(conn, $"""INSERT INTO "LfgIntent"("DiscordId","CharacterId","BossId","ExpiresAt") VALUES (999,'c999',{bossId}, now() - interval '1 hour'), (999,'c999',{bossId2}, now() + interval '1 hour');""");
         }
 
         var job = new Infrastructure.BackgroundJobs.LfgIntentCleanupJob(
