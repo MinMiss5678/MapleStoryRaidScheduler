@@ -13,8 +13,6 @@ using Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Npgsql;
 using Presentation.Infrastructure.Discord.Handlers;
 using Serilog;
 using StackExchange.Redis;
@@ -26,6 +24,13 @@ public class Program
     static async Task Main()
     {
         var host = Host.CreateDefaultBuilder()
+             // 啟動即驗 DI 生命週期：ValidateScopes 禁止 root 解析 scoped、ValidateOnBuild 建構時就抓
+             // captive dependency（singleton 誤吃 scoped）→ per-operation scope 的護欄，未來加註冊誤配立刻爆。
+             .UseDefaultServiceProvider((_, options) =>
+             {
+                 options.ValidateScopes = true;
+                 options.ValidateOnBuild = true;
+             })
              .UseSerilog((ctx, services, config) =>
              {
                  // 跟 backend（Presentation.WebApi/Program.cs）同一套設定：Outbox 派發失敗/放棄這類
@@ -65,29 +70,32 @@ public class Program
                      services.AddDiscordClient(token, intents);
                  }
 
-                 // 資料庫與 Repository 註冊。連線字串抽成區域變數 → OutboxDispatcher 也用同一份（自開專屬連線）。
+                 // 資料庫連線：連線字串集中到 IDbConnectionFactory（單一來源）→ scoped IDbConnection 與
+                 // 背景 poller（OutboxDispatcher 等，各自 factory.Create() 自開專屬連線）共用同一份設定。
                  var defaultConnectionFile = config["ConnectionStrings:DefaultConnectionFile"];
                  var connectionString = !string.IsNullOrEmpty(defaultConnectionFile) && File.Exists(defaultConnectionFile)
                      ? File.ReadAllText(defaultConnectionFile).Trim()
                      : config.GetConnectionString("DefaultConnection")!;
-                 services.AddSingleton<IDbConnection>(_ =>
-                 {
-                     var conn = new NpgsqlConnection(connectionString);
-                     conn.Open();
-                     return conn;
-                 });
+                 services.AddSingleton<IDbConnectionFactory>(new NpgsqlConnectionFactory(connectionString));
+                 // 每個操作單元（Discord 事件 / outbox 消費 / 未來按鈕互動）拿專屬連線 → 並發安全，
+                 // 與 API 端一致（Presentation.WebApi 也是 AddScoped<IDbConnection>）。DSharpPlus 每事件自動開 scope
+                 // → 事件 handler（transient）直接注入 scoped 即可。連線延遲開啟（不 eager Open；DbContext.BeginAsync
+                 // 或 Dapper 在需要時才開），避免每 scope 建構就佔一條連線。
+                 services.AddScoped<IDbConnection>(sp => sp.GetRequiredService<IDbConnectionFactory>().Create());
 
-                 services.AddSingleton<IUnitOfWork, UnitOfWork>();
-                 services.AddSingleton<DbContext>();
+                 // DB 鏈全 Scoped（每 scope 專屬 DbContext/連線/交易）：UoW、DbContext、repo、DB-touching service。
+                 // 純 Discord/Redis/HTTP（IDiscordService、IDiscordOAuthClient）維持 Singleton——不碰 DB、無 captive 風險。
+                 services.AddScoped<IUnitOfWork, UnitOfWork>();
+                 services.AddScoped<DbContext>();
                  services.AddSingleton<IDiscordService, DiscordService>();
-                 services.AddSingleton<ISessionService, SessionService>();
-                 services.AddSingleton<ISessionRepository, SessionRepository>();
-                 services.AddSingleton<ISessionQuery, SessionQuery>();
+                 services.AddScoped<ISessionService, SessionService>();
+                 services.AddScoped<ISessionRepository, SessionRepository>();
+                 services.AddScoped<ISessionQuery, SessionQuery>();
                  services.AddSingleton<IDiscordOAuthClient, DiscordOAuthClient>();
-                 services.AddSingleton<ISystemConfigService, SystemConfigService>();
-                 services.AddSingleton<IPlayerRepository, PlayerRepository>();
-                 services.AddSingleton<IPlayerService, PlayerService>();
-                 services.AddSingleton<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();
+                 services.AddScoped<ISystemConfigService, SystemConfigService>();
+                 services.AddScoped<IPlayerRepository, PlayerRepository>();
+                 services.AddScoped<IPlayerService, PlayerService>();
+                 services.AddScoped<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();
                  services.ConfigureEventHandlers(b => b
                      .AddEventHandlers<MemberUpdatedHandler>()
                      .AddEventHandlers<MemberRemovedHandler>());
@@ -109,16 +117,11 @@ public class Program
                  // 寫入端（IOutbox.Enqueue）在 API（TeamLeaderService 發 TeamNotification）；bot 不 enqueue。
                  // dispatcher 自開專屬連線（不共用 singleton IDbConnection，免與 Discord 事件/計時器互踩）。
                  services.AddSingleton<IOutboxHandler, TeamNotificationOutboxHandler>();  // leader-led 組隊通知 → Discord DM
-                 services.AddHostedService(sp => new OutboxDispatcher(
-                     connectionString,
-                     sp.GetServices<IOutboxHandler>(),
-                     sp.GetRequiredService<ILogger<OutboxDispatcher>>()));
-                 services.AddHostedService(sp => new OutboxRetentionJob(
-                     connectionString,
-                     sp.GetRequiredService<ILogger<OutboxRetentionJob>>()));
-                 services.AddHostedService(sp => new LfgIntentCleanupJob(
-                     connectionString,
-                     sp.GetRequiredService<ILogger<LfgIntentCleanupJob>>()));
+                 // 三個背景 poller 的相依（IDbConnectionFactory / IOutboxHandler / ILogger）皆可由 DI 解析
+                 // → 直接型別註冊，免手動 new。各自仍 factory.Create() 自開專屬連線（不共用 scoped IDbConnection）。
+                 services.AddHostedService<OutboxDispatcher>();
+                 services.AddHostedService<OutboxRetentionJob>();
+                 services.AddHostedService<LfgIntentCleanupJob>();
 
                  // 註冊自動執行的 Background Services
                  services.AddHostedService<DiscordBotService>();       // Discord 啟動管理

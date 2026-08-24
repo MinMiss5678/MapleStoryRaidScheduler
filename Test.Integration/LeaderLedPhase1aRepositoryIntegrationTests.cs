@@ -68,7 +68,7 @@ public class LeaderLedPhase1aRepositoryIntegrationTests
         }
 
         var job = new Infrastructure.BackgroundJobs.LfgIntentCleanupJob(
-            cs, Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.BackgroundJobs.LfgIntentCleanupJob>.Instance);
+            new Infrastructure.Dapper.NpgsqlConnectionFactory(cs), Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.BackgroundJobs.LfgIntentCleanupJob>.Instance);
         var deleted = await job.CleanupAsync(System.Threading.CancellationToken.None);
 
         Assert.Equal(1, deleted); // 只刪過期那筆

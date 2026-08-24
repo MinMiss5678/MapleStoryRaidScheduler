@@ -1,6 +1,7 @@
 using Application.Interface;
 using Dapper;
 using Infrastructure.BackgroundJobs;
+using Infrastructure.Dapper;
 using Infrastructure.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -54,7 +55,7 @@ public class OutboxIntegrationTests : IAsyncLifetime
         await EnqueueCommittedAsync("TestEvent");
 
         var handler = new RecordingHandler("TestEvent");
-        var dispatcher = new OutboxDispatcher(_fx.ConnectionString, new[] { handler }, NullLogger<OutboxDispatcher>.Instance);
+        var dispatcher = new OutboxDispatcher(new NpgsqlConnectionFactory(_fx.ConnectionString), new[] { handler }, NullLogger<OutboxDispatcher>.Instance);
 
         var n1 = await dispatcher.ProcessBatchAsync(CancellationToken.None);
         Assert.Equal(1, n1);
@@ -71,7 +72,7 @@ public class OutboxIntegrationTests : IAsyncLifetime
     {
         await EnqueueCommittedAsync("UnknownType");
 
-        var dispatcher = new OutboxDispatcher(_fx.ConnectionString,
+        var dispatcher = new OutboxDispatcher(new NpgsqlConnectionFactory(_fx.ConnectionString),
             new[] { new RecordingHandler("TestEvent") }, NullLogger<OutboxDispatcher>.Instance);
 
         await dispatcher.ProcessBatchAsync(CancellationToken.None);
@@ -138,7 +139,7 @@ public class OutboxIntegrationTests : IAsyncLifetime
         Assert.Equal(1, await CountAsync("""WHERE "ProcessedAt" IS NULL""")); // 但 DB 上這列仍是「未處理」
 
         // 「重啟後」：真正的 dispatcher 重新跑一批 → 該列會被重新撈到、重送給 handler
-        var dispatcher = new OutboxDispatcher(_fx.ConnectionString, new[] { handler }, NullLogger<OutboxDispatcher>.Instance);
+        var dispatcher = new OutboxDispatcher(new NpgsqlConnectionFactory(_fx.ConnectionString), new[] { handler }, NullLogger<OutboxDispatcher>.Instance);
         var processed = await dispatcher.ProcessBatchAsync(CancellationToken.None);
 
         Assert.Equal(1, processed);
@@ -158,7 +159,7 @@ public class OutboxIntegrationTests : IAsyncLifetime
         var recentProcessedId = await InsertRowAsync(processedAt: DateTimeOffset.UtcNow.AddDays(-1));
         var unprocessedId = await InsertRowAsync(processedAt: null);
 
-        var job = new OutboxRetentionJob(_fx.ConnectionString, NullLogger<OutboxRetentionJob>.Instance);
+        var job = new OutboxRetentionJob(new NpgsqlConnectionFactory(_fx.ConnectionString), NullLogger<OutboxRetentionJob>.Instance);
         var deleted = await job.CleanupAsync(TimeSpan.FromDays(30), CancellationToken.None);
 
         Assert.Equal(1, deleted);
