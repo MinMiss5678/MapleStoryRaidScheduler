@@ -13,7 +13,7 @@ test('容量 1 隊：一人接受額滿 → 另一人邀請自動撤銷', async 
   const pad = (n: number) => String(n).padStart(2, '0');
   const slot = new Date();
   slot.setDate(slot.getDate() + 10 + (salt % 7));
-  const slotLocal = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(salt % 24)}:${pad(salt % 60)}`;
+  const slotLocal = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(salt % 24)}:${pad((salt % 2) * 30)}`;   // step=1800 → 分鐘只能 00/30
   const desc = `LL-revoke-${salt}`;
 
   // 1) 隊長 6007 開容量 1 的隊（不設職業條件 → 候選為全池）

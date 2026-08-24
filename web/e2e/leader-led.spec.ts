@@ -18,7 +18,7 @@ test('隊長開隊 → 玩家申請 → 隊長核准 → 玩家看到已加入',
   const pad = (n: number) => String(n).padStart(2, '0');
   const slot = new Date();
   slot.setDate(slot.getDate() + 10 + (salt % 7));            // today+10 ~ +16（皆在期內）
-  const slotLocal = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(salt % 24)}:${pad(salt % 60)}`;
+  const slotLocal = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(salt % 24)}:${pad((salt % 2) * 30)}`;   // step=1800 → 分鐘只能 00/30
   const desc = `LL-e2e-${salt}`;                             // 唯一隊伍說明，用來鎖定卡片
 
   // ── 1) 隊長開隊 ──

@@ -37,6 +37,15 @@ function savePresets(presets: Preset[]) {
 const cloneRows = (rows: CreateTeamRequirementInput[]): CreateTeamRequirementInput[] =>
     rows.map((r) => ({ ...r, jobs: r.jobs.map((j) => ({ ...j })) }));
 
+// 預設打王時段＝下一個 00/30 整半點（本地時間、datetime-local 格式）→ 分鐘一開始就落在 00/30，免手動滑
+const nextRoundSlot = (): string => {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    d.setMinutes(d.getMinutes() < 30 ? 30 : 60); // <30 → 本時:30；>=30 → 次時:00
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
 export default function NewTeamPage() {
     const router = useRouter();
     const qc = useQueryClient();
@@ -54,6 +63,7 @@ export default function NewTeamPage() {
     const [organizerOnly, setOrganizerOnly] = useState(false);
 
     useEffect(() => setPresets(loadPresets()), []);
+    useEffect(() => setSlotDateTime(nextRoundSlot()), []);   // 開頁預設下一個 00/30 整半點
 
     const applyPreset = (p: Preset) => setRows(cloneRows(p.rows));
 
@@ -167,6 +177,7 @@ export default function NewTeamPage() {
                                 type="datetime-local"
                                 value={slotDateTime}
                                 onChange={(e) => setSlotDateTime(e.target.value)}
+                                step={1800}
                                 className="px-3 py-2 bg-background border border-border rounded-xl text-sm"
                             />
                         </label>
