@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, UserSearch, Zap, Trophy, Sparkles, UserPlus, Check, AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, UserSearch, Zap, Trophy, Sparkles, UserPlus, Check, AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Star } from "lucide-react";
 import toast from "react-hot-toast";
 import { useCandidates } from "@/hooks/queries/useCandidates";
 import { useRecruitmentGap } from "@/hooks/queries/useRecruitmentGap";
@@ -43,6 +43,8 @@ export default function CandidatesPage() {
                 : [prev[1], prev[0]],
         );
     const cmp = (a: TeamCandidate, b: TeamCandidate) => {
+        // 偏好本王優先（軟訊號）：組內排最前，其餘再按攻擊/通關
+        if (a.prefersThisBoss !== b.prefersThisBoss) return a.prefersThisBoss ? -1 : 1;
         for (const s of sorts) {
             const d = s.dir === "asc" ? valueOf(a, s.key) - valueOf(b, s.key) : valueOf(b, s.key) - valueOf(a, s.key);
             if (d !== 0) return d;
@@ -216,6 +218,11 @@ export default function CandidatesPage() {
                                                     {c.leaveRateWarn && (
                                                         <span className="flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
                                                             <AlertTriangle size={12} /> 退團率高
+                                                        </span>
+                                                    )}
+                                                    {c.prefersThisBoss && (
+                                                        <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                                                            <Star size={12} /> 偏好此王
                                                         </span>
                                                     )}
                                                 </div>

@@ -16,4 +16,5 @@ public class TeamCandidateDto
     public int MapleBlessingLevel { get; set; }    // 挑 buffer 用（§9.18）
     public int BossClearCount { get; set; }         // 本王總通關（跨該玩家角色加總，老手參考，§9.14）
     public bool LeaveRateWarn { get; set; }         // 退團率偏高警示（Feature 1b；admin 開且達門檻才 true）
+    public bool PrefersThisBoss { get; set; }       // 該角色偏好清單含本王 → 前端標「偏好此王」+ 後端排前（軟訊號，非硬篩）
 }

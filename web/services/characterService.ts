@@ -14,6 +14,13 @@ export const characterService = {
     async saveBossClears(characterId: string, clears: BossClear[]): Promise<void> {
         await apiClient.post(`/api/character/${encodeURIComponent(characterId)}/BossClears`, clears);
     },
+    // per 角色 偏好王（複選）：候選匹配軟訊號。PUT = 整批取代。
+    async getPreferredBosses(characterId: string): Promise<number[]> {
+        return apiClient.get<number[]>(`/api/character/${encodeURIComponent(characterId)}/PreferredBosses`);
+    },
+    async savePreferredBosses(characterId: string, bossIds: number[]): Promise<void> {
+        await apiClient.put(`/api/character/${encodeURIComponent(characterId)}/PreferredBosses`, bossIds);
+    },
     async getCharacters(bossId?: number): Promise<Character[]> {
         const url = bossId ? `/api/character/GetWithDiscordName?bossId=${bossId}` : "/api/character/GetWithDiscordName";
         return apiClient.get<Character[]>(url);

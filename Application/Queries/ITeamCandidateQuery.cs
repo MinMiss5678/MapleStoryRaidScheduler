@@ -37,5 +37,7 @@ public class CandidatePoolItem
     public int AttackPower { get; set; }
     public int MapleBlessingLevel { get; set; }
     public int BossClearCount { get; set; }
+    public bool PrefersThisBoss { get; set; }     // 偏好清單含本王（軟訊號：排前 + 標記）
+    public bool HasAnyPreference { get; set; }    // 有設任何偏好 → 區分「沒設＝中性」vs「設了但不含本王＝殿後」
     public List<PlayerAvailability> Availabilities { get; set; } = [];
 }

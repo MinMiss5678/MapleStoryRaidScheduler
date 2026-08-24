@@ -2,6 +2,8 @@
 
 狀態：**優化 1+2 已實作**（2026-08-11，`DiscordService.cs`：DM 頻道快取 + 成員快取優先 → 熱路徑 3→1 REST）；**優化 3（同人彙整）仍待產品決策**（時間窗/訊息格式），量成長成痛點再做。
 
+> 本份講「送得省」（減少 REST）。「送什麼／送去哪／要不要送」＝ **通知策略**另見 `2026-08-25-notification-strategy.md`（深連結 + 從源頭移除低價值通知）——它已部分達成優化 3 的「減少淹沒」目標（先砍噪音，剩的量若仍痛再談彙整）。
+
 關聯：`Infrastructure/Services/DiscordService.cs`、`Infrastructure/BackgroundJobs/TeamNotificationOutboxHandler.cs`、`OutboxDispatcher.cs`。DM 架構＝Transactional Outbox（見 leader-led §11）。
 
 ## 1. 背景與現況基準

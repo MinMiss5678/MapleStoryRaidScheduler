@@ -78,4 +78,24 @@ public class CharacterController : ControllerBase
         await _characterService.SaveBossClearsAsync(discordId, id, clears);
         return Ok();
     }
+
+    // per 角色 偏好王（複選）：候選匹配軟訊號來源。只能讀寫自己的角色；PUT = 整批取代。
+    [HttpGet("{id}/PreferredBosses")]
+    public async Task<IActionResult> GetPreferredBossesAsync(string id)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _characterService.GetPreferredBossesAsync(discordId, id));
+    }
+
+    [HttpPut("{id}/PreferredBosses")]
+    public async Task<IActionResult> SavePreferredBossesAsync(string id, [FromBody] IEnumerable<int> bossIds)
+    {
+        if (!this.TryGetCurrentDiscordId(out var discordId))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        await _characterService.SavePreferredBossesAsync(discordId, id, bossIds);
+        return Ok();
+    }
 }

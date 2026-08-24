@@ -80,6 +80,7 @@ export type TeamCandidate = {
     mapleBlessingLevel: number;
     bossClearCount: number;
     leaveRateWarn: boolean; // 退團率偏高警示（admin 開且達門檻才 true）
+    prefersThisBoss: boolean; // 該角色偏好清單含本王 → 組內排前 + 標「偏好此王」（軟訊號）
 };
 
 // 開隊 command（對齊後端 CreateTeamCommand；LeaderDiscordId 由後端從登入身分注入）
