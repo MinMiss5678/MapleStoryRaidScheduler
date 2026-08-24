@@ -1,7 +1,7 @@
+using Application.Interface;
 using Dapper;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Npgsql;
 
 namespace Infrastructure.BackgroundJobs;
 
@@ -19,12 +19,12 @@ public class OutboxRetentionJob : BackgroundService
     private const string DeleteSql =
         """DELETE FROM "OutboxMessage" WHERE "ProcessedAt" IS NOT NULL AND "ProcessedAt" < @Threshold""";
 
-    private readonly string _connectionString;
+    private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<OutboxRetentionJob> _logger;
 
-    public OutboxRetentionJob(string connectionString, ILogger<OutboxRetentionJob> logger)
+    public OutboxRetentionJob(IDbConnectionFactory connectionFactory, ILogger<OutboxRetentionJob> logger)
     {
-        _connectionString = connectionString;
+        _connectionFactory = connectionFactory;
         _logger = logger;
     }
 
@@ -57,7 +57,7 @@ public class OutboxRetentionJob : BackgroundService
     // internal：供整合測確定性地跑一次（不靠 24 小時輪詢）
     internal async Task<int> CleanupAsync(TimeSpan retention, CancellationToken ct)
     {
-        await using var conn = new NpgsqlConnection(_connectionString);
+        await using var conn = _connectionFactory.Create();
         await conn.OpenAsync(ct);
 
         var threshold = DateTimeOffset.UtcNow - retention;

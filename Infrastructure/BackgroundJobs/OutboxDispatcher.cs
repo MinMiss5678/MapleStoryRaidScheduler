@@ -2,7 +2,6 @@ using Application.Interface;
 using Dapper;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Npgsql;
 
 namespace Infrastructure.BackgroundJobs;
 
@@ -38,13 +37,13 @@ public class OutboxDispatcher : BackgroundService
     private const string GiveUpSql =
         """UPDATE "OutboxMessage" SET "ProcessedAt" = now(), "AttemptCount" = "AttemptCount" + 1, "LastError" = @Error WHERE "Id" = @Id""";
 
-    private readonly string _connectionString;
+    private readonly IDbConnectionFactory _connectionFactory;
     private readonly IReadOnlyDictionary<string, IOutboxHandler> _handlers;
     private readonly ILogger<OutboxDispatcher> _logger;
 
-    public OutboxDispatcher(string connectionString, IEnumerable<IOutboxHandler> handlers, ILogger<OutboxDispatcher> logger)
+    public OutboxDispatcher(IDbConnectionFactory connectionFactory, IEnumerable<IOutboxHandler> handlers, ILogger<OutboxDispatcher> logger)
     {
-        _connectionString = connectionString;
+        _connectionFactory = connectionFactory;
         _handlers = handlers.ToDictionary(h => h.Type);
         _logger = logger;
     }
@@ -79,7 +78,7 @@ public class OutboxDispatcher : BackgroundService
     // internal：供整合測確定性地跑一批（不靠計時輪詢）
     internal async Task<int> ProcessBatchAsync(CancellationToken ct)
     {
-        await using var conn = new NpgsqlConnection(_connectionString);
+        await using var conn = _connectionFactory.Create();
         await conn.OpenAsync(ct);
         // 交易包住整批：FOR UPDATE 的鎖持有到 commit → 其他 dispatcher SKIP 掉這些列
         await using var tx = await conn.BeginTransactionAsync(ct);

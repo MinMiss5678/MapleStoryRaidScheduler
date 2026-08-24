@@ -1,7 +1,7 @@
+using Application.Interface;
 using Dapper;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Npgsql;
 
 namespace Infrastructure.BackgroundJobs;
 
@@ -17,12 +17,12 @@ public class LfgIntentCleanupJob : BackgroundService
 
     private const string DeleteSql = """DELETE FROM "LfgIntent" WHERE "ExpiresAt" <= @Now""";
 
-    private readonly string _connectionString;
+    private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<LfgIntentCleanupJob> _logger;
 
-    public LfgIntentCleanupJob(string connectionString, ILogger<LfgIntentCleanupJob> logger)
+    public LfgIntentCleanupJob(IDbConnectionFactory connectionFactory, ILogger<LfgIntentCleanupJob> logger)
     {
-        _connectionString = connectionString;
+        _connectionFactory = connectionFactory;
         _logger = logger;
     }
 
@@ -55,7 +55,7 @@ public class LfgIntentCleanupJob : BackgroundService
     // internal：供整合測確定性地跑一次（不靠 1 小時輪詢）
     internal async Task<int> CleanupAsync(CancellationToken ct)
     {
-        await using var conn = new NpgsqlConnection(_connectionString);
+        await using var conn = _connectionFactory.Create();
         await conn.OpenAsync(ct);
         return await conn.ExecuteAsync(DeleteSql, new { Now = DateTimeOffset.UtcNow });
     }
