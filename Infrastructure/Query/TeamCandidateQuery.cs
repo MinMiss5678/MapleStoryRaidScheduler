@@ -35,6 +35,8 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                 c."AttackPower"              AS "AttackPower",
                 c."MapleBlessingLevel"       AS "MapleBlessingLevel",
                 COALESCE(ct.total, 0)::int   AS "BossClearCount",
+                (pbx."BossId" IS NOT NULL)   AS "PrefersThisBoss",
+                EXISTS(SELECT 1 FROM "CharacterPreferredBoss" pb2 WHERE pb2."CharacterId" = c."Id") AS "HasAnyPreference",
                 a."Weekday"                  AS "Weekday",
                 a."StartTime"                AS "StartTime",
                 a."EndTime"                  AS "EndTime"
@@ -42,6 +44,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             JOIN "Player" p                     ON p."DiscordId" = c."DiscordId"
             JOIN "PlayerAvailabilityStanding" a ON a."DiscordId" = c."DiscordId"
             LEFT JOIN clear_total ct            ON ct."DiscordId" = c."DiscordId"
+            LEFT JOIN "CharacterPreferredBoss" pbx ON pbx."CharacterId" = c."Id" AND pbx."BossId" = @bossId
             WHERE c."IsSeekingRaid";
             """;
 
@@ -63,6 +66,8 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                     AttackPower = first.AttackPower,
                     MapleBlessingLevel = first.MapleBlessingLevel,
                     BossClearCount = first.BossClearCount,
+                    PrefersThisBoss = first.PrefersThisBoss,
+                    HasAnyPreference = first.HasAnyPreference,
                     Availabilities = g.Select(r => new PlayerAvailability
                     {
                         Weekday = r.Weekday,
@@ -93,11 +98,14 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                 c."Job"                      AS "Job",
                 c."AttackPower"              AS "AttackPower",
                 c."MapleBlessingLevel"       AS "MapleBlessingLevel",
-                COALESCE(ct.total, 0)::int   AS "BossClearCount"
+                COALESCE(ct.total, 0)::int   AS "BossClearCount",
+                (pbx."BossId" IS NOT NULL)   AS "PrefersThisBoss",
+                EXISTS(SELECT 1 FROM "CharacterPreferredBoss" pb2 WHERE pb2."CharacterId" = c."Id") AS "HasAnyPreference"
             FROM "LfgIntent" li
             JOIN "Character" c       ON c."Id" = li."CharacterId"
             JOIN "Player" p          ON p."DiscordId" = c."DiscordId"
             LEFT JOIN clear_total ct ON ct."DiscordId" = c."DiscordId"
+            LEFT JOIN "CharacterPreferredBoss" pbx ON pbx."CharacterId" = c."Id" AND pbx."BossId" = @bossId
             WHERE li."ExpiresAt" > now() AND li."BossId" = @bossId;
             """;
         var rows = await _dbContext.QueryAsync<PoolRow>(sql, new { bossId });
@@ -116,6 +124,8 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                     AttackPower = first.AttackPower,
                     MapleBlessingLevel = first.MapleBlessingLevel,
                     BossClearCount = first.BossClearCount,
+                    PrefersThisBoss = first.PrefersThisBoss,
+                    HasAnyPreference = first.HasAnyPreference,
                     Availabilities = [] // 即時：不看常設時段
                 };
             })
@@ -178,6 +188,8 @@ public class TeamCandidateQuery : ITeamCandidateQuery
         public int AttackPower { get; set; }
         public int MapleBlessingLevel { get; set; }
         public int BossClearCount { get; set; }
+        public bool PrefersThisBoss { get; set; }
+        public bool HasAnyPreference { get; set; }
         public int Weekday { get; set; }
         public TimeOnly StartTime { get; set; }
         public TimeOnly EndTime { get; set; }

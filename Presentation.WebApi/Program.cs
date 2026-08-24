@@ -177,6 +177,8 @@ builder.Services.AddHttpClient();
 // middleware 掛在 Auth 之後、UnitOfWork 之前 → 被擋的請求不會白開 DB 交易。
 // 綁 RateLimitOptions 到 DI（延遲繫結）→ 值在請求處理時才讀，才吃得到測試 / 環境覆寫的設定
 builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimit"));
+// 通知 DM 末尾附站內連結用（TeamLeaderService.NotifyAsync）；值由 App__AppUrl 環境變數提供
+builder.Services.Configure<AppOptions>(builder.Configuration.GetSection("App"));
 builder.Services.AddRateLimiter(rateLimiterOptions =>
 {
     rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

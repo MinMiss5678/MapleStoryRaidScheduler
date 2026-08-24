@@ -93,6 +93,7 @@ services:
       - Discord__ClientId=836636705498595340
       - Discord__ClientSecretFile=/run/secrets/discord_client_secret
       - Discord__RedirectUri=https://maplestory.paralleluniversegame.uk/callback
+      - App__AppUrl=https://maplestory.paralleluniversegame.uk
       - Jwt__SecretKeyFile=/run/secrets/jwt_secret_key
       - Jwt__Issuer=https://maplestory.paralleluniversegame.uk
       - Jwt__Audience=https://maplestory.paralleluniversegame.uk

@@ -33,7 +33,8 @@ public class TeamLeaderServiceIntegrationTests
         new Outbox(db),
         new TeamMembershipQuery(db),
         new SystemConfigService(db),
-        new LfgIntentRepository(db));
+        new LfgIntentRepository(db),
+        Microsoft.Extensions.Options.Options.Create(new Application.Options.AppOptions { AppUrl = "https://test.local" }));
 
     // 併發 accept 忠實模擬 UoW middleware：各自 Begin/Commit → advisory lock（交易級）才真的序列化。
     // 回傳是否定案成功；被擋（隊伍已滿 / 邀請已撤 / 版本衝突）回 false。

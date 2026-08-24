@@ -12,12 +12,14 @@ public class CharacterService : ICharacterService
     private readonly ICharacterRepository _characterRepository;
     private readonly ICharacterQuery _characterQuery;
     private readonly ICharacterBossClearRepository _characterBossClearRepository;
+    private readonly ICharacterPreferredBossRepository _characterPreferredBossRepository;
 
-    public CharacterService(ICharacterRepository characterRepository, ICharacterQuery characterQuery, ICharacterBossClearRepository characterBossClearRepository)
+    public CharacterService(ICharacterRepository characterRepository, ICharacterQuery characterQuery, ICharacterBossClearRepository characterBossClearRepository, ICharacterPreferredBossRepository characterPreferredBossRepository)
     {
         _characterRepository = characterRepository;
         _characterQuery = characterQuery;
         _characterBossClearRepository = characterBossClearRepository;
+        _characterPreferredBossRepository = characterPreferredBossRepository;
     }
 
     public async Task<IEnumerable<CharacterDto>> GetWithDiscordNameAsync(ulong discordId, int? bossId = null)
@@ -77,6 +79,18 @@ public class CharacterService : ICharacterService
                 BossId = c.BossId,
                 ClearCount = c.ClearCount
             });
+    }
+
+    public async Task<IEnumerable<int>> GetPreferredBossesAsync(ulong discordId, string characterId)
+    {
+        await EnsureOwnedAsync(discordId, characterId);
+        return await _characterPreferredBossRepository.GetBossIdsByCharacterAsync(characterId);
+    }
+
+    public async Task SavePreferredBossesAsync(ulong discordId, string characterId, IEnumerable<int> bossIds)
+    {
+        await EnsureOwnedAsync(discordId, characterId);
+        await _characterPreferredBossRepository.ReplaceAsync(characterId, bossIds);
     }
 
     // 角色必須屬於登入者，否則不得讀寫其通關數（角色 Id 由 client 傳、不可信）。

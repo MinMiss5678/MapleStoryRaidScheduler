@@ -44,6 +44,8 @@ spec:
               value: https://maplestory.paralleluniversegame.uk/callback
             - name: Discord__GuildId
               value: "840590742270771220"
+            - name: App__AppUrl
+              value: https://maplestory.paralleluniversegame.uk
             - name: Jwt__SecretKey
               valueFrom:
                 secretKeyRef:

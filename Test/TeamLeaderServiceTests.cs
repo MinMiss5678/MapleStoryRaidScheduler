@@ -1,10 +1,12 @@
 using Application.DTOs;
 using Application.Events;
 using Application.Interface;
+using Application.Options;
 using Application.Queries;
 using Domain.Entities;
 using Domain.Repositories;
 using Infrastructure.Services;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -38,7 +40,8 @@ public class TeamLeaderServiceTests
             _outboxMock.Object,
             _membershipQueryMock.Object,
             _systemConfigServiceMock.Object,
-            _lfgIntentRepositoryMock.Object);
+            _lfgIntentRepositoryMock.Object,
+            Options.Create(new AppOptions { AppUrl = "https://test.local" }));
     }
 
     private readonly Mock<ILfgIntentRepository> _lfgIntentRepositoryMock = new();
@@ -162,6 +165,26 @@ public class TeamLeaderServiceTests
         _teamSlotRepositoryMock.Verify(r => r.DeleteAsync(10), Times.Once);
         // 只通知非隊長的成員（排除按解散的隊長本人）→ 2 則，不是 3
         _outboxMock.Verify(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task Notification_AppendsAppUrlLink_WhenAppUrlConfigured()
+    {
+        // 建構子注入 AppOptions.AppUrl = "https://test.local"（見 ctor）→ NotifyAsync 應把它接在訊息末尾。
+        object? captured = null;
+        _outboxMock.Setup(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>()))
+            .Callback<string, object>((_, evt) => captured = evt);
+
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 999, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
+        _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10))
+            .ReturnsAsync(new HashSet<ulong> { 101 });
+
+        await _service.DeleteTeamAsync(10, leaderDiscordId: 999);
+
+        var evt = Assert.IsType<TeamNotificationEvent>(captured);
+        Assert.Contains("https://test.local", evt.Message);
     }
 
     [Fact]
@@ -372,6 +395,37 @@ public class TeamLeaderServiceTests
         BossClearCount = 0,
         Availabilities = [new PlayerAvailability { Weekday = 3, StartTime = new TimeOnly(0, 0), EndTime = new TimeOnly(0, 0) }]
     };
+
+    private static CandidatePoolItem PrefCandidate(string id, ulong discordId, bool prefersThis, bool hasAnyPref) => new()
+    {
+        CharacterId = id,
+        CharacterName = id,
+        DiscordId = discordId,
+        Job = "英雄",
+        AttackPower = 900,
+        BossClearCount = 0,
+        PrefersThisBoss = prefersThis,
+        HasAnyPreference = hasAnyPref,
+        Availabilities = [new PlayerAvailability { Weekday = 3, StartTime = new TimeOnly(0, 0), EndTime = new TimeOnly(0, 0) }]
+    };
+
+    [Fact]
+    public async Task GetCandidatesAsync_SortsByPreference_ThisBossFirst_NoPrefNeutral_OtherLast()
+    {
+        // 三層軟訊號：偏好本王 → 沒設偏好(中性) → 設了但不含本王(殿後)；皆未被排除。
+        var prefersOther = PrefCandidate("cOther", 701, prefersThis: false, hasAnyPref: true);
+        var noPref = PrefCandidate("cNone", 702, prefersThis: false, hasAnyPref: false);
+        var prefersThis = PrefCandidate("cThis", 703, prefersThis: true, hasAnyPref: true);
+        SetupCandidatesPipeline(prefersThis);
+        // 輸入故意亂序 → 驗證是後端排的
+        _candidateQueryMock.Setup(q => q.GetPoolAsync(1)).ReturnsAsync(new[] { prefersOther, noPref, prefersThis });
+
+        var result = (await _service.GetCandidatesAsync(10)).ToList();
+
+        Assert.Equal(new[] { "cThis", "cNone", "cOther" }, result.Select(r => r.CharacterId));
+        Assert.True(result[0].PrefersThisBoss);
+        Assert.False(result[2].PrefersThisBoss);
+    }
 
     [Fact]
     public async Task GetCandidatesAsync_SetsLeaveRateWarn_WhenEnabledAndHighRate()

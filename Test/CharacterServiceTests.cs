@@ -14,6 +14,7 @@ public class CharacterServiceTests
     private readonly Mock<ICharacterRepository> _characterRepositoryMock;
     private readonly Mock<ICharacterQuery> _characterQueryMock;
     private readonly Mock<ICharacterBossClearRepository> _bossClearRepositoryMock;
+    private readonly Mock<ICharacterPreferredBossRepository> _preferredBossRepositoryMock;
     private readonly CharacterService _characterService;
 
     public CharacterServiceTests()
@@ -21,10 +22,12 @@ public class CharacterServiceTests
         _characterRepositoryMock = new Mock<ICharacterRepository>();
         _characterQueryMock = new Mock<ICharacterQuery>();
         _bossClearRepositoryMock = new Mock<ICharacterBossClearRepository>();
+        _preferredBossRepositoryMock = new Mock<ICharacterPreferredBossRepository>();
         _characterService = new CharacterService(
             _characterRepositoryMock.Object,
             _characterQueryMock.Object,
-            _bossClearRepositoryMock.Object);
+            _bossClearRepositoryMock.Object,
+            _preferredBossRepositoryMock.Object);
     }
 
     private void SetupOwns(ulong discordId, params string[] charIds) =>
