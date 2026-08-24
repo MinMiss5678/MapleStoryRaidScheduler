@@ -12,7 +12,7 @@ test('隊長開隊 → 玩家入隊 → 轉讓隊長 → 對方接受成為新�
   const pad = (n: number) => String(n).padStart(2, '0');
   const slot = new Date();
   slot.setDate(slot.getDate() + 10 + (salt % 7));
-  const slotLocal = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(salt % 24)}:${pad(salt % 60)}`;
+  const slotLocal = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(salt % 24)}:${pad((salt % 2) * 30)}`;   // step=1800 → 分鐘只能 00/30
   const desc = `LL-transfer-${salt}`;
 
   // 1) 隊長 7001 開隊

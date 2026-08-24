@@ -14,7 +14,7 @@ test('隊長開隊 → 挑候選邀請 → 玩家接受入隊（Pull）', async 
   const pad = (n: number) => String(n).padStart(2, '0');
   const slot = new Date();
   slot.setDate(slot.getDate() + 10 + (salt % 7));                 // today+10 ~ +16（期內）
-  const slotLocal = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(salt % 24)}:${pad(salt % 60)}`;
+  const slotLocal = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(salt % 24)}:${pad((salt % 2) * 30)}`;   // step=1800 → 分鐘只能 00/30
   const desc = `LL-pull-${salt}`;
 
   // ── 1) 隊長開隊，條件限定「英雄」1 位 ──
