@@ -4,7 +4,8 @@ namespace Domain.Repositories;
 
 public interface ITeamSlotCharacterRepository
 {
-    Task CreateAsync(TeamSlotCharacter teamSlot);
+    /// <summary>建立成員列，回傳新列的 Id（供邀請通知帶進按鈕 custom_id 走 accept/decline）。</summary>
+    Task<int> CreateAsync(TeamSlotCharacter teamSlot);
     Task DeleteByTeamSlotIdAsync(int teamSlotId);
     Task DeleteCharacterAsync(TeamSlotCharacter teamSlotCharacter);
     Task DeleteByDiscordIdAndPeriodAsync(ulong discordId, DateTimeOffset startDateTime, DateTimeOffset endDateTime);

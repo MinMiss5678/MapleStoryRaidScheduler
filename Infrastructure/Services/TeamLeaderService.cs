@@ -57,18 +57,21 @@ public class TeamLeaderService : ITeamLeaderService
 
     // leader-led §11 通知：與狀態改動同交易 enqueue 一則 outbox（原子，崩了不遺失）→ bot handler 發 Discord DM。
     // target=0（如未認領隊無 leader）則略過。訊息在此組好（有王名/時段 context），handler 只負責送。
-    private async Task NotifyAsync(int bossId, DateTimeOffset slot, ulong target, string path, Func<string, string, string> buildMessage)
+    private async Task NotifyAsync(int bossId, DateTimeOffset slot, ulong target, string path,
+        Func<string, string, string> buildMessage,
+        TeamNotificationAction action = TeamNotificationAction.None, int? actionId = null)
     {
         if (target == 0) return;
         var boss = await _bossRepository.GetByIdAsync(bossId);
         var bossName = boss?.Name ?? "王";
         var time = slot.ToOffset(TimeSpan.FromHours(8)).ToString("M/d HH:mm");
-        // 通知末尾附上「該通知對應的站內頁」深連結（玩家接受邀請/隊長審核…點了直接到那頁）；未設 AppUrl 時不附
         var message = buildMessage(bossName, time);
-        if (!string.IsNullOrWhiteSpace(_appUrl))
+        // InviteResponse：DM 用「接受/拒絕」按鈕直接在 Discord 內操作 → 不附連結（避免雜訊，discord-inline-actions）。
+        // 其餘通知末尾附「該通知對應站內頁」深連結（點了直接到那頁）；未設 AppUrl 時不附。
+        if (action == TeamNotificationAction.None && !string.IsNullOrWhiteSpace(_appUrl))
             message += $"\n{_appUrl}{path}";
         await _outbox.EnqueueAsync(OutboxEventType.TeamNotification,
-            new TeamNotificationEvent { TargetDiscordId = target, Message = message });
+            new TeamNotificationEvent { TargetDiscordId = target, Message = message, Action = action, ActionId = actionId });
     }
 
     public async Task<int> CreateTeamAsync(CreateTeamCommand command)
@@ -263,7 +266,7 @@ public class TeamLeaderService : ITeamLeaderService
         // 快照角色屬性（base 攻擊信任模型；§3 承諾快照——邀請時填、accept 定格）。
         // DiscordName 承諾前不揭露（§9.11）→ 邀請時留空，之後可於顯示層 join。
         // 重複邀請（同隊同人已有 Applied/Invited）由 DB unique uq_tsc_active_membership → 23505 → 409。
-        await _memberRepository.CreateAsync(new TeamSlotCharacter
+        var memberId = await _memberRepository.CreateAsync(new TeamSlotCharacter
         {
             TeamSlotId = teamSlotId,
             DiscordId = character.DiscordId,
@@ -277,9 +280,10 @@ public class TeamLeaderService : ITeamLeaderService
             IsManual = true
         });
 
-        // 通知被邀玩家
+        // 通知被邀玩家：帶 InviteResponse + memberId → bot 渲染「接受/拒絕」按鈕，玩家可在 Discord 內直接回應。
         await NotifyAsync(team.BossId, team.SlotDateTime, character.DiscordId, "/me/teams",
-            (boss, time) => $"隊長邀請你加入「{boss}」{time} 的隊伍，請至站內接受或拒絕。");
+            (boss, time) => $"隊長邀請你加入「{boss}」{time} 的隊伍。",
+            TeamNotificationAction.InviteResponse, memberId);
     }
 
     public async Task AcceptInviteAsync(int memberId, ulong currentDiscordId)
@@ -375,7 +379,7 @@ public class TeamLeaderService : ITeamLeaderService
             throw new BusinessException("你已在此隊、或已有待處理的申請／邀請。");
 
         // 重複申請（同隊同人已有 Applied/Invited）另由 DB unique uq_tsc_active_membership → 23505 → 409 兜底。
-        await _memberRepository.CreateAsync(new TeamSlotCharacter
+        var memberId = await _memberRepository.CreateAsync(new TeamSlotCharacter
         {
             TeamSlotId = teamSlotId,
             DiscordId = applicantDiscordId,
@@ -389,9 +393,10 @@ public class TeamLeaderService : ITeamLeaderService
             IsManual = true
         });
 
-        // 通知隊長有新申請
+        // 通知隊長有新申請：帶 ApplicationReview + memberId → bot 渲染「核准/拒絕」按鈕，隊長可在 Discord 內直接審核。
         await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0, $"/teams/{team.Id}/applications",
-            (boss, time) => $"有玩家申請加入你「{boss}」{time} 的隊伍，請至站內審核。");
+            (boss, time) => $"有玩家申請加入你「{boss}」{time} 的隊伍。",
+            TeamNotificationAction.ApplicationReview, memberId);
     }
 
     public async Task ApproveAsync(int memberId, ulong leaderDiscordId)
@@ -479,8 +484,10 @@ public class TeamLeaderService : ITeamLeaderService
             throw new BusinessException("不能把隊長轉給自己。");
 
         await _teamSlotRepository.SetPendingLeaderAsync(teamSlotId, member.DiscordId);
+        // 帶 TransferResponse + teamSlotId → bot 渲染「接受/拒絕」按鈕，新隊長候選可在 Discord 內直接回應。
         await NotifyAsync(team.BossId, team.SlotDateTime, member.DiscordId, "/me/teams",
-            (boss, time) => $"隊長想把「{boss}」{time} 的隊長轉給你，請至站內接受或拒絕。");
+            (boss, time) => $"隊長想把「{boss}」{time} 的隊長轉給你。",
+            TeamNotificationAction.TransferResponse, teamSlotId);
     }
 
     public async Task RespondLeaderTransferAsync(int teamSlotId, ulong currentDiscordId, string action)

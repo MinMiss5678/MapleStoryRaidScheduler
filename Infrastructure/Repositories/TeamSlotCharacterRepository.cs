@@ -15,9 +15,9 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         _dbContext = dbContext;
     }
 
-    public async Task CreateAsync(TeamSlotCharacter teamSlot)
+    public async Task<int> CreateAsync(TeamSlotCharacter teamSlot)
     {
-        await _dbContext.Repository<TeamSlotCharacterDbModel>().InsertAsync(new TeamSlotCharacterDbModel
+        return await _dbContext.Repository<TeamSlotCharacterDbModel>().InsertAsync(new TeamSlotCharacterDbModel
         {
             TeamSlotId = teamSlot.TeamSlotId,
             DiscordId = (long)teamSlot.DiscordId,

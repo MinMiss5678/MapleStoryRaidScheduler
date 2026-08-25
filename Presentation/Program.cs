@@ -96,9 +96,26 @@ public class Program
                  services.AddScoped<IPlayerRepository, PlayerRepository>();
                  services.AddScoped<IPlayerService, PlayerService>();
                  services.AddScoped<IDiscordRoleMappingRepository, DiscordRoleMappingRepository>();
+
+                 // leader-led：邀請按鈕互動（discord-inline-actions）走 TeamLeaderService.Accept/DeclineInviteAsync
+                 // → bot 需註冊整個依賴圖（方案 B：直接複製那組 scoped，不共用 WebApi 的 extension）。
+                 // 漏註冊由 ValidateOnBuild 啟動即抓（見 UseDefaultServiceProvider）。
+                 services.AddScoped<IOutbox, Outbox>();
+                 services.AddScoped<IBossRepository, BossRepository>();
+                 services.AddScoped<ITeamSlotRepository, TeamSlotRepository>();
+                 services.AddScoped<ITeamSlotCharacterRepository, TeamSlotCharacterRepository>();
+                 services.AddScoped<ITeamSlotRequirementRepository, TeamSlotRequirementRepository>();
+                 services.AddScoped<ILfgIntentRepository, LfgIntentRepository>();
+                 services.AddScoped<ICharacterQuery, CharacterQuery>();
+                 services.AddScoped<ITeamCandidateQuery, TeamCandidateQuery>();
+                 services.AddScoped<ITeamMembershipQuery, TeamMembershipQuery>();
+                 services.AddScoped<ITeamSlotEditLock, TeamSlotEditLock>();
+                 services.AddScoped<ITeamLeaderService, TeamLeaderService>();
+
                  services.ConfigureEventHandlers(b => b
                      .AddEventHandlers<MemberUpdatedHandler>()
-                     .AddEventHandlers<MemberRemovedHandler>());
+                     .AddEventHandlers<MemberRemovedHandler>()
+                     .AddEventHandlers<TeamActionInteractionHandler>());
 
                  services.AddMemoryCache();
 
