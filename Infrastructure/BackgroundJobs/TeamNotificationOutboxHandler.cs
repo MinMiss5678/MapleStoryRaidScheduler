@@ -65,9 +65,9 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
     {
         var (family, positiveLabel, negativeLabel) = action switch
         {
-            TeamNotificationAction.InviteResponse    => (TeamActionFamily.Invite, "接受", "拒絕"),
+            TeamNotificationAction.InviteResponse => (TeamActionFamily.Invite, "接受", "拒絕"),
             TeamNotificationAction.ApplicationReview => (TeamActionFamily.Application, "核准", "拒絕"),
-            TeamNotificationAction.TransferResponse  => (TeamActionFamily.Transfer, "接受", "拒絕"),
+            TeamNotificationAction.TransferResponse => (TeamActionFamily.Transfer, "接受", "拒絕"),
             _ => throw new InvalidOperationException($"未支援的通知動作 {action}")
         };
         return new[]
