@@ -75,6 +75,18 @@ public class TeamLeaderService : ITeamLeaderService
             new TeamNotificationEvent { TargetDiscordId = target, Message = message, Action = action, ActionId = actionId, Embed = embed });
     }
 
+    // dm-revoke-cleanup：enqueue 一則「編輯被邀者 DM 成已失效 + 移按鈕」事件。走 outbox（非直接呼叫 Discord）——
+    // 因 ConfirmMember 可能跑在無 DiscordClient 的 WebApi 行程，編輯動作一律交 bot 端 handler 執行。
+    private Task EnqueueInviteRevokedCleanupAsync(ulong target, ulong messageId) =>
+        _outbox.EnqueueAsync(OutboxEventType.TeamNotification,
+            new TeamNotificationEvent
+            {
+                TargetDiscordId = target,
+                Message = "此邀請已失效（隊伍已滿）。",
+                Action = TeamNotificationAction.InviteRevokedCleanup,
+                EditMessageId = messageId
+            });
+
     // 組 embed 快照（王/時段/容量 + 目前 Confirmed 成員能力）；「主角角色」(被邀/申請者) 由呼叫端另填，轉讓無主角。
     private async Task<TeamEmbedData> BuildEmbedSnapshotAsync(TeamSlot team, int teamSlotId)
     {
@@ -370,11 +382,14 @@ public class TeamLeaderService : ITeamLeaderService
         // 仍在 per-team advisory lock 內，與其他 confirm 序列化，不會與「同時另一人接受」競態。
         if (await _memberRepository.CountConfirmedAsync(member.TeamSlotId) >= capacity)
         {
-            // 額滿：撤其餘待接受邀請，但**不 DM 那些玩家**（「邀請自動失效」對玩家同「被拒」是噪音，UI 可見即可）；
-            // 只「一次」通知隊長隊伍滿員（取代逐筆「有人接受」）。
-            await _memberRepository.RevokePendingInvitesAsync(member.TeamSlotId);
+            // 額滿：撤其餘待接受邀請。不「送」新 DM 給玩家（噪音），但把他們原本的邀請 DM 編輯成「已失效」+ 移按鈕
+            // （dm-revoke-cleanup，消死按鈕）；只「一次」通知隊長隊伍滿員（取代逐筆「有人接受」）。
+            var revoked = await _memberRepository.RevokePendingInvitesAsync(member.TeamSlotId);
             await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0, "/me/led-teams",
                 (boss, time) => $"你的「{boss}」{time} 隊伍已滿員。");
+            foreach (var r in revoked)
+                if (r.DmMessageId is { } mid)   // id 未回寫（DM 尚未派發）→ 跳過清理，退回死按鈕
+                    await EnqueueInviteRevokedCleanupAsync(r.DiscordId, mid);
         }
     }
 

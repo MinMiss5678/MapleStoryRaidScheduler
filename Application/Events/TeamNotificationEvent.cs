@@ -28,6 +28,12 @@ public class TeamNotificationEvent
     /// 入列時由 backend 撈好 roster 快照 denormalize 進來 → bot 純渲染、不查 DB。null → 走 <see cref="Message"/> 純文字（fallback）。
     /// </summary>
     public TeamEmbedData? Embed { get; set; }
+
+    /// <summary>
+    /// <see cref="TeamNotificationAction.InviteRevokedCleanup"/> 專用（dm-revoke-cleanup）：要「編輯」的邀請 DM message id。
+    /// bot 用它把被自動撤銷的邀請 DM 改成「已失效」+ 移除按鈕（消死按鈕）。null → 跳過清理（DM 尚未送出、id 未回寫）。
+    /// </summary>
+    public ulong? EditMessageId { get; set; }
 }
 
 /// <summary>邀請 DM 的 embed 快照資料（入列當下）：讓被邀玩家決定前看得到隊伍組成 + 自己被邀的角色。</summary>
@@ -71,5 +77,11 @@ public enum TeamNotificationAction
     ApplicationReview = 2,
 
     /// <summary>轉讓邀你 → 新隊長候選 DM 附「接受 / 拒絕」。ActionId＝teamSlotId。</summary>
-    TransferResponse = 3
+    TransferResponse = 3,
+
+    /// <summary>
+    /// 邀請被自動撤銷（額滿/名額滿）→ 編輯被邀者原 DM 成「已失效」+ 移除按鈕（dm-revoke-cleanup）。
+    /// 不送新訊息、不帶按鈕；用 <see cref="TeamNotificationEvent.EditMessageId"/> 定位要改的訊息、<see cref="TeamNotificationEvent.Message"/> 當新內容。
+    /// </summary>
+    InviteRevokedCleanup = 4
 }

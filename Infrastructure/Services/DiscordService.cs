@@ -26,15 +26,16 @@ public class DiscordService : IDiscordService
     public Task SendDirectMessageAsync(ulong discordId, string message)
         => SendAsync(discordId, dm => dm.SendMessageAsync(message));
 
-    public Task SendDirectMessageAsync(ulong discordId, string message, IReadOnlyList<DmButton> buttons)
+    public async Task<ulong> SendDirectMessageAsync(ulong discordId, string message, IReadOnlyList<DmButton> buttons)
     {
         var builder = new DiscordMessageBuilder()
             .WithContent(message)
             .AddActionRowComponent(buttons.Select(ToComponent));
-        return SendAsync(discordId, dm => dm.SendMessageAsync(builder));
+        var msg = await SendAsync(discordId, dm => dm.SendMessageAsync(builder));
+        return msg.Id;
     }
 
-    public Task SendDirectMessageAsync(ulong discordId, DmEmbed embed, IReadOnlyList<DmButton> buttons)
+    public async Task<ulong> SendDirectMessageAsync(ulong discordId, DmEmbed embed, IReadOnlyList<DmButton> buttons)
     {
         var embedBuilder = new DiscordEmbedBuilder()
             .WithTitle(embed.Title)
@@ -45,7 +46,28 @@ public class DiscordService : IDiscordService
         var builder = new DiscordMessageBuilder()
             .AddEmbed(embedBuilder.Build())
             .AddActionRowComponent(buttons.Select(ToComponent));
-        return SendAsync(discordId, dm => dm.SendMessageAsync(builder));
+        var msg = await SendAsync(discordId, dm => dm.SendMessageAsync(builder));
+        return msg.Id;
+    }
+
+    /// <summary>編輯先前的 DM（dm-revoke-cleanup）：改內容、清按鈕、保留原 embed；訊息已被刪（NotFound）→ 吞掉。</summary>
+    public async Task EditDirectMessageAsync(ulong discordId, ulong messageId, string content)
+    {
+        try
+        {
+            await SendAsync(discordId, async dm =>
+            {
+                var msg = await dm.GetMessageAsync(messageId);
+                var builder = new DiscordMessageBuilder().WithContent(content);
+                foreach (var em in msg.Embeds)
+                    builder.AddEmbed(em);
+                return await msg.ModifyAsync(builder);   // 不帶 components → 移除按鈕；保留 embed
+            });
+        }
+        catch (NotFoundException)
+        {
+            // 訊息已被對方刪除（或頻道失效重試後仍 404）→ 無可編輯，忽略。
+        }
     }
 
     /// <summary>
@@ -53,14 +75,13 @@ public class DiscordService : IDiscordService
     /// 萬一 404（頻道失效）→ 清快取、退回完整路徑重建一次。
     /// UnauthorizedException(403，對方關 DM)不在此吞 → 往上由 handler 當永久失敗，維持既有語意。
     /// </summary>
-    private async Task SendAsync(ulong discordId, Func<DiscordDmChannel, Task> send)
+    private async Task<T> SendAsync<T>(ulong discordId, Func<DiscordDmChannel, Task<T>> action)
     {
         if (_dmChannelCache.TryGetValue(discordId, out var cached))
         {
             try
             {
-                await send(cached);
-                return;
+                return await action(cached);
             }
             catch (NotFoundException)
             {
@@ -71,7 +92,7 @@ public class DiscordService : IDiscordService
 
         var dm = await OpenDmChannelAsync(discordId);
         _dmChannelCache[discordId] = dm;
-        await send(dm);
+        return await action(dm);
     }
 
     private static DiscordButtonComponent ToComponent(DmButton b) =>

@@ -138,17 +138,23 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         return ids.Select(x => (ulong)x).ToHashSet();
     }
 
-    public async Task<IReadOnlyCollection<ulong>> RevokePendingInvitesAsync(int teamSlotId)
+    public async Task<IReadOnlyCollection<RevokedInvite>> RevokePendingInvitesAsync(int teamSlotId)
     {
-        // 額滿後其餘 Invited 已無法接受 → 一次撤銷為 Rejected，RETURNING 回被邀玩家 DiscordId 供通知。
-        // 單條 UPDATE 原子完成撤銷＋取名單；呼叫端在 per-team advisory lock 內執行，與定案序列化。
+        // 額滿後其餘 Invited 已無法接受 → 一次撤銷為 Rejected，RETURNING 回被邀玩家 DiscordId + DM message id
+        // （dm-revoke-cleanup：據此編輯被邀者 DM）。單條 UPDATE 原子完成撤銷＋取名單；呼叫端在 per-team advisory lock 內執行。
         const string sql = """
             UPDATE "TeamSlotCharacter" SET "Status" = 'Rejected'
             WHERE "TeamSlotId" = @teamSlotId AND "Status" = 'Invited'
-            RETURNING "DiscordId";
+            RETURNING "DiscordId", "DmMessageId";
             """;
-        var ids = await _dbContext.QueryAsync<long>(sql, new { teamSlotId });
-        return ids.Select(x => (ulong)x).ToList();
+        var rows = await _dbContext.QueryAsync<RevokedInviteRow>(sql, new { teamSlotId });
+        return rows.Select(r => new RevokedInvite((ulong)r.DiscordId, r.DmMessageId is { } m ? (ulong)m : null)).ToList();
+    }
+
+    private sealed class RevokedInviteRow
+    {
+        public long DiscordId { get; set; }
+        public long? DmMessageId { get; set; }
     }
 
     private class MemberRow
