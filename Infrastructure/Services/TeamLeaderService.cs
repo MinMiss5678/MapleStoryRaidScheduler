@@ -77,12 +77,12 @@ public class TeamLeaderService : ITeamLeaderService
 
     // dm-revoke-cleanup：enqueue 一則「編輯被邀者 DM 成已失效 + 移按鈕」事件。走 outbox（非直接呼叫 Discord）——
     // 因 ConfirmMember 可能跑在無 DiscordClient 的 WebApi 行程，編輯動作一律交 bot 端 handler 執行。
-    private Task EnqueueInviteRevokedCleanupAsync(ulong target, ulong messageId) =>
+    private Task EnqueueInviteRevokedCleanupAsync(ulong target, ulong messageId, string message) =>
         _outbox.EnqueueAsync(OutboxEventType.TeamNotification,
             new TeamNotificationEvent
             {
                 TargetDiscordId = target,
-                Message = "此邀請已失效（隊伍已滿）。",
+                Message = message,
                 Action = TeamNotificationAction.InviteRevokedCleanup,
                 EditMessageId = messageId
             });
@@ -110,8 +110,14 @@ public class TeamLeaderService : ITeamLeaderService
     public async Task<int> CreateTeamAsync(CreateTeamCommand command)
     {
         // Boss FK 前線檢查 → 404（見 plans/2026-08-06-validation-layering.md §2）
-        if (await _bossRepository.GetByIdAsync(command.BossId) == null)
+        var boss = await _bossRepository.GetByIdAsync(command.BossId);
+        if (boss == null)
             throw new NotFoundException($"Boss {command.BossId} not found");
+
+        // composition-quota：需求人數總和不可超過隊伍容量（否則未指定名額為負、需求與容量矛盾）。
+        var totalRequired = command.Requirements.Sum(r => r.Count);
+        if (totalRequired > boss.RequireMembers)
+            throw new BusinessException($"需求人數總和（{totalRequired}）不可超過隊伍容量（{boss.RequireMembers}）。");
 
         // period-less（Phase 4d）：Period 承重牆已拆——排程團不再解析/綁 period，改驗時間本身合法：
         // 排程團(Scheduled)的 SlotDateTime 不得早於現在（過去時段無意義，也不會出現在時間窗看板）；
@@ -371,6 +377,18 @@ public class TeamLeaderService : ITeamLeaderService
         if (await _memberRepository.CountConfirmedAsync(member.TeamSlotId) >= capacity)
             throw new BusinessException("隊伍已滿。");
 
+        // composition-quota：職業名額硬篩。本次定案後，已確認職業能否仍可行地指派到需求名額（含未指定池）？
+        // 無需求列 → 無職業約束（沿用純容量把關）。在 advisory lock 內、與其他 confirm 序列化 → 兩人同職業同時接受、
+        // 第二個重跑匹配看到不可行而擋。requirements 於此撈一次、下方撤邀重用。
+        var requirements = (await _requirementRepository.GetByTeamSlotIdAsync(member.TeamSlotId)).ToList();
+        if (requirements.Count > 0)
+        {
+            var tentativeJobs = (await _membershipQuery.GetConfirmedJobsAsync(member.TeamSlotId)).ToList();
+            tentativeJobs.Add(member.Job);
+            if (!CompositionQuota.IsFeasible(tentativeJobs, requirements, capacity))
+                throw new BusinessException("此職業名額已滿。");
+        }
+
         var ok = await _memberRepository.UpdateStatusAsync(member.Id!.Value, TeamSlotMemberStatus.Confirmed, member.Version!);
         if (!ok)
             throw new BusinessException("狀態已被更新，請重新整理。");
@@ -378,18 +396,32 @@ public class TeamLeaderService : ITeamLeaderService
         // period-less §8 Phase 3：入隊後清掉該玩家的找隊意圖（已找到隊、不再掛看板）。scheduled accept 無意圖 → no-op。
         await _lfgIntentRepository.DeleteByDiscordIdAsync(member.DiscordId);
 
-        // mutation-ux Tier 3：本次定案若使隊伍額滿 → 自動撤銷其餘待接受邀請（否則玩家端只剩無法按的死按鈕、隊長邀請數也虛掛）。
-        // 仍在 per-team advisory lock 內，與其他 confirm 序列化，不會與「同時另一人接受」競態。
+        // 定案後自動撤邀（皆在同一 advisory lock 內、與其他 confirm 序列化）：被撤者原邀請 DM 編輯成「已失效」+ 移按鈕
+        // （dm-revoke-cleanup，消死按鈕；否則玩家端只剩無法按的死按鈕、隊長邀請數也虛掛）。
         if (await _memberRepository.CountConfirmedAsync(member.TeamSlotId) >= capacity)
         {
-            // 額滿：撤其餘待接受邀請。不「送」新 DM 給玩家（噪音），但把他們原本的邀請 DM 編輯成「已失效」+ 移按鈕
-            // （dm-revoke-cleanup，消死按鈕）；只「一次」通知隊長隊伍滿員（取代逐筆「有人接受」）。
+            // (1) 隊伍額滿 → 撤全部待接受邀請 + 只「一次」通知隊長滿員（取代逐筆「有人接受」）。
             var revoked = await _memberRepository.RevokePendingInvitesAsync(member.TeamSlotId);
             await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0, "/me/led-teams",
                 (boss, time) => $"你的「{boss}」{time} 隊伍已滿員。");
             foreach (var r in revoked)
                 if (r.DmMessageId is { } mid)   // id 未回寫（DM 尚未派發）→ 跳過清理，退回死按鈕
-                    await EnqueueInviteRevokedCleanupAsync(r.DiscordId, mid);
+                    await EnqueueInviteRevokedCleanupAsync(r.DiscordId, mid, "此邀請已失效（隊伍已滿）。");
+        }
+        else if (requirements.Count > 0)
+        {
+            // (2) 未滿但某些職業名額已滿（composition-quota）→ 只撤「加入後不可行」職業的待接受邀請（保留 Pull 超額搶位）。
+            var confirmedJobs = (await _membershipQuery.GetConfirmedJobsAsync(member.TeamSlotId)).ToList();
+            var fullJobs = (await _membershipQuery.GetPendingInviteJobsAsync(member.TeamSlotId))
+                .Where(j => !CompositionQuota.IsFeasible(confirmedJobs.Append(j).ToList(), requirements, capacity))
+                .ToList();
+            if (fullJobs.Count > 0)
+            {
+                var revoked = await _memberRepository.RevokePendingInvitesByJobsAsync(member.TeamSlotId, fullJobs);
+                foreach (var r in revoked)
+                    if (r.DmMessageId is { } mid)
+                        await EnqueueInviteRevokedCleanupAsync(r.DiscordId, mid, "此邀請已失效（該職業名額已滿）。");
+            }
         }
     }
 

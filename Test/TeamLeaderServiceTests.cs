@@ -555,6 +555,54 @@ public class TeamLeaderServiceTests
         _memberRepositoryMock.Verify(r => r.RevokePendingInvitesAsync(It.IsAny<int>()), Times.Never);
     }
 
+    // composition-quota：需求[英雄1]+[黑騎士1]、容量2（未指定池0）；已 1 英雄 Confirmed → 第 2 英雄接受被擋。
+    [Fact]
+    public async Task AcceptInviteAsync_BlocksWhenJobQuotaFull()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember()); // 英雄
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 2 });
+        _memberRepositoryMock.Setup(r => r.CountConfirmedAsync(10)).ReturnsAsync(1); // 1 < 2 → 過容量把關
+        _requirementRepositoryMock.Setup(r => r.GetByTeamSlotIdAsync(10)).ReturnsAsync(new[]
+        {
+            new TeamSlotRequirement { Count = 1, Jobs = [new TeamSlotRequirementJob { Job = "英雄" }] },
+            new TeamSlotRequirement { Count = 1, Jobs = [new TeamSlotRequirementJob { Job = "黑騎士" }] }
+        });
+        _membershipQueryMock.Setup(q => q.GetConfirmedJobsAsync(10)).ReturnsAsync(["英雄"]); // 英雄名額已被佔
+
+        var ex = await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(() => _service.AcceptInviteAsync(5, 999));
+        Assert.Contains("職業名額", ex.Message);
+        _memberRepositoryMock.Verify(r => r.UpdateStatusAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    // composition-quota：需求[英雄1]+[黑騎士1]、容量2；本英雄接受後英雄名額滿（隊未滿）→ 撤同職業其餘 pending。
+    [Fact]
+    public async Task AcceptInviteAsync_RevokesSameJobPending_WhenJobQuotaBecomesFull()
+    {
+        _memberRepositoryMock.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(InvitedMember()); // 英雄
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = DateTimeOffset.UtcNow });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 2 });
+        _memberRepositoryMock.SetupSequence(r => r.CountConfirmedAsync(10)).ReturnsAsync(0).ReturnsAsync(1); // 前0後1（<2 未滿）
+        _requirementRepositoryMock.Setup(r => r.GetByTeamSlotIdAsync(10)).ReturnsAsync(new[]
+        {
+            new TeamSlotRequirement { Count = 1, Jobs = [new TeamSlotRequirementJob { Job = "英雄" }] },
+            new TeamSlotRequirement { Count = 1, Jobs = [new TeamSlotRequirementJob { Job = "黑騎士" }] }
+        });
+        // 定案前[]（過硬篩）；定案後[英雄]（判斷 pending 英雄不可行）
+        _membershipQueryMock.SetupSequence(q => q.GetConfirmedJobsAsync(10)).ReturnsAsync([]).ReturnsAsync(["英雄"]);
+        _membershipQueryMock.Setup(q => q.GetPendingInviteJobsAsync(10)).ReturnsAsync(["英雄"]);
+        _memberRepositoryMock.Setup(r => r.UpdateStatusAsync(5, TeamSlotMemberStatus.Confirmed, "v1")).ReturnsAsync(true);
+        _memberRepositoryMock.Setup(r => r.RevokePendingInvitesByJobsAsync(10, It.Is<IReadOnlyCollection<string>>(j => j.Contains("英雄"))))
+            .ReturnsAsync(new[] { new RevokedInvite(888, null) });
+
+        await _service.AcceptInviteAsync(5, 999);
+
+        _memberRepositoryMock.Verify(r => r.RevokePendingInvitesByJobsAsync(10, It.Is<IReadOnlyCollection<string>>(j => j.Contains("英雄"))), Times.Once);
+        _memberRepositoryMock.Verify(r => r.RevokePendingInvitesAsync(It.IsAny<int>()), Times.Never); // 未滿 → 不走全撤
+    }
+
     // ── 候選過濾行為邊界（殺變異：Any→All / && / >= / == 存活）──
     private void SetRequirement(string job, int minAttack, int minClear)
         => _requirementRepositoryMock.Setup(r => r.GetByTeamSlotIdAsync(10)).ReturnsAsync(new[]

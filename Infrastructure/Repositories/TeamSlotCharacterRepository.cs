@@ -151,6 +151,19 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         return rows.Select(r => new RevokedInvite((ulong)r.DiscordId, r.DmMessageId is { } m ? (ulong)m : null)).ToList();
     }
 
+    public async Task<IReadOnlyCollection<RevokedInvite>> RevokePendingInvitesByJobsAsync(int teamSlotId, IReadOnlyCollection<string> jobs)
+    {
+        // composition-quota：只撤指定職業的待接受邀請（額滿走 RevokePendingInvitesAsync 撤全部）。呼叫端在 advisory lock 內。
+        if (jobs.Count == 0) return [];
+        const string sql = """
+            UPDATE "TeamSlotCharacter" SET "Status" = 'Rejected'
+            WHERE "TeamSlotId" = @teamSlotId AND "Status" = 'Invited' AND "Job" = ANY(@jobs)
+            RETURNING "DiscordId", "DmMessageId";
+            """;
+        var rows = await _dbContext.QueryAsync<RevokedInviteRow>(sql, new { teamSlotId, jobs = jobs.ToArray() });
+        return rows.Select(r => new RevokedInvite((ulong)r.DiscordId, r.DmMessageId is { } m ? (ulong)m : null)).ToList();
+    }
+
     private sealed class RevokedInviteRow
     {
         public long DiscordId { get; set; }

@@ -41,6 +41,12 @@ public interface ITeamSlotCharacterRepository
     /// （dm-revoke-cleanup：用 message id 編輯被邀者 DM 成「已失效」）。只動 Invited；不動 Applied（保留候補）。
     /// </summary>
     Task<IReadOnlyCollection<RevokedInvite>> RevokePendingInvitesAsync(int teamSlotId);
+
+    /// <summary>
+    /// 撤銷某隊「指定職業」的待接受邀請（composition-quota：定案後某職業名額已滿 → 只撤該職業的 pending，保留其他職業）。
+    /// 回傳被撤者 (DiscordId, DmMessageId) 供編輯 DM。只動 Invited、不動 Applied。
+    /// </summary>
+    Task<IReadOnlyCollection<RevokedInvite>> RevokePendingInvitesByJobsAsync(int teamSlotId, IReadOnlyCollection<string> jobs);
 }
 
 /// <summary>被自動撤銷的一筆邀請：被邀玩家 DiscordId + 該邀請 DM 的 message id（null＝DM 尚未送出/id 未回寫 → 跳過清理）。</summary>
