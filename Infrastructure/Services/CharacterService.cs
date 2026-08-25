@@ -35,7 +35,8 @@ public class CharacterService : ICharacterService
             DiscordId = request.DiscordId,
             Name = request.Name,
             Job = request.Job,
-            AttackPower = request.AttackPower
+            AttackPower = request.AttackPower,
+            Level = request.Level
         };
         return await _characterRepository.CreateAsync(character);
     }
@@ -48,7 +49,8 @@ public class CharacterService : ICharacterService
             DiscordId = request.DiscordId,
             Name = request.Name,
             Job = request.Job,
-            AttackPower = request.AttackPower
+            AttackPower = request.AttackPower,
+            Level = request.Level
         };
         var rows = await _characterRepository.UpdateAsync(character);
         if (rows == 0) throw new NotFoundException($"Character {request.Id} not found");

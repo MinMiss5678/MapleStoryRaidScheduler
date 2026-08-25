@@ -26,6 +26,7 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
             CharacterName = teamSlot.CharacterName,
             Job = teamSlot.Job,
             AttackPower = teamSlot.AttackPower,
+            Level = teamSlot.Level,
             Rounds = teamSlot.Rounds,
             IsManual = teamSlot.IsManual,
             // leader-led：舊路徑（fill/auto-assign）不設 → 預設 Confirmed / SlotDateTime=null（不變行為）；
@@ -239,6 +240,7 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
             .Set(x => x.CharacterName, teamSlotCharacter.CharacterName)
             .Set(x => x.Job, teamSlotCharacter.Job)
             .Set(x => x.AttackPower, teamSlotCharacter.AttackPower)
+            .Set(x => x.Level, teamSlotCharacter.Level)
             .Set(x => x.Rounds, teamSlotCharacter.Rounds)
             .Set(x => x.IsManual, teamSlotCharacter.IsManual)
             .Where(x => x.Id == teamSlotCharacter.Id)

@@ -187,6 +187,7 @@ export default function MyTeamsPage() {
                                             <span className="flex items-center gap-1">
                                                 <User size={14} /> {t.characterName ?? t.characterId}（{t.job}）
                                             </span>
+                                            <span className="flex items-center gap-1">Lv {t.level}</span>
                                             <span className="flex items-center gap-1">
                                                 <Zap size={14} /> {t.attackPower}
                                             </span>

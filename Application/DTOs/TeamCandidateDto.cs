@@ -13,6 +13,7 @@ public class TeamCandidateDto
     public string? DiscordName { get; set; }        // 顯示名（登入時 nick ?? global_name ?? username）
     public required string Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }                 // 人物等級快照（候選顯示 + MinLevel 硬篩）
     public int MapleBlessingLevel { get; set; }    // 挑 buffer 用（§9.18）
     public int BossClearCount { get; set; }         // 本王總通關（跨該玩家角色加總，老手參考，§9.14）
     public bool LeaveRateWarn { get; set; }         // 退團率偏高警示（Feature 1b；admin 開且達門檻才 true）

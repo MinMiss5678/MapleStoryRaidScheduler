@@ -46,6 +46,7 @@ public class ProfileService : IProfileService
                 Name = c.Name,
                 Job = c.Job,
                 AttackPower = c.AttackPower,
+                Level = c.Level,
                 IsSeekingRaid = c.IsSeekingRaid
             }).ToList()
         };

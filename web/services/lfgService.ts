@@ -6,6 +6,7 @@ export interface LfgBoardItem {
     characterName: string;
     job: string;
     attackPower: number;
+    level: number;
     bossId: number;
     bossName: string;
 }

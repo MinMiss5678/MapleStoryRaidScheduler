@@ -14,6 +14,7 @@ public class MembershipDto
     public string? CharacterName { get; set; }
     public string? Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }
     public string Status { get; set; } = "";
     public int RequireMembers { get; set; }   // 隊伍容量（Boss.RequireMembers）——供前端顯示 confirmed/require、判斷是否已滿
     public int ConfirmedCount { get; set; }    // 已入隊真實成員數（占容量者）
@@ -29,6 +30,7 @@ public class ApplicantDto
     public string? DiscordName { get; set; }
     public string? Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }
     public int BossClearCount { get; set; }     // 該玩家本王總通關（跨其角色加總）
     public int MapleBlessingLevel { get; set; }
 }
@@ -65,6 +67,7 @@ public class TeamMemberDto
     public string? CharacterName { get; set; }
     public string? Job { get; set; }
     public int AttackPower { get; set; }        // 隊友戰力（成員可看）——攻擊快照
+    public int Level { get; set; }              // 隊友戰力——人物等級快照
     public int MapleBlessingLevel { get; set; } // 隊友戰力——祝福等級
     public bool IsLeader { get; set; }
 }
@@ -97,6 +100,7 @@ public class OpenTeamMemberDto
 {
     public string? Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }
     public int MapleBlessingLevel { get; set; }
 }
 
@@ -104,6 +108,7 @@ public class OpenTeamRequirementDto
 {
     public int Count { get; set; }
     public int MinClearCount { get; set; }
+    public int MinLevel { get; set; }
     public List<OpenTeamRequirementJobDto> Jobs { get; set; } = [];
 }
 

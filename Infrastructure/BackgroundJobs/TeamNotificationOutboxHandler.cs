@@ -87,14 +87,14 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
     {
         var roster = d.Roster.Count == 0
             ? "目前隊伍尚無其他成員。"
-            : "目前成員（職業　攻擊力　祝福等級）：\n" +
-              string.Join("\n", d.Roster.Select(r => $"{r.Job}　攻{r.AttackPower}　祝福{r.MapleBlessingLevel}"));
+            : "目前成員（職業　等級　攻擊力　祝福等級）：\n" +
+              string.Join("\n", d.Roster.Select(r => $"{r.Job}　Lv{r.Level}　攻{r.AttackPower}　祝福{r.MapleBlessingLevel}"));
         // 轉讓無「主角角色」→ 放轉讓說明一行（否則看不出是轉讓）；邀請/申請則放被邀/申請角色一行。
         var description = action switch
         {
             TeamNotificationAction.TransferResponse => $"轉讓隊長\n\n{roster}",
             _ => $"{(action == TeamNotificationAction.ApplicationReview ? "申請角色" : "被邀角色")}：" +
-                 $"{d.SubjectName}　{d.SubjectJob}　攻{d.SubjectAttackPower}　祝福{d.SubjectMapleBlessingLevel}\n\n{roster}"
+                 $"{d.SubjectName}　{d.SubjectJob}　Lv{d.SubjectLevel}　攻{d.SubjectAttackPower}　祝福{d.SubjectMapleBlessingLevel}\n\n{roster}"
         };
         var vacancy = Math.Max(0, d.Capacity - d.Roster.Count);
         return new DmEmbed($"{d.BossName}　{d.TimeText}", description, $"缺額 {vacancy}／{d.Capacity}");

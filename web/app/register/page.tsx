@@ -85,7 +85,8 @@ export default function ProfilePage() {
                                         <input type="checkbox" checked={seeking.has(c.id)} readOnly className="w-4 h-4 accent-green-600" />
                                         <span className="font-medium">{c.name}</span>
                                         <span className="text-sm text-muted-foreground">{c.job}</span>
-                                        <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
+                                        <span className="ml-auto text-sm text-muted-foreground">Lv {c.level}</span>
+                                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
                                             <Zap size={14} /> {c.attackPower}
                                         </span>
                                     </li>

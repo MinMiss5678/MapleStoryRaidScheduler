@@ -15,6 +15,7 @@ export function TeamComposition({ teamSlotId }: { teamSlotId: number }) {
                         {m.isLeader && <Crown size={12} className="text-amber-500" />}
                         {m.discordName || m.characterName}（{m.job}）
                     </span>
+                    <span className="flex items-center gap-0.5">Lv {m.level}</span>
                     <span className="flex items-center gap-0.5"><Zap size={11} /> {m.attackPower}</span>
                     <span className="flex items-center gap-0.5"><Sparkles size={11} /> 祝福 {m.mapleBlessingLevel}</span>
                 </div>

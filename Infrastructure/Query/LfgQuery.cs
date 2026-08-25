@@ -23,6 +23,7 @@ public class LfgQuery : ILfgQuery
                    c."Name"                         AS "CharacterName",
                    c."Job"                          AS "Job",
                    c."AttackPower"                  AS "AttackPower",
+                   c."Level"                        AS "Level",
                    li."BossId"                      AS "BossId",
                    b."Name"                         AS "BossName"
             FROM "LfgIntent" li

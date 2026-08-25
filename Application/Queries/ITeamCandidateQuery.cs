@@ -35,6 +35,7 @@ public class CandidatePoolItem
     public string? DiscordName { get; set; }
     public required string Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }
     public int MapleBlessingLevel { get; set; }
     public int BossClearCount { get; set; }
     public bool PrefersThisBoss { get; set; }     // 偏好清單含本王（軟訊號：排前 + 標記）

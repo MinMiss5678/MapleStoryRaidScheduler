@@ -31,6 +31,9 @@ export default function CharacterCard({ character, onEdit, onDelete }: Character
                         <span className="opacity-70">職業:</span> {character.job}
                     </span>
                     <span className="flex items-center gap-1">
+                        <span className="opacity-70">等級:</span> {character.level}
+                    </span>
+                    <span className="flex items-center gap-1">
                         <span className="opacity-70">攻擊力:</span> {character.attackPower}
                     </span>
                 </div>

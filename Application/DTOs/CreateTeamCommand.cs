@@ -36,6 +36,9 @@ public class CreateTeamRequirementDto
     [Range(0, int.MaxValue)]
     public int MinClearCount { get; set; }
 
+    [Range(0, 200)] // 人物等級門檻（0 = 不限；上限 200）
+    public int MinLevel { get; set; }
+
     public List<CreateTeamRequirementJobDto> Jobs { get; set; } = [];
 }
 

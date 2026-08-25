@@ -107,7 +107,8 @@ export default function InstantLfgPage() {
                                 <span className="flex items-center gap-1 text-sm text-muted-foreground">
                                     <Swords size={14} /> {item.bossName}
                                 </span>
-                                <span className="ml-auto flex items-center gap-1 text-sm text-muted-foreground">
+                                <span className="ml-auto text-sm text-muted-foreground">Lv {item.level}</span>
+                                <span className="flex items-center gap-1 text-sm text-muted-foreground">
                                     <Zap size={14} /> {item.attackPower}
                                 </span>
                                 <button disabled={cancel.isPending} onClick={() => cancel.mutate(item.id)}

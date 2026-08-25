@@ -21,6 +21,7 @@ public class TeamSlotRequirementRepository : ITeamSlotRequirementRepository
         sql.Set(x => x.TeamSlotId, requirement.TeamSlotId)
             .Set(x => x.Count, requirement.Count)
             .Set(x => x.MinClearCount, requirement.MinClearCount)
+            .Set(x => x.MinLevel, requirement.MinLevel)
             .ReturnId();
         var requirementId = await _dbContext.ExecuteScalarAsync(sql);
 
@@ -39,7 +40,7 @@ public class TeamSlotRequirementRepository : ITeamSlotRequirementRepository
     public async Task<IEnumerable<TeamSlotRequirement>> GetByTeamSlotIdAsync(int teamSlotId)
     {
         var reqSql = new QueryBuilder();
-        reqSql.Select<TeamSlotRequirementDbModel>(x => new { x.Id, x.TeamSlotId, x.Count, x.MinClearCount })
+        reqSql.Select<TeamSlotRequirementDbModel>(x => new { x.Id, x.TeamSlotId, x.Count, x.MinClearCount, x.MinLevel })
             .From<TeamSlotRequirementDbModel>()
             .Where<TeamSlotRequirementDbModel>(x => x.TeamSlotId == teamSlotId);
         var requirements = (await _dbContext.QueryAsync<TeamSlotRequirement>(reqSql)).ToList();

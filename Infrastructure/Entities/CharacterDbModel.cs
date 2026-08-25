@@ -14,5 +14,6 @@ public class CharacterDbModel
     public required string Name { get; set; }
     public required string Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }            // 人物等級（自填，migration 000023）
     public bool IsSeekingRaid { get; set; }   // period-less §8 Phase 2：參戰 opt-in
 }

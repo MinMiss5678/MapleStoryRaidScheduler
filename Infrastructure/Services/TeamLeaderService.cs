@@ -89,6 +89,7 @@ public class TeamLeaderService : ITeamLeaderService
             {
                 Job = m.Job ?? "",
                 AttackPower = m.AttackPower,
+                Level = m.Level,
                 MapleBlessingLevel = m.MapleBlessingLevel
             }).ToList()
         };
@@ -125,6 +126,7 @@ public class TeamLeaderService : ITeamLeaderService
                 TeamSlotId = teamSlotId,
                 Count = req.Count,
                 MinClearCount = req.MinClearCount,
+                MinLevel = req.MinLevel,
                 Jobs = req.Jobs
                     .Select(j => new TeamSlotRequirementJob { Job = j.Job, MinAttackPower = j.MinAttackPower })
                     .ToList()
@@ -148,6 +150,7 @@ public class TeamLeaderService : ITeamLeaderService
                 CharacterName = character.Name,
                 Job = character.Job,
                 AttackPower = character.AttackPower,
+                Level = character.Level,
                 Status = TeamSlotMemberStatus.Confirmed,
                 SlotDateTime = command.SlotDateTime,
                 IsManual = true
@@ -216,6 +219,7 @@ public class TeamLeaderService : ITeamLeaderService
                 // 無需求列 → 無候選（隊長須先定義條件才看得到候選）。
                 && requirements.Any(r =>
                     item.BossClearCount >= r.MinClearCount &&
+                    item.Level >= r.MinLevel &&   // 人物等級硬篩（整列門檻，不分職業）
                     r.Jobs.Any(j => j.Job == item.Job && item.AttackPower >= j.MinAttackPower)))
             .ToList();
 
@@ -241,6 +245,7 @@ public class TeamLeaderService : ITeamLeaderService
                 DiscordName = item.DiscordName,
                 Job = item.Job,
                 AttackPower = item.AttackPower,
+                Level = item.Level,
                 MapleBlessingLevel = item.MapleBlessingLevel,
                 BossClearCount = item.BossClearCount,
                 LeaveRateWarn = warnIds.Contains(item.DiscordId),
@@ -295,6 +300,7 @@ public class TeamLeaderService : ITeamLeaderService
             CharacterName = character.Name,
             Job = character.Job,
             AttackPower = character.AttackPower,
+            Level = character.Level,
             Status = TeamSlotMemberStatus.Invited,
             SlotDateTime = team.SlotDateTime,
             IsManual = true
@@ -305,6 +311,7 @@ public class TeamLeaderService : ITeamLeaderService
         embed.SubjectName = character.Name;
         embed.SubjectJob = character.Job;
         embed.SubjectAttackPower = character.AttackPower;
+        embed.SubjectLevel = character.Level;
         embed.SubjectMapleBlessingLevel = character.MapleBlessingLevel;
 
         // 通知被邀玩家：帶 InviteResponse + memberId + embed → bot 渲染成員 embed +「接受/拒絕」按鈕。
@@ -415,6 +422,7 @@ public class TeamLeaderService : ITeamLeaderService
             CharacterName = character.Name,
             Job = character.Job,
             AttackPower = character.AttackPower,
+            Level = character.Level,
             Status = TeamSlotMemberStatus.Applied,
             SlotDateTime = team.SlotDateTime,
             IsManual = true
@@ -425,6 +433,7 @@ public class TeamLeaderService : ITeamLeaderService
         embed.SubjectName = character.Name;
         embed.SubjectJob = character.Job;
         embed.SubjectAttackPower = character.AttackPower;
+        embed.SubjectLevel = character.Level;
         embed.SubjectMapleBlessingLevel = character.MapleBlessingLevel;
 
         // 通知隊長有新申請：帶 ApplicationReview + memberId + embed → bot 渲染申請者能力 + roster + 核准/拒絕。

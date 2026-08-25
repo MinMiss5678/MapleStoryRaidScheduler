@@ -41,16 +41,18 @@ public class TeamEmbedData
     public string SubjectName { get; set; } = "";
     public string SubjectJob { get; set; } = "";
     public int SubjectAttackPower { get; set; }
+    public int SubjectLevel { get; set; }
     public int SubjectMapleBlessingLevel { get; set; }
 
     public List<RosterEntry> Roster { get; set; } = new();   // 目前已確認成員（快照）
 }
 
-/// <summary>roster 一列：職業 + 攻擊力 + 楓葉祝福等級（戰力欄，不含身分，§9.12）。</summary>
+/// <summary>roster 一列：職業 + 攻擊力 + 人物等級 + 楓葉祝福等級（戰力欄，不含身分，§9.12）。</summary>
 public class RosterEntry
 {
     public string Job { get; set; } = "";
     public int AttackPower { get; set; }
+    public int Level { get; set; }
     public int MapleBlessingLevel { get; set; }
 }
 

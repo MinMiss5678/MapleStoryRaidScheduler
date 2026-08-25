@@ -11,6 +11,9 @@ public class Character
     public required string Job { get; set; }
     public int AttackPower { get; set; }
 
+    /// <summary>人物等級（自填 1–200，0=未設；同 AttackPower 信任模型，見 plans/2026-08-25-character-level.md）。</summary>
+    public int Level { get; set; }
+
     /// <summary>參戰 opt-in（period-less 重構 §8 Phase 2，B 案）：這隻角色是否要被列入揪團候選。預設 false。</summary>
     public bool IsSeekingRaid { get; set; }
 

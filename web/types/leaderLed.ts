@@ -10,6 +10,7 @@ export type Membership = {
     characterName: string | null;
     job: string | null;
     attackPower: number;
+    level: number;
     status: string; // Applied | Invited | Confirmed | Rejected
     requireMembers: number; // 隊伍容量
     confirmedCount: number; // 已入隊數（用來判斷是否已滿）
@@ -23,12 +24,13 @@ export type Applicant = {
     discordName: string | null;
     job: string | null;
     attackPower: number;
+    level: number;
     bossClearCount: number;
     mapleBlessingLevel: number;
 };
 
 export type OpenTeamRequirementJob = { job: string; minAttackPower: number };
-export type OpenTeamRequirement = { count: number; minClearCount: number; jobs: OpenTeamRequirementJob[] };
+export type OpenTeamRequirement = { count: number; minClearCount: number; minLevel: number; jobs: OpenTeamRequirementJob[] };
 export type OpenTeam = {
     teamSlotId: number;
     bossId: number;
@@ -42,7 +44,7 @@ export type OpenTeam = {
 };
 
 // 尋隊看得到的已確認成員能力（不含身分）
-export type OpenTeamMember = { job: string | null; attackPower: number; mapleBlessingLevel: number };
+export type OpenTeamMember = { job: string | null; attackPower: number; level: number; mapleBlessingLevel: number };
 
 export type InvitationAction = 'accept' | 'decline';
 
@@ -55,7 +57,7 @@ export type ApplicationAction = 'approve' | 'reject';
 export type RecruitmentGapRow = { jobs: string[]; required: number; remaining: number };
 
 // 隊伍組成一列（已入隊成員看隊友；以 discordName 呈現「人」，characterName 僅 fallback）
-export type TeamMember = { discordName: string | null; characterName: string | null; job: string | null; attackPower: number; mapleBlessingLevel: number; isLeader: boolean };
+export type TeamMember = { discordName: string | null; characterName: string | null; job: string | null; attackPower: number; level: number; mapleBlessingLevel: number; isLeader: boolean };
 
 // 隊長「我開的隊」hub 一列（對齊後端 LedTeamDto）
 export type LedTeam = {
@@ -77,6 +79,7 @@ export type TeamCandidate = {
     discordName: string | null; // 顯示名（公會暱稱優先）——讓隊長認得出老班底
     job: string;
     attackPower: number;
+    level: number;
     mapleBlessingLevel: number;
     bossClearCount: number;
     leaveRateWarn: boolean; // 退團率偏高警示（admin 開且達門檻才 true）
@@ -85,7 +88,7 @@ export type TeamCandidate = {
 
 // 開隊 command（對齊後端 CreateTeamCommand；LeaderDiscordId 由後端從登入身分注入）
 export type CreateTeamRequirementJobInput = { job: string; minAttackPower: number };
-export type CreateTeamRequirementInput = { count: number; minClearCount: number; jobs: CreateTeamRequirementJobInput[] };
+export type CreateTeamRequirementInput = { count: number; minClearCount: number; minLevel: number; jobs: CreateTeamRequirementJobInput[] };
 export type CreateTeamCommand = {
     bossId: number;
     slotDateTime: string;
