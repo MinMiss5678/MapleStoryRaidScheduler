@@ -31,4 +31,7 @@ public interface ITeamMembershipQuery
 
     /// <summary>單隊所有 Confirmed 成員的職業（可重複）——算招募缺口用。</summary>
     Task<IEnumerable<string>> GetConfirmedJobsAsync(int teamSlotId);
+
+    /// <summary>單隊「待接受邀請（Invited）」成員的職業（composition-quota：定案後判斷哪些職業名額已滿、需撤邀）。</summary>
+    Task<IEnumerable<string>> GetPendingInviteJobsAsync(int teamSlotId);
 }

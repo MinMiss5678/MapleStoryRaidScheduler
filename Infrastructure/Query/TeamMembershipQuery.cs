@@ -225,6 +225,17 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         return await _dbContext.QueryAsync<string>(sql, new { teamSlotId });
     }
 
+    public async Task<IEnumerable<string>> GetPendingInviteJobsAsync(int teamSlotId)
+    {
+        // 待接受邀請（Invited）成員的職業（可重複）——composition-quota 定案後判斷哪些職業名額已滿。
+        const string sql = """
+            SELECT tsc."Job"
+            FROM "TeamSlotCharacter" tsc
+            WHERE tsc."TeamSlotId" = @teamSlotId AND tsc."Status" = 'Invited';
+            """;
+        return await _dbContext.QueryAsync<string>(sql, new { teamSlotId });
+    }
+
     private class ConfirmedMemberRow
     {
         public int TeamSlotId { get; set; }
