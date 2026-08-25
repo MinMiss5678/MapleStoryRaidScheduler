@@ -56,10 +56,8 @@ services:
       Jwt__SecretKey: "e2e-testing-secret-key-not-for-production"   # ≥32 bytes（HMAC-SHA256 需要）
       Jwt__Issuer: "e2e"
       Jwt__Audience: "e2e"
-      # Discord 不會被 test-login 用到，給 dummy 讓 DI 綁定得起來
-      Discord__ClientId: "0"
-      Discord__ClientSecret: "e2e"
-      Discord__BotToken: "e2e"
+      # 不設 Discord__*：test-login 後門繞過真 Discord OAuth，DiscordOptions 綁成空字串即可
+      # （ClientId/ClientSecret/BotToken 只在 DiscordOAuthClient 方法體內讀、E2E 不呼叫；無 ValidateOnStart → 空值不炸啟動）
     ports:
       - "5230:5230"
 
