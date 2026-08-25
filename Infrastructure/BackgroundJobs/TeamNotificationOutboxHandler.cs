@@ -34,12 +34,16 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
 
         try
         {
-            // 可動作通知（邀請/申請審核/轉讓）→ 附對應按鈕，可在 Discord 內直接回應（discord-inline-actions）。
-            // None（含舊事件反序列化）→ 純文字。custom_id 與互動 handler 共用 TeamActionButton 格式。
+            // 可動作通知（邀請/申請審核/轉讓）→ 附對應按鈕（discord-inline-actions）。
+            // 帶 Embed（目前：邀請 roster）→ 用 embed 呈現（bot-composed-embeds）；否則純文字 fallback。
+            // None（含舊事件反序列化）→ 純文字。
             if (e.Action != TeamNotificationAction.None && e.ActionId is { } actionId)
             {
                 var buttons = BuildButtons(e.Action, actionId);
-                await _discordService.SendDirectMessageAsync(e.TargetDiscordId, e.Message, buttons);
+                if (e.Embed is { } embedData)
+                    await _discordService.SendDirectMessageAsync(e.TargetDiscordId, BuildActionEmbed(e.Action, embedData), buttons);
+                else
+                    await _discordService.SendDirectMessageAsync(e.TargetDiscordId, e.Message, buttons);
             }
             else
             {
@@ -75,5 +79,24 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
             new DmButton(TeamActionButton.CustomId(family, true, id), positiveLabel, DmButtonStyle.Success),
             new DmButton(TeamActionButton.CustomId(family, false, id), negativeLabel, DmButtonStyle.Danger)
         };
+    }
+
+    // 邀請/申請 → embed（bot-composed-embeds）：標題＝王名＋時間；內文「被邀/申請角色」+ 目前成員；頁尾缺額。
+    // public static 供單元測試（事件→embed 映射）。
+    public static DmEmbed BuildActionEmbed(TeamNotificationAction action, TeamEmbedData d)
+    {
+        var roster = d.Roster.Count == 0
+            ? "目前隊伍尚無其他成員。"
+            : "目前成員（職業　攻擊力　祝福等級）：\n" +
+              string.Join("\n", d.Roster.Select(r => $"{r.Job}　攻{r.AttackPower}　祝福{r.MapleBlessingLevel}"));
+        // 轉讓無「主角角色」→ 放轉讓說明一行（否則看不出是轉讓）；邀請/申請則放被邀/申請角色一行。
+        var description = action switch
+        {
+            TeamNotificationAction.TransferResponse => $"轉讓隊長\n\n{roster}",
+            _ => $"{(action == TeamNotificationAction.ApplicationReview ? "申請角色" : "被邀角色")}：" +
+                 $"{d.SubjectName}　{d.SubjectJob}　攻{d.SubjectAttackPower}　祝福{d.SubjectMapleBlessingLevel}\n\n{roster}"
+        };
+        var vacancy = Math.Max(0, d.Capacity - d.Roster.Count);
+        return new DmEmbed($"{d.BossName}　{d.TimeText}", description, $"缺額 {vacancy}／{d.Capacity}");
     }
 }

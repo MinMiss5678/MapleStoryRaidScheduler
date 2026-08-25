@@ -59,7 +59,8 @@ public class TeamLeaderService : ITeamLeaderService
     // target=0（如未認領隊無 leader）則略過。訊息在此組好（有王名/時段 context），handler 只負責送。
     private async Task NotifyAsync(int bossId, DateTimeOffset slot, ulong target, string path,
         Func<string, string, string> buildMessage,
-        TeamNotificationAction action = TeamNotificationAction.None, int? actionId = null)
+        TeamNotificationAction action = TeamNotificationAction.None, int? actionId = null,
+        TeamEmbedData? embed = null)
     {
         if (target == 0) return;
         var boss = await _bossRepository.GetByIdAsync(bossId);
@@ -71,7 +72,26 @@ public class TeamLeaderService : ITeamLeaderService
         if (action == TeamNotificationAction.None && !string.IsNullOrWhiteSpace(_appUrl))
             message += $"\n{_appUrl}{path}";
         await _outbox.EnqueueAsync(OutboxEventType.TeamNotification,
-            new TeamNotificationEvent { TargetDiscordId = target, Message = message, Action = action, ActionId = actionId });
+            new TeamNotificationEvent { TargetDiscordId = target, Message = message, Action = action, ActionId = actionId, Embed = embed });
+    }
+
+    // 組 embed 快照（王/時段/容量 + 目前 Confirmed 成員能力）；「主角角色」(被邀/申請者) 由呼叫端另填，轉讓無主角。
+    private async Task<TeamEmbedData> BuildEmbedSnapshotAsync(TeamSlot team, int teamSlotId)
+    {
+        var boss = await _bossRepository.GetByIdAsync(team.BossId);
+        var confirmed = await _membershipQuery.GetConfirmedMembersAsync(teamSlotId);
+        return new TeamEmbedData
+        {
+            BossName = boss?.Name ?? "王",
+            TimeText = team.SlotDateTime.ToOffset(TimeSpan.FromHours(8)).ToString("M/d HH:mm"),
+            Capacity = boss?.RequireMembers ?? 6,
+            Roster = confirmed.Select(m => new RosterEntry
+            {
+                Job = m.Job ?? "",
+                AttackPower = m.AttackPower,
+                MapleBlessingLevel = m.MapleBlessingLevel
+            }).ToList()
+        };
     }
 
     public async Task<int> CreateTeamAsync(CreateTeamCommand command)
@@ -280,10 +300,17 @@ public class TeamLeaderService : ITeamLeaderService
             IsManual = true
         });
 
-        // 通知被邀玩家：帶 InviteResponse + memberId → bot 渲染「接受/拒絕」按鈕，玩家可在 Discord 內直接回應。
+        // roster + 被邀角色快照 → bot 用 embed 呈現，讓被邀玩家決定前看隊伍組成（bot-composed-embeds）。
+        var embed = await BuildEmbedSnapshotAsync(team, teamSlotId);
+        embed.SubjectName = character.Name;
+        embed.SubjectJob = character.Job;
+        embed.SubjectAttackPower = character.AttackPower;
+        embed.SubjectMapleBlessingLevel = character.MapleBlessingLevel;
+
+        // 通知被邀玩家：帶 InviteResponse + memberId + embed → bot 渲染成員 embed +「接受/拒絕」按鈕。
         await NotifyAsync(team.BossId, team.SlotDateTime, character.DiscordId, "/me/teams",
             (boss, time) => $"隊長邀請你加入「{boss}」{time} 的隊伍。",
-            TeamNotificationAction.InviteResponse, memberId);
+            TeamNotificationAction.InviteResponse, memberId, embed);
     }
 
     public async Task AcceptInviteAsync(int memberId, ulong currentDiscordId)
@@ -393,10 +420,17 @@ public class TeamLeaderService : ITeamLeaderService
             IsManual = true
         });
 
-        // 通知隊長有新申請：帶 ApplicationReview + memberId → bot 渲染「核准/拒絕」按鈕，隊長可在 Discord 內直接審核。
+        // roster + 申請者能力快照 → bot 用 embed 呈現，讓隊長看申請者能力再核准（bot-composed-embeds）。
+        var embed = await BuildEmbedSnapshotAsync(team, teamSlotId);
+        embed.SubjectName = character.Name;
+        embed.SubjectJob = character.Job;
+        embed.SubjectAttackPower = character.AttackPower;
+        embed.SubjectMapleBlessingLevel = character.MapleBlessingLevel;
+
+        // 通知隊長有新申請：帶 ApplicationReview + memberId + embed → bot 渲染申請者能力 + roster + 核准/拒絕。
         await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0, $"/teams/{team.Id}/applications",
             (boss, time) => $"有玩家申請加入你「{boss}」{time} 的隊伍。",
-            TeamNotificationAction.ApplicationReview, memberId);
+            TeamNotificationAction.ApplicationReview, memberId, embed);
     }
 
     public async Task ApproveAsync(int memberId, ulong leaderDiscordId)
@@ -484,10 +518,12 @@ public class TeamLeaderService : ITeamLeaderService
             throw new BusinessException("不能把隊長轉給自己。");
 
         await _teamSlotRepository.SetPendingLeaderAsync(teamSlotId, member.DiscordId);
-        // 帶 TransferResponse + teamSlotId → bot 渲染「接受/拒絕」按鈕，新隊長候選可在 Discord 內直接回應。
+        // 帶 TransferResponse + teamSlotId + embed（roster，無主角）→ bot 渲染隊伍組成 +「接受/拒絕」，
+        // 讓新隊長候選看隊伍再決定。
+        var embed = await BuildEmbedSnapshotAsync(team, teamSlotId);
         await NotifyAsync(team.BossId, team.SlotDateTime, member.DiscordId, "/me/teams",
             (boss, time) => $"隊長想把「{boss}」{time} 的隊長轉給你。",
-            TeamNotificationAction.TransferResponse, teamSlotId);
+            TeamNotificationAction.TransferResponse, teamSlotId, embed);
     }
 
     public async Task RespondLeaderTransferAsync(int teamSlotId, ulong currentDiscordId, string action)

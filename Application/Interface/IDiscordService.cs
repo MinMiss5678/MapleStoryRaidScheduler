@@ -10,4 +10,9 @@ public interface IDiscordService
     /// 按鈕點擊由 bot 的互動 handler 依 <see cref="DmButton.CustomId"/> 處理。
     /// </summary>
     Task SendDirectMessageAsync(ulong discordId, string message, IReadOnlyList<DmButton> buttons);
+
+    /// <summary>
+    /// 送一則 embed DM + 一列按鈕（bot-composed-embeds）：如邀請 DM 用 embed 列出目前成員職業/攻擊力 + 接受/拒絕。
+    /// </summary>
+    Task SendDirectMessageAsync(ulong discordId, DmEmbed embed, IReadOnlyList<DmButton> buttons);
 }

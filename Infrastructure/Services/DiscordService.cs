@@ -34,6 +34,20 @@ public class DiscordService : IDiscordService
         return SendAsync(discordId, dm => dm.SendMessageAsync(builder));
     }
 
+    public Task SendDirectMessageAsync(ulong discordId, DmEmbed embed, IReadOnlyList<DmButton> buttons)
+    {
+        var embedBuilder = new DiscordEmbedBuilder()
+            .WithTitle(embed.Title)
+            .WithDescription(embed.Description)
+            .WithColor(new DiscordColor("#5865F2"));  // Discord blurple
+        if (embed.Footer is { } footer)
+            embedBuilder.WithFooter(footer, null);
+        var builder = new DiscordMessageBuilder()
+            .AddEmbed(embedBuilder.Build())
+            .AddActionRowComponent(buttons.Select(ToComponent));
+        return SendAsync(discordId, dm => dm.SendMessageAsync(builder));
+    }
+
     /// <summary>
     /// 送訊共用路徑（快取 + 失效重建）：快取命中 → 熱路徑只打 1 次 REST（送訊本體）。DM 頻道理論上永不失效；
     /// 萬一 404（頻道失效）→ 清快取、退回完整路徑重建一次。

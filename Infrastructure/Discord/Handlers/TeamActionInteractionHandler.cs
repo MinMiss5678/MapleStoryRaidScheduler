@@ -40,8 +40,12 @@ public class TeamActionInteractionHandler : IEventHandler<ComponentInteractionCr
 
         var result = await HandleAsync(family, positive, id, eventArgs.User.Id);
 
-        // 編輯原 DM：顯示結果、不帶 components → 按鈕移除。
-        await eventArgs.Interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().WithContent(result));
+        // 編輯原 DM：加結果文字、移除按鈕（不帶 components），但**保留原本的 embed**（隊伍資訊/打王時間）→
+        // 玩家接受後仍能回頭看王與時段（bot-composed-embeds）。純文字通知無 embed → 只顯示結果。
+        var edit = new DiscordWebhookBuilder().WithContent(result);
+        foreach (var embed in eventArgs.Message.Embeds)
+            edit.AddEmbed(embed);
+        await eventArgs.Interaction.EditOriginalResponseAsync(edit);
     }
 
     /// <summary>
