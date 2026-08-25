@@ -533,7 +533,7 @@ public class TeamLeaderServiceTests
         // 定案前 0（<容量 → 通過把關）；定案後 1（>=容量 → 觸發撤銷）
         _memberRepositoryMock.SetupSequence(r => r.CountConfirmedAsync(10)).ReturnsAsync(0).ReturnsAsync(1);
         _memberRepositoryMock.Setup(r => r.UpdateStatusAsync(5, TeamSlotMemberStatus.Confirmed, "v1")).ReturnsAsync(true);
-        _memberRepositoryMock.Setup(r => r.RevokePendingInvitesAsync(10)).ReturnsAsync(new ulong[] { 888 });
+        _memberRepositoryMock.Setup(r => r.RevokePendingInvitesAsync(10)).ReturnsAsync(new[] { new RevokedInvite(888, null) });
 
         await _service.AcceptInviteAsync(5, 999);
 

@@ -37,8 +37,11 @@ public interface ITeamSlotCharacterRepository
     Task<IReadOnlyCollection<ulong>> GetConfirmedDiscordIdsAtAsync(DateTimeOffset slotDateTime);
 
     /// <summary>
-    /// 隊伍額滿時，把該隊其餘「待接受邀請（Invited）」一次撤銷為 Rejected；回傳被撤銷者的被邀玩家 DiscordId（供通知）。
-    /// 只動 Invited（隊長選定卻搶不到位）；不動 Applied（保留為候補，位子重開後隊長可再核准）。
+    /// 隊伍額滿時，把該隊其餘「待接受邀請（Invited）」一次撤銷為 Rejected；回傳被撤銷者的被邀玩家 DiscordId + 該邀請 DM 的 message id
+    /// （dm-revoke-cleanup：用 message id 編輯被邀者 DM 成「已失效」）。只動 Invited；不動 Applied（保留候補）。
     /// </summary>
-    Task<IReadOnlyCollection<ulong>> RevokePendingInvitesAsync(int teamSlotId);
+    Task<IReadOnlyCollection<RevokedInvite>> RevokePendingInvitesAsync(int teamSlotId);
 }
+
+/// <summary>被自動撤銷的一筆邀請：被邀玩家 DiscordId + 該邀請 DM 的 message id（null＝DM 尚未送出/id 未回寫 → 跳過清理）。</summary>
+public record RevokedInvite(ulong DiscordId, ulong? DmMessageId);

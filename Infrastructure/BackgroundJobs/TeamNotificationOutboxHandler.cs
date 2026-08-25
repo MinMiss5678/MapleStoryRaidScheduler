@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Application.Events;
 using Application.Interface;
+using Dapper;
 using DSharpPlus.Exceptions;
 using Infrastructure.Discord;
 using Microsoft.Extensions.Logging;
@@ -17,11 +18,13 @@ namespace Infrastructure.BackgroundJobs;
 public class TeamNotificationOutboxHandler : IOutboxHandler
 {
     private readonly IDiscordService _discordService;
+    private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<TeamNotificationOutboxHandler> _logger;
 
-    public TeamNotificationOutboxHandler(IDiscordService discordService, ILogger<TeamNotificationOutboxHandler> logger)
+    public TeamNotificationOutboxHandler(IDiscordService discordService, IDbConnectionFactory connectionFactory, ILogger<TeamNotificationOutboxHandler> logger)
     {
         _discordService = discordService;
+        _connectionFactory = connectionFactory;
         _logger = logger;
     }
 
@@ -34,16 +37,29 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
 
         try
         {
+            // 撤邀清理（dm-revoke-cleanup）：編輯被邀者原 DM 成「已失效」+ 移按鈕，不送新訊息。
+            // EditMessageId null（DM 未送出/id 未回寫）→ 跳過（死按鈕退化、可接受，見計畫已知邊界）。
+            if (e.Action == TeamNotificationAction.InviteRevokedCleanup)
+            {
+                if (e.EditMessageId is { } editId)
+                    await _discordService.EditDirectMessageAsync(e.TargetDiscordId, editId, e.Message);
+                return;
+            }
+
             // 可動作通知（邀請/申請審核/轉讓）→ 附對應按鈕（discord-inline-actions）。
             // 帶 Embed（目前：邀請 roster）→ 用 embed 呈現（bot-composed-embeds）；否則純文字 fallback。
             // None（含舊事件反序列化）→ 純文字。
             if (e.Action != TeamNotificationAction.None && e.ActionId is { } actionId)
             {
                 var buttons = BuildButtons(e.Action, actionId);
-                if (e.Embed is { } embedData)
-                    await _discordService.SendDirectMessageAsync(e.TargetDiscordId, BuildActionEmbed(e.Action, embedData), buttons);
-                else
-                    await _discordService.SendDirectMessageAsync(e.TargetDiscordId, e.Message, buttons);
+                var messageId = e.Embed is { } embedData
+                    ? await _discordService.SendDirectMessageAsync(e.TargetDiscordId, BuildActionEmbed(e.Action, embedData), buttons)
+                    : await _discordService.SendDirectMessageAsync(e.TargetDiscordId, e.Message, buttons);
+
+                // 邀請 DM 之後可能被自動撤銷 → 回寫 message id 供撤銷時編輯（dm-revoke-cleanup）。
+                // 只邀請需要（申請審核/轉讓 DM 不會被自動撤銷）。
+                if (e.Action == TeamNotificationAction.InviteResponse)
+                    await PersistDmMessageIdAsync(actionId, messageId);
             }
             else
             {
@@ -62,6 +78,24 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
             _logger.LogInformation("玩家 {Id} 不在公會，通知略過", e.TargetDiscordId);
         }
         // 其餘例外（網路、429 限流等暫時失敗）→ 讓它 throw → outbox 重試（暫時錯才該重試）。
+    }
+
+    // 回寫邀請 DM 的 message id 到成員列（供撤邀時編輯 DM）。自開專屬連線（factory，singleton-safe，同 poller 慣例）。
+    // best-effort：寫失敗只記 log、不 rethrow——否則整筆 outbox 會重送、重發 DM（重送比丟失 id 糟）。
+    private async Task PersistDmMessageIdAsync(int memberId, ulong messageId)
+    {
+        try
+        {
+            await using var conn = _connectionFactory.Create();
+            await conn.OpenAsync();
+            await conn.ExecuteAsync(
+                """UPDATE "TeamSlotCharacter" SET "DmMessageId" = @mid WHERE "Id" = @id""",
+                new { mid = (long)messageId, id = memberId });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "回寫 DmMessageId 失敗 memberId={Id}（撤邀時將無法編輯該 DM）", memberId);
+        }
     }
 
     // 依動作組「正向/負向」兩顆按鈕（label 依族別：邀請/轉讓＝接受，申請＝核准）。
