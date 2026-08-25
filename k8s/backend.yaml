@@ -23,34 +23,23 @@ spec:
               value: http://+:5230
             - name: Redis__Configuration
               value: redis:6379
-            - name: ConnectionStrings__DefaultConnection
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: db_connection
-            - name: Discord__BotToken
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: discord_bot_token
+            # secret 改檔案交付（volume mount /run/secrets，見 plans/2026-08-25-k8s-secrets-file-mount.md）
+            - name: ConnectionStrings__DefaultConnectionFile
+              value: /run/secrets/db_connection
+            - name: Discord__BotTokenFile
+              value: /run/secrets/discord_bot_token
             - name: Discord__ClientId
               value: "836636705498595340"
-            - name: Discord__ClientSecret
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: discord_client_secret
+            - name: Discord__ClientSecretFile
+              value: /run/secrets/discord_client_secret
             - name: Discord__RedirectUri
               value: https://maplestory.paralleluniversegame.uk/callback
             - name: Discord__GuildId
               value: "840590742270771220"
             - name: App__AppUrl
               value: https://maplestory.paralleluniversegame.uk
-            - name: Jwt__SecretKey
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: jwt_secret_key
+            - name: Jwt__SecretKeyFile
+              value: /run/secrets/jwt_secret_key
             - name: Jwt__Issuer
               value: https://maplestory.paralleluniversegame.uk
             - name: Jwt__Audience
@@ -63,36 +52,21 @@ spec:
               value: consumers
             - name: MicrosoftMail__ClientId
               value: 8dd473dc-86d4-441b-8e66-99ee810c74b3
-            - name: MicrosoftMail__RefreshToken
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: microsoft_mail_refresh_token
-                  optional: true
+            # 空值 secret（未設定）掛成空檔 → code 讀到空字串即視為未設定（同原 optional 語意）
+            - name: MicrosoftMail__RefreshTokenFile
+              value: /run/secrets/microsoft_mail_refresh_token
             - name: MicrosoftMail__ToAddress
               value: jeremywsm@gmail.com
-            - name: MicrosoftMail__WebhookSecret
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: microsoft_mail_webhook_secret
-                  optional: true
+            - name: MicrosoftMail__WebhookSecretFile
+              value: /run/secrets/microsoft_mail_webhook_secret
             # sentry.io 錯誤追蹤（見 plans/2026-08-03-bugsink-integration.md）：optional——
             # 沒設定就不掛 Sentry sink（見 Program.cs 的 Sentry:Dsn 判斷），不該讓 pod 啟動失敗。
-            - name: Sentry__Dsn
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: sentry_dsn
-                  optional: true
+            - name: Sentry__DsnFile
+              value: /run/secrets/sentry_dsn
             # DiscordId 送 Sentry 前的 HMAC 密鑰（見 plans/2026-08-04-sentry-discordid-hmac.md）：
             # optional——沒設就不送 DiscordId tag（BeforeSend 判斷），不該讓 pod 啟動失敗。
-            - name: Sentry__DiscordIdHashKey
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: discord_hash_key
-                  optional: true
+            - name: Sentry__DiscordIdHashKeyFile
+              value: /run/secrets/discord_hash_key
           ports:
             - containerPort: 5230
           resources:
@@ -118,6 +92,33 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+          # secret 檔案交付：maple-secrets 掛成唯讀檔於 /run/secrets（只掛 backend 需要的 key）
+          volumeMounts:
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: secrets
+          secret:
+            secretName: maple-secrets
+            defaultMode: 0444   # r--r--r--：非 root container 也讀得到（decision 5）
+            items:
+              - key: db_connection
+                path: db_connection
+              - key: discord_bot_token
+                path: discord_bot_token
+              - key: discord_client_secret
+                path: discord_client_secret
+              - key: jwt_secret_key
+                path: jwt_secret_key
+              - key: microsoft_mail_refresh_token
+                path: microsoft_mail_refresh_token
+              - key: microsoft_mail_webhook_secret
+                path: microsoft_mail_webhook_secret
+              - key: sentry_dsn
+                path: sentry_dsn
+              - key: discord_hash_key
+                path: discord_hash_key
 ---
 apiVersion: v1
 kind: Service
