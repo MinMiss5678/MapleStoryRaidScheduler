@@ -2,6 +2,7 @@ using System.Text.Json;
 using Application.Events;
 using Application.Interface;
 using DSharpPlus.Exceptions;
+using Infrastructure.Discord;
 using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.BackgroundJobs;
@@ -33,7 +34,17 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
 
         try
         {
-            await _discordService.SendDirectMessageAsync(e.TargetDiscordId, e.Message);
+            // 可動作通知（邀請/申請審核/轉讓）→ 附對應按鈕，可在 Discord 內直接回應（discord-inline-actions）。
+            // None（含舊事件反序列化）→ 純文字。custom_id 與互動 handler 共用 TeamActionButton 格式。
+            if (e.Action != TeamNotificationAction.None && e.ActionId is { } actionId)
+            {
+                var buttons = BuildButtons(e.Action, actionId);
+                await _discordService.SendDirectMessageAsync(e.TargetDiscordId, e.Message, buttons);
+            }
+            else
+            {
+                await _discordService.SendDirectMessageAsync(e.TargetDiscordId, e.Message);
+            }
         }
         catch (UnauthorizedException)
         {
@@ -47,5 +58,22 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
             _logger.LogInformation("玩家 {Id} 不在公會，通知略過", e.TargetDiscordId);
         }
         // 其餘例外（網路、429 限流等暫時失敗）→ 讓它 throw → outbox 重試（暫時錯才該重試）。
+    }
+
+    // 依動作組「正向/負向」兩顆按鈕（label 依族別：邀請/轉讓＝接受，申請＝核准）。
+    private static IReadOnlyList<DmButton> BuildButtons(TeamNotificationAction action, int id)
+    {
+        var (family, positiveLabel, negativeLabel) = action switch
+        {
+            TeamNotificationAction.InviteResponse    => (TeamActionFamily.Invite, "接受", "拒絕"),
+            TeamNotificationAction.ApplicationReview => (TeamActionFamily.Application, "核准", "拒絕"),
+            TeamNotificationAction.TransferResponse  => (TeamActionFamily.Transfer, "接受", "拒絕"),
+            _ => throw new InvalidOperationException($"未支援的通知動作 {action}")
+        };
+        return new[]
+        {
+            new DmButton(TeamActionButton.CustomId(family, true, id), positiveLabel, DmButtonStyle.Success),
+            new DmButton(TeamActionButton.CustomId(family, false, id), negativeLabel, DmButtonStyle.Danger)
+        };
     }
 }

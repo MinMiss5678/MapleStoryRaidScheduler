@@ -23,15 +23,29 @@ public class DiscordService : IDiscordService
         _discordOptions = discordOptions.Value;
     }
 
-    public async Task SendDirectMessageAsync(ulong discordId, string message)
+    public Task SendDirectMessageAsync(ulong discordId, string message)
+        => SendAsync(discordId, dm => dm.SendMessageAsync(message));
+
+    public Task SendDirectMessageAsync(ulong discordId, string message, IReadOnlyList<DmButton> buttons)
     {
-        // 快取命中 → 熱路徑只打 1 次 REST（送訊本體）。DM 頻道理論上永不失效；萬一 404（頻道失效）→ 清快取、退回完整路徑重建一次。
-        // UnauthorizedException(403，對方關 DM)不在此吞 → 往上由 handler 當永久失敗，維持既有語意。
+        var builder = new DiscordMessageBuilder()
+            .WithContent(message)
+            .AddActionRowComponent(buttons.Select(ToComponent));
+        return SendAsync(discordId, dm => dm.SendMessageAsync(builder));
+    }
+
+    /// <summary>
+    /// 送訊共用路徑（快取 + 失效重建）：快取命中 → 熱路徑只打 1 次 REST（送訊本體）。DM 頻道理論上永不失效；
+    /// 萬一 404（頻道失效）→ 清快取、退回完整路徑重建一次。
+    /// UnauthorizedException(403，對方關 DM)不在此吞 → 往上由 handler 當永久失敗，維持既有語意。
+    /// </summary>
+    private async Task SendAsync(ulong discordId, Func<DiscordDmChannel, Task> send)
+    {
         if (_dmChannelCache.TryGetValue(discordId, out var cached))
         {
             try
             {
-                await cached.SendMessageAsync(message);
+                await send(cached);
                 return;
             }
             catch (NotFoundException)
@@ -43,8 +57,18 @@ public class DiscordService : IDiscordService
 
         var dm = await OpenDmChannelAsync(discordId);
         _dmChannelCache[discordId] = dm;
-        await dm.SendMessageAsync(message);
+        await send(dm);
     }
+
+    private static DiscordButtonComponent ToComponent(DmButton b) =>
+        new(b.Style switch
+        {
+            DmButtonStyle.Primary => DiscordButtonStyle.Primary,
+            DmButtonStyle.Secondary => DiscordButtonStyle.Secondary,
+            DmButtonStyle.Success => DiscordButtonStyle.Success,
+            DmButtonStyle.Danger => DiscordButtonStyle.Danger,
+            _ => DiscordButtonStyle.Secondary
+        }, b.CustomId, b.Label);
 
     /// <summary>
     /// 開 DM 頻道。成員先查本地快取（bot 已開 GuildMembers intent + 常駐 gateway → 多半命中、不打 REST），
