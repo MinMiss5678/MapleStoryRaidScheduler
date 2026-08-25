@@ -10,7 +10,7 @@ import toast from "react-hot-toast";
 import { leaderService } from "@/services/leaderService";
 import { invalidateTeamQueries } from "@/lib/invalidateTeamQueries";
 import { ApiError } from "@/services/apiClient";
-import { JOBS } from "@/constants/jobs";
+import { JOB_GROUPS } from "@/constants/jobs";
 import { CreateTeamRequirementInput } from "@/types/leaderLed";
 
 const emptyRow = (): CreateTeamRequirementInput => ({ count: 1, minClearCount: 0, minLevel: 0, jobs: [] });
@@ -302,38 +302,42 @@ export default function NewTeamPage() {
                                 )}
                             </div>
 
-                            {/* 職業勾選 + 各自攻擊下限 */}
-                            <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                                {JOBS.map((job) => {
-                                    const picked = row.jobs.find((j) => j.job === job);
-                                    return (
-                                        <div
-                                            key={job}
-                                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-sm transition-colors ${
-                                                picked ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-border"
-                                            }`}
-                                        >
-                                            <label className="flex items-center gap-1 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!picked}
-                                                    onChange={() => toggleJob(i, job)}
-                                                />
-                                                {job}
-                                            </label>
-                                            {picked && (
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    value={picked.minAttackPower}
-                                                    onChange={(e) => setJobAttack(i, job, Number(e.target.value))}
-                                                    placeholder="攻擊≥"
-                                                    className="w-20 px-1.5 py-0.5 bg-background border border-border rounded text-xs"
-                                                />
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                            {/* 職業勾選 + 各自攻擊下限（依大類分組、每組一行） */}
+                            <div className="flex flex-col gap-2 border-t border-border pt-3">
+                                {JOB_GROUPS.map((group, gi) => (
+                                    <div key={gi} className="flex flex-wrap gap-2">
+                                        {group.map((job) => {
+                                            const picked = row.jobs.find((j) => j.job === job);
+                                            return (
+                                                <div
+                                                    key={job}
+                                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-sm transition-colors ${
+                                                        picked ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-border"
+                                                    }`}
+                                                >
+                                                    <label className="flex items-center gap-1 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!picked}
+                                                            onChange={() => toggleJob(i, job)}
+                                                        />
+                                                        {job}
+                                                    </label>
+                                                    {picked && (
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={picked.minAttackPower}
+                                                            onChange={(e) => setJobAttack(i, job, Number(e.target.value))}
+                                                            placeholder="攻擊≥"
+                                                            className="w-20 px-1.5 py-0.5 bg-background border border-border rounded text-xs"
+                                                        />
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     ))}
