@@ -13,7 +13,7 @@ import { ApiError } from "@/services/apiClient";
 import { JOBS } from "@/constants/jobs";
 import { CreateTeamRequirementInput } from "@/types/leaderLed";
 
-const emptyRow = (): CreateTeamRequirementInput => ({ count: 1, minClearCount: 0, jobs: [] });
+const emptyRow = (): CreateTeamRequirementInput => ({ count: 1, minClearCount: 0, minLevel: 0, jobs: [] });
 
 // 需求組合預設（取代舊 JobCategory「一鍵勾滿整組」）：純瀏覽器 localStorage，零後端、personal。
 const PRESET_KEY = "teamNew.requirementPresets";
@@ -276,6 +276,18 @@ export default function NewTeamPage() {
                                         min={0}
                                         value={row.minClearCount}
                                         onChange={(e) => updateRow(i, { minClearCount: Number(e.target.value) })}
+                                        className="w-16 px-2 py-1 bg-background border border-border rounded-lg text-sm"
+                                    />
+                                </label>
+                                {/* 等級門檻＝整列一個（人物等級與職業無關，硬篩；非每職業） */}
+                                <label className="flex items-center gap-1.5 text-sm">
+                                    等級≥
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        max={200}
+                                        value={row.minLevel}
+                                        onChange={(e) => updateRow(i, { minLevel: Number(e.target.value) })}
                                         className="w-16 px-2 py-1 bg-background border border-border rounded-lg text-sm"
                                     />
                                 </label>

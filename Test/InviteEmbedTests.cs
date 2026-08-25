@@ -15,11 +15,12 @@ public class InviteEmbedTests
         SubjectName = "小明",
         SubjectJob = "夜光",
         SubjectAttackPower = 5200,
+        SubjectLevel = 200,
         SubjectMapleBlessingLevel = 95,
         Roster = new()
         {
-            new RosterEntry { Job = "英雄", AttackPower = 5400, MapleBlessingLevel = 100 },
-            new RosterEntry { Job = "夜使者", AttackPower = 4800, MapleBlessingLevel = 90 }
+            new RosterEntry { Job = "英雄", AttackPower = 5400, Level = 200, MapleBlessingLevel = 100 },
+            new RosterEntry { Job = "夜使者", AttackPower = 4800, Level = 195, MapleBlessingLevel = 90 }
         }
     };
 
@@ -35,6 +36,7 @@ public class InviteEmbedTests
         Assert.Contains("夜光", e.Description);
         Assert.DoesNotContain("隊長邀請你加入", e.Description);  // 多餘引言已移除
         Assert.Contains("英雄", e.Description);
+        Assert.Contains("Lv200", e.Description);            // roster 人物等級
         Assert.Contains("攻5400", e.Description);
         Assert.Contains("祝福100", e.Description);
         Assert.Equal("缺額 4／6", e.Footer);   // 6 - 2

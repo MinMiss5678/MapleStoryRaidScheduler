@@ -11,6 +11,7 @@ export interface ProfileCharacter {
     name: string;
     job: string;
     attackPower: number;
+    level: number;
     isSeekingRaid: boolean;
 }
 

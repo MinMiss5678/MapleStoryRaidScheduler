@@ -16,6 +16,7 @@ public class TeamSlotCharacterDbModel
     public string? CharacterName { get; set; }
     public required string Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }             // 人物等級快照（migration 000023）
     public int Rounds { get; set; }
     public bool IsManual { get; set; }
     public string Status { get; set; } = "Confirmed";      // leader-led（000009）：入隊狀態機

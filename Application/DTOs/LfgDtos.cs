@@ -16,6 +16,7 @@ public class LfgBoardItemDto
     public string CharacterName { get; set; } = "";
     public string Job { get; set; } = "";
     public int AttackPower { get; set; }
+    public int Level { get; set; }
     public int BossId { get; set; }
     public string BossName { get; set; } = "";
 }

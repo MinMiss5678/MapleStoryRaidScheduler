@@ -89,6 +89,7 @@ export default function ApplicationsPage() {
                                     <span className="text-muted-foreground font-normal">（{a.job}）</span>
                                 </span>
                                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1">Lv {a.level}</span>
                                     <span className="flex items-center gap-1"><Zap size={12} /> {a.attackPower}</span>
                                     <span className="flex items-center gap-1"><Trophy size={12} /> 通關 {a.bossClearCount}</span>
                                     <span className="flex items-center gap-1"><Sparkles size={12} /> 祝福 {a.mapleBlessingLevel}</span>

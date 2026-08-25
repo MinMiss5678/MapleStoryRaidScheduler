@@ -13,5 +13,6 @@ public class ProfileCharacterDto
     public required string Name { get; set; }
     public required string Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }
     public bool IsSeekingRaid { get; set; }
 }

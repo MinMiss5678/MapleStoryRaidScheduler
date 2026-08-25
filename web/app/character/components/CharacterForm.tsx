@@ -21,6 +21,7 @@ export default function CharacterForm({ editingCharacter, onSuccess, onReset, se
     const [id, setId] = useState('');
     const [job, setJob] = useState(jobs[0] || '主教');
     const [attackPower, setAttackPower] = useState<number>(50);
+    const [level, setLevel] = useState<number>(200);
     const [errors, setErrors] = useState<{ [k: string]: string }>({});
     // 同一次建立/修改用固定 idempotency key（雙擊/重送沿用同一把 → 後端 de-dup）
     const { next: nextIdempotencyKey, reset: resetIdempotencyKey } = useIdempotencyKey();
@@ -30,6 +31,7 @@ export default function CharacterForm({ editingCharacter, onSuccess, onReset, se
         setId('');
         setJob(jobs[0] || '主教');
         setAttackPower(50);
+        setLevel(200);
         setErrors({});
         onReset();
     }, [jobs, onReset]);
@@ -40,6 +42,7 @@ export default function CharacterForm({ editingCharacter, onSuccess, onReset, se
             setId(editingCharacter.id);
             setJob(editingCharacter.job);
             setAttackPower(editingCharacter.attackPower);
+            setLevel(editingCharacter.level);
         } else {
             handleReset();
         }
@@ -59,10 +62,17 @@ export default function CharacterForm({ editingCharacter, onSuccess, onReset, se
             return;
         }
 
+        // 人物等級 1–200（前端驗證；後端 CharacterRequest 亦 [Range(1,200)] 兜底）
+        if (level < 1 || level > 200) {
+            setErrors({ level: "等級需在 1–200 之間" });
+            setLoading(false);
+            return;
+        }
+
         // 同一操作固定一把 key；此輪收到終端回應後（finally）換新，避免失敗重試被自己的舊 key 誤擋
         const idempotencyKey = nextIdempotencyKey();
         try {
-            const characterData = { name, id, job, attackPower };
+            const characterData = { name, id, job, attackPower, level };
             if (editingCharacter) {
                 // 修改角色
                 const updated = await characterService.updateCharacter({ ...characterData }, idempotencyKey);
@@ -131,6 +141,15 @@ export default function CharacterForm({ editingCharacter, onSuccess, onReset, se
                     {editingCharacter && (
                         <p className="text-xs text-gray-500 mt-[-12px] mb-4">修改角色時不可更改職業</p>
                     )}
+
+                    <Input
+                        type="number"
+                        label={`等級: ${level}`}
+                        value={level}
+                        onChange={(e) => setLevel(Number(e.target.value))}
+                        error={errors.level}
+                        containerClassName="mb-4"
+                    />
 
                     <Input
                         type="number"

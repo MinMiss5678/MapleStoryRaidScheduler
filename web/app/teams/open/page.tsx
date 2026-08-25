@@ -53,6 +53,7 @@ function OpenTeamCard({ team }: { team: OpenTeam }) {
                     {team.confirmedMembers.map((m, i) => (
                         <div key={i} className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5">
                             <span className="text-foreground">{m.job}</span>
+                            <span className="flex items-center gap-0.5">Lv {m.level}</span>
                             <span className="flex items-center gap-0.5"><Zap size={11} /> {m.attackPower}</span>
                             <span className="flex items-center gap-0.5"><Sparkles size={11} /> 祝福 {m.mapleBlessingLevel}</span>
                         </div>
@@ -69,7 +70,7 @@ function OpenTeamCard({ team }: { team: OpenTeam }) {
                     <option value="">選擇要申請的角色…</option>
                     {characters.map((c) => (
                         <option key={c.id} value={c.id}>
-                            {c.name}（{c.job}・{c.attackPower}）
+                            {c.name}（{c.job}・Lv{c.level}・{c.attackPower}）
                         </option>
                     ))}
                 </select>

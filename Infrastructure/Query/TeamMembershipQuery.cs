@@ -19,7 +19,7 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             SELECT tsc."Id" AS "MemberId", tsc."TeamSlotId" AS "TeamSlotId", b."Name" AS "BossName",
                    ts."SlotDateTime" AS "SlotDateTime", tsc."CharacterId" AS "CharacterId",
                    tsc."CharacterName" AS "CharacterName", tsc."Job" AS "Job",
-                   tsc."AttackPower" AS "AttackPower", tsc."Status" AS "Status",
+                   tsc."AttackPower" AS "AttackPower", tsc."Level" AS "Level", tsc."Status" AS "Status",
                    b."RequireMembers" AS "RequireMembers",
                    (SELECT COUNT(*) FROM "TeamSlotCharacter" c
                     WHERE c."TeamSlotId" = ts."Id" AND c."Status" = 'Confirmed')::int AS "ConfirmedCount"
@@ -38,7 +38,7 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         const string sql = """
             SELECT tsc."Id" AS "MemberId", tsc."CharacterId" AS "CharacterId",
                    tsc."CharacterName" AS "CharacterName", p."DiscordName" AS "DiscordName",
-                   tsc."Job" AS "Job", tsc."AttackPower" AS "AttackPower",
+                   tsc."Job" AS "Job", tsc."AttackPower" AS "AttackPower", tsc."Level" AS "Level",
                    COALESCE(ch."MapleBlessingLevel", 0) AS "MapleBlessingLevel",
                    COALESCE((SELECT SUM(cbc."ClearCount") FROM "CharacterBossClear" cbc
                              JOIN "Character" c2 ON c2."Id" = cbc."CharacterId"
@@ -85,7 +85,7 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         var ids = teams.Select(t => t.TeamSlotId).ToArray();
         const string reqSql = """
             SELECT r."Id" AS "RequirementId", r."TeamSlotId" AS "TeamSlotId", r."Count" AS "Count",
-                   r."MinClearCount" AS "MinClearCount", j."Job" AS "Job", j."MinAttackPower" AS "MinAttackPower"
+                   r."MinClearCount" AS "MinClearCount", r."MinLevel" AS "MinLevel", j."Job" AS "Job", j."MinAttackPower" AS "MinAttackPower"
             FROM "TeamSlotRequirement" r
             LEFT JOIN "TeamSlotRequirementJob" j ON j."RequirementId" = r."Id"
             WHERE r."TeamSlotId" = ANY(@ids);
@@ -98,7 +98,7 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         // 一次撈這些隊的已確認成員能力（職業/攻擊快照 + 祝福 join Character；不含身分——尋隊公開面 §9.12）
         const string memSql = """
             SELECT tsc."TeamSlotId" AS "TeamSlotId", tsc."Job" AS "Job", tsc."AttackPower" AS "AttackPower",
-                   COALESCE(ch."MapleBlessingLevel", 0) AS "MapleBlessingLevel"
+                   tsc."Level" AS "Level", COALESCE(ch."MapleBlessingLevel", 0) AS "MapleBlessingLevel"
             FROM "TeamSlotCharacter" tsc
             LEFT JOIN "Character" ch ON ch."Id" = tsc."CharacterId"
             WHERE tsc."TeamSlotId" = ANY(@ids) AND tsc."Status" = 'Confirmed'
@@ -106,7 +106,7 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             """;
         var memRows = await _dbContext.QueryAsync<ConfirmedMemberRow>(memSql, new { ids });
         var memsByTeam = memRows.GroupBy(r => r.TeamSlotId).ToDictionary(g => g.Key, g =>
-            g.Select(x => new OpenTeamMemberDto { Job = x.Job, AttackPower = x.AttackPower, MapleBlessingLevel = x.MapleBlessingLevel }).ToList());
+            g.Select(x => new OpenTeamMemberDto { Job = x.Job, AttackPower = x.AttackPower, Level = x.Level, MapleBlessingLevel = x.MapleBlessingLevel }).ToList());
 
         foreach (var t in teams)
         {
@@ -171,7 +171,8 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         // 隊長排最前；不回 DiscordName（§9.12：隊友只看角色/職業，不露 Discord 身分）。
         const string sql = """
             SELECT p."DiscordName" AS "DiscordName", tsc."CharacterName" AS "CharacterName", tsc."Job" AS "Job",
-                   tsc."AttackPower" AS "AttackPower", COALESCE(ch."MapleBlessingLevel", 0) AS "MapleBlessingLevel",
+                   tsc."AttackPower" AS "AttackPower", tsc."Level" AS "Level",
+                   COALESCE(ch."MapleBlessingLevel", 0) AS "MapleBlessingLevel",
                    (tsc."DiscordId" = ts."LeaderDiscordId") AS "IsLeader"
             FROM "TeamSlotCharacter" tsc
             JOIN "TeamSlot" ts ON ts."Id" = tsc."TeamSlotId"
@@ -187,7 +188,7 @@ public class TeamMembershipQuery : ITeamMembershipQuery
     {
         const string sql = """
             SELECT r."Id" AS "RequirementId", r."Count" AS "Count", r."MinClearCount" AS "MinClearCount",
-                   j."Job" AS "Job", j."MinAttackPower" AS "MinAttackPower"
+                   r."MinLevel" AS "MinLevel", j."Job" AS "Job", j."MinAttackPower" AS "MinAttackPower"
             FROM "TeamSlotRequirement" r
             LEFT JOIN "TeamSlotRequirementJob" j ON j."RequirementId" = r."Id"
             WHERE r."TeamSlotId" = @teamSlotId
@@ -207,6 +208,7 @@ public class TeamMembershipQuery : ITeamMembershipQuery
             {
                 Count = f.Count,
                 MinClearCount = f.MinClearCount,
+                MinLevel = f.MinLevel,
                 Jobs = rg.Where(x => x.Job != null)
                     .Select(x => new OpenTeamRequirementJobDto { Job = x.Job!, MinAttackPower = x.MinAttackPower })
                     .ToList()
@@ -228,6 +230,7 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         public int TeamSlotId { get; set; }
         public string Job { get; set; } = "";
         public int AttackPower { get; set; }
+        public int Level { get; set; }
         public int MapleBlessingLevel { get; set; }
     }
 
@@ -237,6 +240,7 @@ public class TeamMembershipQuery : ITeamMembershipQuery
         public int TeamSlotId { get; set; }
         public int Count { get; set; }
         public int MinClearCount { get; set; }
+        public int MinLevel { get; set; }
         public string? Job { get; set; }
         public int MinAttackPower { get; set; }
     }

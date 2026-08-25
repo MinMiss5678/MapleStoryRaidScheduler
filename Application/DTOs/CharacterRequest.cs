@@ -22,4 +22,7 @@ public class CharacterRequest
 
     [Range(0, int.MaxValue)] // 攻擊力非負
     public int AttackPower { get; set; }
+
+    [Range(1, 200)] // 人物等級 1–200（自填，遊戲現行等級上限 200）
+    public int Level { get; set; }
 }

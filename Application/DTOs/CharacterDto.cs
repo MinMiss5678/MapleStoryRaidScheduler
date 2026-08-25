@@ -9,6 +9,7 @@ public class CharacterDto
     public required string Name { get; set; }
     public required string Job { get; set; }
     public int AttackPower { get; set; }
+    public int Level { get; set; }
     public int Rounds { get; set; }
     public int[] RegisteredPeriodIds { get; set; } = Array.Empty<int>();
 }

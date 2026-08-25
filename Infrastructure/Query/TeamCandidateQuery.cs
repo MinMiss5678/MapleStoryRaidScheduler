@@ -33,6 +33,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                 p."DiscordName"              AS "DiscordName",
                 c."Job"                      AS "Job",
                 c."AttackPower"              AS "AttackPower",
+                c."Level"                    AS "Level",
                 c."MapleBlessingLevel"       AS "MapleBlessingLevel",
                 COALESCE(ct.total, 0)::int   AS "BossClearCount",
                 (pbx."BossId" IS NOT NULL)   AS "PrefersThisBoss",
@@ -64,6 +65,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                     DiscordName = first.DiscordName,
                     Job = first.Job,
                     AttackPower = first.AttackPower,
+                    Level = first.Level,
                     MapleBlessingLevel = first.MapleBlessingLevel,
                     BossClearCount = first.BossClearCount,
                     PrefersThisBoss = first.PrefersThisBoss,
@@ -97,6 +99,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                 p."DiscordName"              AS "DiscordName",
                 c."Job"                      AS "Job",
                 c."AttackPower"              AS "AttackPower",
+                c."Level"                    AS "Level",
                 c."MapleBlessingLevel"       AS "MapleBlessingLevel",
                 COALESCE(ct.total, 0)::int   AS "BossClearCount",
                 (pbx."BossId" IS NOT NULL)   AS "PrefersThisBoss",
@@ -122,6 +125,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
                     DiscordName = first.DiscordName,
                     Job = first.Job,
                     AttackPower = first.AttackPower,
+                    Level = first.Level,
                     MapleBlessingLevel = first.MapleBlessingLevel,
                     BossClearCount = first.BossClearCount,
                     PrefersThisBoss = first.PrefersThisBoss,
@@ -186,6 +190,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
         public string? DiscordName { get; set; }
         public string Job { get; set; } = "";
         public int AttackPower { get; set; }
+        public int Level { get; set; }
         public int MapleBlessingLevel { get; set; }
         public int BossClearCount { get; set; }
         public bool PrefersThisBoss { get; set; }

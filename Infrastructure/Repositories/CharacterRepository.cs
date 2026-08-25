@@ -23,7 +23,8 @@ public class CharacterRepository : ICharacterRepository
             Id = character.Id,
             Name = character.Name,
             Job = character.Job,
-            AttackPower = character.AttackPower
+            AttackPower = character.AttackPower,
+            Level = character.Level
         });
 
         return result;
@@ -34,6 +35,7 @@ public class CharacterRepository : ICharacterRepository
         var sql = new UpdateBuilder<CharacterDbModel>();
         sql.Set(x => x.Name, character.Name)
             .Set(x => x.AttackPower, character.AttackPower)
+            .Set(x => x.Level, character.Level)
             .Where(x => x.Id == character.Id)
             .Where(x => x.DiscordId == (long)character.DiscordId);
 

@@ -45,7 +45,8 @@ describe('CharacterForm', () => {
       id: 'CHAR1',
       name: 'Alice',
       job: 'Bishop',
-      attackPower: 100
+      attackPower: 100,
+      level: 180
     };
 
     render(
@@ -62,6 +63,27 @@ describe('CharacterForm', () => {
     expect(screen.getByDisplayValue('Alice')).toBeDefined();
     expect(screen.getByDisplayValue('CHAR1')).toBeDefined();
     expect(screen.getByDisplayValue('Bishop')).toBeDefined();
+    expect(screen.getByDisplayValue('180')).toBeDefined(); // 人物等級帶入
+  });
+
+  it('shows error when level is out of 1–300 range', async () => {
+    render(
+      <CharacterForm
+        editingCharacter={null}
+        onSuccess={mockOnSuccess}
+        onReset={mockOnReset}
+        setLoading={mockSetLoading}
+        jobs={mockJobs}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('例如：艾莉絲'), { target: { value: 'X' } });
+    fireEvent.change(screen.getByPlaceholderText('例如：ELISE'), { target: { value: 'X1' } });
+    fireEvent.change(screen.getByDisplayValue('200'), { target: { value: '400' } }); // 等級預設 200 → 改成超界
+    fireEvent.click(screen.getByText('提交'));
+
+    expect(await screen.findByText('等級需在 1–200 之間')).toBeDefined();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('shows error messages when required fields are empty', async () => {
@@ -86,7 +108,7 @@ describe('CharacterForm', () => {
 
   it('calls API and onSuccess when creating a character', async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
-      jsonResponse({ id: 'NEW', name: 'Newbie', job: 'Hero', attackPower: 50 })
+      jsonResponse({ id: 'NEW', name: 'Newbie', job: 'Hero', attackPower: 50, level: 200 })
     );
 
     render(
@@ -107,7 +129,7 @@ describe('CharacterForm', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith('/api/character', expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ name: 'Newbie', id: 'NEW', job: 'Hero', attackPower: 50 })
+        body: JSON.stringify({ name: 'Newbie', id: 'NEW', job: 'Hero', attackPower: 50, level: 200 })
       }));
       expect(mockOnSuccess).toHaveBeenCalledWith(expect.objectContaining({ name: 'Newbie' }), false);
     });
@@ -118,7 +140,8 @@ describe('CharacterForm', () => {
       id: 'CHAR1',
       name: 'Alice',
       job: 'Bishop',
-      attackPower: 100
+      attackPower: 100,
+      level: 180
     };
 
     vi.mocked(global.fetch).mockResolvedValueOnce(
@@ -142,7 +165,7 @@ describe('CharacterForm', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith('/api/character/CHAR1', expect.objectContaining({
         method: 'PUT',
-        body: JSON.stringify({ name: 'Alice Updated', id: 'CHAR1', job: 'Bishop', attackPower: 100 })
+        body: JSON.stringify({ name: 'Alice Updated', id: 'CHAR1', job: 'Bishop', attackPower: 100, level: 180 })
       }));
       expect(mockOnSuccess).toHaveBeenCalledWith(expect.objectContaining({ name: 'Alice Updated' }), true);
     });
