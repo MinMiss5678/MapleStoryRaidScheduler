@@ -84,14 +84,13 @@ public class Program
                  services.AddScoped<IDbConnection>(sp => sp.GetRequiredService<IDbConnectionFactory>().Create());
 
                  // DB 鏈全 Scoped（每 scope 專屬 DbContext/連線/交易）：UoW、DbContext、repo、DB-touching service。
-                 // 純 Discord/Redis/HTTP（IDiscordService、IDiscordOAuthClient）維持 Singleton——不碰 DB、無 captive 風險。
+                 // 純 Discord/Redis（IDiscordService）維持 Singleton——不碰 DB、無 captive 風險。
                  services.AddScoped<IUnitOfWork, UnitOfWork>();
                  services.AddScoped<DbContext>();
                  services.AddSingleton<IDiscordService, DiscordService>();
                  services.AddScoped<ISessionService, SessionService>();
                  services.AddScoped<ISessionRepository, SessionRepository>();
                  services.AddScoped<ISessionQuery, SessionQuery>();
-                 services.AddSingleton<IDiscordOAuthClient, DiscordOAuthClient>();
                  services.AddScoped<ISystemConfigService, SystemConfigService>();
                  services.AddScoped<IPlayerRepository, PlayerRepository>();
                  services.AddScoped<IPlayerService, PlayerService>();
