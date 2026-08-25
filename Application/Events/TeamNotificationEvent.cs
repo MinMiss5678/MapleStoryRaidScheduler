@@ -22,6 +22,36 @@ public class TeamNotificationEvent
     /// ＝成員（TeamSlotCharacter）Id；<see cref="TeamNotificationAction.TransferResponse"/>＝隊伍（TeamSlot）Id。
     /// </summary>
     public int? ActionId { get; set; }
+
+    /// <summary>
+    /// 富呈現資料（bot-composed-embeds）：非 null 時 bot 用 embed 呈現（如邀請 DM 列出目前成員職業/攻擊力）。
+    /// 入列時由 backend 撈好 roster 快照 denormalize 進來 → bot 純渲染、不查 DB。null → 走 <see cref="Message"/> 純文字（fallback）。
+    /// </summary>
+    public TeamEmbedData? Embed { get; set; }
+}
+
+/// <summary>邀請 DM 的 embed 快照資料（入列當下）：讓被邀玩家決定前看得到隊伍組成 + 自己被邀的角色。</summary>
+public class TeamEmbedData
+{
+    public string BossName { get; set; } = "";
+    public string TimeText { get; set; } = "";      // 已格式化（+8 時區 M/d HH:mm）
+    public int Capacity { get; set; }               // Boss.RequireMembers
+
+    // 這次動作對應的角色（邀請＝被邀角色、申請＝申請者角色）——讓對方看得到是哪隻、能力如何。
+    public string SubjectName { get; set; } = "";
+    public string SubjectJob { get; set; } = "";
+    public int SubjectAttackPower { get; set; }
+    public int SubjectMapleBlessingLevel { get; set; }
+
+    public List<RosterEntry> Roster { get; set; } = new();   // 目前已確認成員（快照）
+}
+
+/// <summary>roster 一列：職業 + 攻擊力 + 楓葉祝福等級（戰力欄，不含身分，§9.12）。</summary>
+public class RosterEntry
+{
+    public string Job { get; set; } = "";
+    public int AttackPower { get; set; }
+    public int MapleBlessingLevel { get; set; }
 }
 
 /// <summary>
