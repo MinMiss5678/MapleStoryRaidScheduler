@@ -20,16 +20,11 @@ spec:
             # session 撤銷跨 pod 生效：bot 撤 session 刪的是共享 Redis 快取（見 Presentation/Program.cs）
             - name: Redis__Configuration
               value: redis:6379
-            - name: ConnectionStrings__DefaultConnection
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: db_connection
-            - name: Discord__BotToken
-              valueFrom:
-                secretKeyRef:
-                  name: maple-secrets
-                  key: discord_bot_token
+            # secret 改檔案交付（volume mount /run/secrets，見 plans/2026-08-25-k8s-secrets-file-mount.md）
+            - name: ConnectionStrings__DefaultConnectionFile
+              value: /run/secrets/db_connection
+            - name: Discord__BotTokenFile
+              value: /run/secrets/discord_bot_token
             - name: Discord__ChannelId
               value: "840590742270771223"
             # DM 發送（leader-led 通知）走 GetGuildAsync(GuildId).GetMemberAsync → bot 也要 GuildId。
@@ -45,3 +40,18 @@ spec:
               memory: 64Mi
             limits:
               memory: 128Mi
+          # secret 檔案交付：maple-secrets 掛成唯讀檔於 /run/secrets（只掛 bot 需要的 key）
+          volumeMounts:
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: secrets
+          secret:
+            secretName: maple-secrets
+            defaultMode: 0444   # r--r--r--：非 root container 也讀得到（decision 5）
+            items:
+              - key: db_connection
+                path: db_connection
+              - key: discord_bot_token
+                path: discord_bot_token

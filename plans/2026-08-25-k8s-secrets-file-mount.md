@@ -16,7 +16,9 @@
 
 ## 決策
 
-1. **只改 manifest、code 不動**：8 個 secret 全部已有 `*File` code 路徑（下表），保留 value+file **雙模式 code**（E2E/本機仍靠 value——如 `compose.e2e.yaml` 的連線字串是值——**不可砍 value 分支**，否則 E2E/本機炸）。
+1. **只改 manifest、code 不動**：8 個 secret 全部已有 `*File` code 路徑（下表），保留 value+file **雙模式 code**。value 分支能不能砍**依 secret 而定**（2026-08-26 實測，見「可選後續」）：
+   - **DB 連線字串**：`compose.e2e.yaml` 給的是**值** → 該 value 分支 **E2E 實際在用**、**不可砍**（砍了 E2E 炸）。
+   - **`ClientSecret` / `BotToken`**：E2E backend 空值也照常啟動（OAuth lazy、test-login 不走 OAuth、bot 不在 E2E）→ 該 value 分支 **E2E/本機不需要**（實測拔掉後 E2E 仍 11/11 綠）。但**現況 prod 靠 env 交付它們**，本計畫「code 不動」故先保留。
 2. **每個 deployment 加 secret volume + volumeMount**：`maple-secrets` 掛到 `/run/secrets`（`readOnly: true`），env 從 `secretKeyRef` 改成 `*File=/run/secrets/<key>`（路徑/命名對齊 compose.yaml）。
 3. **`maple-secrets` Secret 物件不動**（同 key、值來源不變）。
 4. **範圍限 bot + backend**（我方 app）；其餘吃 maple-secrets 的第三方 image 見非範圍。
@@ -46,6 +48,7 @@
 - **cloudflared / database / migrate-job**（也吃 maple-secrets）：第三方 image，`*File` 形式各異（postgres 原生 `POSTGRES_PASSWORD_FILE`、cloudflared `--token-file`、migrate 需改 command 讀檔）→ 非我方 code、驗法不同，**另開議**。
 - **不動 code**（雙模式保留）、不動 `maple-secrets` 值、不動 `compose*.yaml`。
 - 不引入 external secrets manager / encryption-at-rest。
+- **可選後續（本計畫之後）——砍 `ClientSecret`/`BotToken` 的 value 分支**：2026-08-26 實測（scratch 分支拔掉 env value、強制 file-only）→ **build 過、E2E 11/11 綠**，證明 E2E/本機不需要這兩個 value 分支（唯一用它的是**現況 prod-via-env**，而無任何 local/E2E 測試抓得到 prod OAuth/DM 迴歸）。**順序耦合**：本計畫把 prod 改吃檔案後，這兩條 value 分支即成 prod-dead → 可安全移除（`bot Program.cs` 的 else + `WebApi Program.cs` PostConfigure 的 env fallback）。**先 file-mount、再拔 value**，否則 prod OAuth 登入失敗 + bot 讀不到 token。（附帶：`WebApi` 那段 `else { options.ClientSecret = options.ClientSecret; }` 是自我指派死碼，順手清。）DB 連線字串的 value 分支**不在此列**——E2E 在用、永久保留。
 - **可選後續（本計畫不含）——抽「file-or-value」共用 helper**：「`{key}File` 有檔就讀檔、否則讀 `{key}` 值」這個 pattern 在 bot + WebApi 重複、且散在連線字串 / Redis `ConfigurationFile` / Discord token / WebApi `PostConfigure`（Jwt/Sentry…）多處。可抽一個 `ResolveFileOrValue(config, key)` 一次收斂兩 app + 所有 secret。**邏輯簡單又穩定 → YAGNI，別單獨開工**；若日後剛好要碰這些設定載入再順手抽（邊際成本低）。
 - **不統一 `IDbConnectionFactory`**：bot 用 factory（因有 3 個背景 poller 共用連線設定）、WebApi 用行內 `new NpgsqlConnection`——差異是**需求不同、可辯護**，硬套 factory 給 WebApi = 為統一而加抽象（無收穫），維持現狀。
 
