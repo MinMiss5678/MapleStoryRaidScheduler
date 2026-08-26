@@ -102,23 +102,8 @@ spec:
           secret:
             secretName: maple-secrets
             defaultMode: 0444   # r--r--r--：非 root container 也讀得到（decision 5）
-            items:
-              - key: db_connection
-                path: db_connection
-              - key: discord_bot_token
-                path: discord_bot_token
-              - key: discord_client_secret
-                path: discord_client_secret
-              - key: jwt_secret_key
-                path: jwt_secret_key
-              - key: microsoft_mail_refresh_token
-                path: microsoft_mail_refresh_token
-              - key: microsoft_mail_webhook_secret
-                path: microsoft_mail_webhook_secret
-              - key: sentry_dsn
-                path: sentry_dsn
-              - key: discord_hash_key
-                path: discord_hash_key
+            # 整包掛（不用 items）：只把 maple-secrets 現有的 key 變成檔。選填 secret（sentry/mail/hash）
+            # 若沒建該 key → 沒那個檔 → code 讀不到當未設定、pod 照起（items 逐 key 挑會因缺 key 掛載失敗、pod 起不來）。
 ---
 apiVersion: v1
 kind: Service

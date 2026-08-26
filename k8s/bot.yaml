@@ -50,8 +50,4 @@ spec:
           secret:
             secretName: maple-secrets
             defaultMode: 0444   # r--r--r--：非 root container 也讀得到（decision 5）
-            items:
-              - key: db_connection
-                path: db_connection
-              - key: discord_bot_token
-                path: discord_bot_token
+            # 整包掛（不用 items）：maple-secrets 現有 key 變成檔；缺選填 key 不會炸（見 backend.yaml 註解）。
