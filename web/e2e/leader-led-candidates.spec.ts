@@ -24,6 +24,9 @@ test('隊長開隊 → 挑候選邀請 → 玩家接受入隊（Pull）', async 
   await page.locator('input[type="datetime-local"]').fill(slotLocal);
   await page.locator('textarea').fill(desc);
   await page.locator('label').filter({ hasText: '英雄' }).click(); // 勾「英雄」職業（攻擊下限預設 0）
+  // 招募熱力圖（leader-recruitment-heatmap）：設好需求 → 載入未來時段可填程度（P-Cand 英雄全週可用 → 滿=1）
+  await page.getByRole('button', { name: /看熱力圖/ }).click();
+  await expect(page.getByText(/滿 = 1/)).toBeVisible();
   await page.getByRole('button', { name: '開隊', exact: true }).click();
   await page.waitForURL(u => new URL(u).pathname === '/me/led-teams');
 

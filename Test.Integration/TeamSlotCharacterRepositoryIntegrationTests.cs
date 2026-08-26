@@ -79,4 +79,35 @@ public class TeamSlotCharacterRepositoryIntegrationTests
             """SELECT COUNT(*) FROM "TeamSlotCharacter" WHERE "TeamSlotId" = @t AND "Status" = 'Invited'""", new { t = teamId });
         Assert.Equal(0, stillInvited);
     }
+
+    [Fact]
+    public async Task GetConfirmedBookingsInRange_OnlyConfirmedWithinRange()
+    {
+        // 招募熱力圖：只回範圍內 Confirmed 訂位（範圍外/非 Confirmed 不回）。
+        await _fx.ResetAsync();
+        var bossId = await Seed.BossAsync(_fx.ConnectionString);
+        var teamId = await Seed.TeamSlotAsync(_fx.ConnectionString, bossId, TeamSlotSource.Leader);
+        await Seed.PlayerAsync(_fx.ConnectionString, 501, "A");
+        await Seed.PlayerAsync(_fx.ConnectionString, 502, "B");
+        await Seed.PlayerAsync(_fx.ConnectionString, 503, "C");
+        var inRange = new DateTimeOffset(2026, 9, 1, 20, 0, 0, TimeSpan.Zero);
+        var outRange = new DateTimeOffset(2026, 9, 10, 20, 0, 0, TimeSpan.Zero);
+
+        await using (var c = new NpgsqlConnection(_fx.ConnectionString))
+        {
+            await c.OpenAsync();
+            await c.ExecuteAsync("""INSERT INTO "TeamSlotCharacter"("TeamSlotId","DiscordId","Job","Status","SlotDateTime") VALUES (@t,501,'英雄','Confirmed',@s)""", new { t = teamId, s = inRange });
+            await c.ExecuteAsync("""INSERT INTO "TeamSlotCharacter"("TeamSlotId","DiscordId","Job","Status","SlotDateTime") VALUES (@t,502,'英雄','Confirmed',@s)""", new { t = teamId, s = outRange });     // 範圍外
+            await c.ExecuteAsync("""INSERT INTO "TeamSlotCharacter"("TeamSlotId","DiscordId","Job","Status","SlotDateTime") VALUES (@t,503,'英雄','Invited',@s)""", new { t = teamId, s = inRange });        // 非 Confirmed
+        }
+
+        var repo = new TeamSlotCharacterRepository(_fx.CreateDbContext());
+        var bookings = (await repo.GetConfirmedBookingsInRangeAsync(
+            new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 9, 2, 0, 0, 0, TimeSpan.Zero))).ToList();
+
+        Assert.Single(bookings);
+        Assert.Equal(501UL, bookings[0].DiscordId);
+        Assert.Equal(inRange.ToUniversalTime(), bookings[0].SlotDateTime.ToUniversalTime());
+    }
 }

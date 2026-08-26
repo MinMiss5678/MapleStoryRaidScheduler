@@ -11,6 +11,7 @@ import { leaderService } from "@/services/leaderService";
 import { invalidateTeamQueries } from "@/lib/invalidateTeamQueries";
 import { ApiError } from "@/services/apiClient";
 import { JOB_GROUPS } from "@/constants/jobs";
+import { RecruitmentHeatmapPanel } from "./RecruitmentHeatmapPanel";
 import { CreateTeamRequirementInput } from "@/types/leaderLed";
 
 const emptyRow = (): CreateTeamRequirementInput => ({ count: 1, minClearCount: 0, minLevel: 0, jobs: [] });
@@ -342,6 +343,11 @@ export default function NewTeamPage() {
                         </div>
                     ))}
                 </div>
+
+                {/* 招募熱力圖：設好需求後挑「最湊得起來」的時段（僅排程團）→ 點格帶入開團時間 */}
+                {!isInstant && (
+                    <RecruitmentHeatmapPanel bossId={bossId} requirements={rows} onPick={setSlotDateTime} />
+                )}
 
                 <button
                     disabled={!canSubmit || create.isPending}

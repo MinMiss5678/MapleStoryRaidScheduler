@@ -59,4 +59,30 @@ public class CompositionQuotaTests
         var reqs = new[] { Req(1, "英雄") };
         Assert.False(CompositionQuota.IsFeasible(["英雄", "英雄"], reqs, 1)); // 2 成員 > 1 名額
     }
+
+    // ── MaxRequirementSlotsFilled（招募熱力圖：候選供給 → 需求名額覆蓋）──
+    [Fact]
+    public void 填滿格數_全覆蓋與部分覆蓋()
+    {
+        var reqs = new[] { Req(1, "黑騎士"), Req(1, "英雄") }; // ΣCount=2
+        Assert.Equal(2, CompositionQuota.MaxRequirementSlotsFilled(["黑騎士", "英雄"], reqs)); // 整套可填
+        Assert.Equal(1, CompositionQuota.MaxRequirementSlotsFilled(["黑騎士", "黑騎士"], reqs)); // 只填黑騎士格
+        Assert.Equal(0, CompositionQuota.MaxRequirementSlotsFilled(["主教"], reqs));           // 都不合
+    }
+
+    [Fact]
+    public void 填滿格數_OR與重疊群組()
+    {
+        Assert.Equal(1, CompositionQuota.MaxRequirementSlotsFilled(["箭神", "槍神"], [Req(1, "箭神", "槍神")])); // 群組只 1 名額
+        var overlap = new[] { Req(1, "黑騎士", "英雄"), Req(1, "英雄", "主教") };
+        Assert.Equal(2, CompositionQuota.MaxRequirementSlotsFilled(["英雄", "英雄"], overlap)); // 各配一列
+        Assert.Equal(1, CompositionQuota.MaxRequirementSlotsFilled(["英雄"], overlap));         // 一個只能填一格
+    }
+
+    [Fact]
+    public void 填滿格數_供給過剩與無需求()
+    {
+        Assert.Equal(1, CompositionQuota.MaxRequirementSlotsFilled(["英雄", "英雄", "英雄"], [Req(1, "英雄")])); // 只 1 名額
+        Assert.Equal(0, CompositionQuota.MaxRequirementSlotsFilled(["英雄"], []));                              // 無需求列 → 0 格
+    }
 }

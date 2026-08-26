@@ -68,4 +68,52 @@ public static class CompositionQuota
         }
         return false;
     }
+
+    /// <summary>
+    /// 供給覆蓋（招募熱力圖 leader-recruitment-heatmap）：給一組「可用候選職業」，最多能填滿多少「需求名額」
+    /// （各需求列 <see cref="TeamSlotRequirement.Count"/> 個名額、只收其 Jobs）。與 <see cref="IsFeasible"/> 同一套二分匹配，
+    /// 但方向反過來（候選 → 需求名額）、且**無未指定池**（只問覆蓋『指定的需求』）。回最大匹配數；呼叫端除以 ΣCount 得填滿比例。
+    /// </summary>
+    public static int MaxRequirementSlotsFilled(
+        IReadOnlyCollection<string> availableJobs,
+        IReadOnlyCollection<TeamSlotRequirement> requirements)
+    {
+        var slots = new List<HashSet<string>>();
+        foreach (var r in requirements)
+        {
+            var jobs = r.Jobs.Select(j => j.Job).ToHashSet();
+            for (var i = 0; i < r.Count; i++)
+                slots.Add(jobs);
+        }
+        if (slots.Count == 0)
+            return 0;
+
+        var candidates = availableJobs.ToList();
+        var matchedSlot = new int[slots.Count];
+        Array.Fill(matchedSlot, -1);   // slot → 候選 index
+        var filled = 0;
+        for (var c = 0; c < candidates.Count; c++)
+        {
+            var visited = new bool[slots.Count];
+            if (TryFill(c, candidates, slots, matchedSlot, visited))
+                filled++;
+        }
+        return filled;
+    }
+
+    private static bool TryFill(int cand, List<string> candidates, List<HashSet<string>> slots, int[] matchedSlot, bool[] visited)
+    {
+        for (var s = 0; s < slots.Count; s++)
+        {
+            if (visited[s] || !slots[s].Contains(candidates[cand]))
+                continue;
+            visited[s] = true;
+            if (matchedSlot[s] == -1 || TryFill(matchedSlot[s], candidates, slots, matchedSlot, visited))
+            {
+                matchedSlot[s] = cand;
+                return true;
+            }
+        }
+        return false;
+    }
 }

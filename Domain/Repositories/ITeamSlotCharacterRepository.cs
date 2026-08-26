@@ -47,7 +47,13 @@ public interface ITeamSlotCharacterRepository
     /// 回傳被撤者 (DiscordId, DmMessageId) 供編輯 DM。只動 Invited、不動 Applied。
     /// </summary>
     Task<IReadOnlyCollection<RevokedInvite>> RevokePendingInvitesByJobsAsync(int teamSlotId, IReadOnlyCollection<string> jobs);
+
+    /// <summary>某時間範圍內所有 Confirmed 訂位的 (SlotDateTime, DiscordId)——招募熱力圖一次撈、in-memory 分格扣「不可分身」。</summary>
+    Task<IReadOnlyCollection<ConfirmedBooking>> GetConfirmedBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to);
 }
 
 /// <summary>被自動撤銷的一筆邀請：被邀玩家 DiscordId + 該邀請 DM 的 message id（null＝DM 尚未送出/id 未回寫 → 跳過清理）。</summary>
 public record RevokedInvite(ulong DiscordId, ulong? DmMessageId);
+
+/// <summary>一筆已確認訂位：精確開團時刻 + 玩家 DiscordId（招募熱力圖扣不可分身用）。</summary>
+public record ConfirmedBooking(DateTimeOffset SlotDateTime, ulong DiscordId);

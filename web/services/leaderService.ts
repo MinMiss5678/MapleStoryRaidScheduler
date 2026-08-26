@@ -7,6 +7,8 @@ import {
     LeaderTransfer,
     LedTeam,
     RecruitmentGapRow,
+    RecruitmentHeatmap,
+    RecruitmentHeatmapCommand,
     RosterMember,
     Membership,
     OpenTeam,
@@ -40,6 +42,8 @@ export const leaderService = {
     // 隊長端：開隊 / 解散 / 我開的隊 hub / 候選挑人 / 申請審核
     createTeam: (command: CreateTeamCommand) =>
         apiClient.post<{ teamSlotId: number }>('/api/teamSlot', command),
+    getRecruitmentHeatmap: (command: RecruitmentHeatmapCommand) =>
+        apiClient.post<RecruitmentHeatmap>('/api/teamSlot/Heatmap', command),
     deleteTeam: (teamSlotId: number) => apiClient.delete(`/api/teamSlot/${teamSlotId}`),
     getLedTeams: () => apiClient.get<LedTeam[]>('/api/Me/LedTeams'),
     getCandidates: (teamSlotId: number) =>

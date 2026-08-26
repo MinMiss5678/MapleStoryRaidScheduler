@@ -112,6 +112,16 @@ public class TeamSlotController : ControllerBase
         return Ok(await _teamLeaderService.GetRecruitmentGapAsync(id, discordId));
     }
 
+    // 招募熱力圖（leader-recruitment-heatmap）：草稿需求 → 未來 N 天各整點的組成可填程度。開團前挑時段用，任何登入者可查。
+    [HttpPost("Heatmap")]
+    public async Task<IActionResult> GetRecruitmentHeatmapAsync([FromBody] RecruitmentHeatmapCommand command)
+    {
+        if (!this.TryGetCurrentDiscordId(out _))
+            return Unauthorized(new { error = "NotAuthenticated" });
+
+        return Ok(await _teamLeaderService.GetRecruitmentHeatmapAsync(command));
+    }
+
     // Pull：隊長邀請候選（→Invited）。只有隊長本人可邀。
     [HttpPost("{id:int}/Invitations")]
     public async Task<IActionResult> InviteAsync(int id, [FromBody] InviteMemberRequest request)

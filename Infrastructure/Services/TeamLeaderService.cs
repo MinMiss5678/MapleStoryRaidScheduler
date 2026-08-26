@@ -233,12 +233,8 @@ public class TeamLeaderService : ITeamLeaderService
                 && !bookedIds.Contains(item.DiscordId)
                 // 排程團看時段重疊（常設 + override）；即時團跳過（他們現在就要打）
                 && (isInstant || IsAvailableAt(item, teamWeekday, teamTime, overridesByDiscord))
-                // 且符合至少一需求列：某可接受職業==角色職業 且 攻擊≥該職下限 且 本王通關≥該列門檻。
-                // 無需求列 → 無候選（隊長須先定義條件才看得到候選）。
-                && requirements.Any(r =>
-                    item.BossClearCount >= r.MinClearCount &&
-                    item.Level >= r.MinLevel &&   // 人物等級硬篩（整列門檻，不分職業）
-                    r.Jobs.Any(j => j.Job == item.Job && item.AttackPower >= j.MinAttackPower)))
+                // 且符合至少一需求列（見 IsCandidateEligible）。無需求列 → 無候選（隊長須先定義條件才看得到候選）。
+                && IsCandidateEligible(item, requirements))
             .ToList();
 
         // 退團率信號（Feature 1b，admin 開才算才回）：窗內退團率達門檻者標警示。
@@ -271,6 +267,96 @@ public class TeamLeaderService : ITeamLeaderService
             })
             .ToList();
     }
+
+    public async Task<RecruitmentHeatmapDto> GetRecruitmentHeatmapAsync(RecruitmentHeatmapCommand command)
+    {
+        if (await _bossRepository.GetByIdAsync(command.BossId) == null)
+            throw new NotFoundException($"Boss {command.BossId} not found");
+
+        // 草稿需求（尚未建隊）→ 轉 Domain 型別供過濾/匹配共用。
+        var requirements = command.Requirements.Select(r => new TeamSlotRequirement
+        {
+            Count = r.Count,
+            MinClearCount = r.MinClearCount,
+            MinLevel = r.MinLevel,
+            Jobs = r.Jobs.Select(j => new TeamSlotRequirementJob { Job = j.Job, MinAttackPower = j.MinAttackPower }).ToList()
+        }).ToList();
+        var totalRequired = requirements.Sum(r => r.Count);
+        var result = new RecruitmentHeatmapDto { TotalRequired = totalRequired };
+        if (totalRequired == 0)
+            return result;   // 無需求 → 空熱力圖
+
+        // 池撈一次 + 依門檻（職業/攻擊/等級/通關）過濾一次（與時間無關）。即時池不看時段、對熱力圖無意義 → 用排程池。
+        var eligible = (await _candidateQuery.GetPoolAsync(command.BossId))
+            .Where(p => IsCandidateEligible(p, requirements))
+            .ToList();
+        if (eligible.Count == 0)
+            return result;   // 沒人合格 → 回空 cells（前端全灰）
+
+        // 顯示哪些整點：候選常設時段實際覆蓋到的整點（weekday-agnostic）。含跨午夜 wrap（22:00–02:00 → 也涵蓋 00/01），
+        // 這些凌晨格會在「隔天」欄依 IsTimeInAvailability 的 wrap 分支正確亮起。非連續也 OK（前端由 cells 推列）。
+        var slots = eligible.SelectMany(e => e.Availabilities).ToList();
+        var hours = Enumerable.Range(0, 24).Where(h => slots.Any(a => HourInWindow(h, a))).ToList();
+        if (hours.Count == 0)
+            hours = Enumerable.Range(18, 6).ToList();   // fallback 18–23
+
+        var days = Math.Clamp(command.Days, 1, 30);
+        var nowTpe = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8));
+        var startDate = DateOnly.FromDateTime(nowTpe.DateTime);
+
+        // 一次撈範圍內全部 Confirmed 訂位 → 依精確 SlotDateTime(UTC) 分格扣「不可分身」。
+        var rangeStart = new DateTimeOffset(startDate.ToDateTime(new TimeOnly(hours.Min(), 0)), TimeSpan.FromHours(8));
+        var rangeEnd = new DateTimeOffset(startDate.AddDays(days - 1).ToDateTime(new TimeOnly(hours.Max(), 0)), TimeSpan.FromHours(8));
+        var bookings = (await _memberRepository.GetConfirmedBookingsInRangeAsync(rangeStart, rangeEnd))
+            .GroupBy(b => b.SlotDateTime.ToUniversalTime())
+            .ToDictionary(g => g.Key, g => g.Select(x => x.DiscordId).ToHashSet());
+
+        for (var d = 0; d < days; d++)
+        {
+            var date = startDate.AddDays(d);
+            var weekday = SlotDateCalculator.ToIsoWeekday(date.ToDateTime(TimeOnly.MinValue).DayOfWeek);
+            var overridesByDiscord = (await _candidateQuery.GetOverridesForDateAsync(date))
+                .GroupBy(o => o.DiscordId).ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var h in hours)
+            {
+                var slotTpe = new DateTimeOffset(date.ToDateTime(new TimeOnly(h, 0)), TimeSpan.FromHours(8));
+                if (slotTpe <= nowTpe)
+                    continue;   // 過去時段不可開團
+
+                var booked = bookings.GetValueOrDefault(slotTpe.ToUniversalTime(), []);
+                var availableJobs = eligible
+                    .Where(e => IsAvailableAt(e, weekday, new TimeOnly(h, 0), overridesByDiscord) && !booked.Contains(e.DiscordId))
+                    .Select(e => e.Job)
+                    .ToList();
+
+                result.Cells.Add(new HeatmapCellDto
+                {
+                    SlotDateTime = slotTpe,
+                    FilledCount = CompositionQuota.MaxRequirementSlotsFilled(availableJobs, requirements)
+                });
+            }
+        }
+        return result;
+    }
+
+    // 某整點 h:00 是否落在常設時段 [Start, End) 內（weekday-agnostic，供熱力圖決定顯示哪些整點）。
+    // End=00:00 視為當日結束(24:00)；Start>End 視為跨午夜 wrap（涵蓋 h>=Start 或 h<End，如 22:00–02:00 → 含 00/01）。
+    private static bool HourInWindow(int hour, PlayerAvailability a)
+    {
+        var t = hour * 60;
+        var s = a.StartTime.Hour * 60 + a.StartTime.Minute;
+        var e = a.EndTime is { Hour: 0, Minute: 0 } ? 24 * 60 : a.EndTime.Hour * 60 + a.EndTime.Minute;
+        return s > e ? (t >= s || t < e) : (t >= s && t < e);
+    }
+
+    // 候選是否合格：符合至少一需求列（本王通關≥門檻 且 人物等級≥門檻 且 某可接受職業==角色職業 且 攻擊≥該職下限）。
+    // 候選清單（GetCandidatesAsync）+ 招募熱力圖每格共用（leader-recruitment-heatmap），避免兩處過濾邏輯走鐘。
+    private static bool IsCandidateEligible(CandidatePoolItem item, IReadOnlyCollection<TeamSlotRequirement> requirements)
+        => requirements.Any(r =>
+            item.BossClearCount >= r.MinClearCount &&
+            item.Level >= r.MinLevel &&
+            r.Jobs.Any(j => j.Job == item.Job && item.AttackPower >= j.MinAttackPower));
 
     // override-aware 可用判定（§8 Phase 2b）：override 勝過常設——該時段有「不行」→ false；有「加開」→ true；否則看常設 pattern。
     private static bool IsAvailableAt(CandidatePoolItem item, int teamWeekday, TimeOnly teamTime,
