@@ -29,6 +29,9 @@ Write-Host "==> 建立 Secret..."
 & "$PSScriptRoot/setup-secrets.ps1"
 Assert-Ok "建立 Secret 失敗"
 
+# 2b. 檢查必填 secret 都存在且非空（缺了就中止，比 pod 靜默壞/CrashLoop 更早；選填不檢）
+. "$PSScriptRoot/assert-required-secrets.ps1"
+
 # 3. 基礎服務（database / seq / redis / cloudflared）
 Write-Host "==> 部署基礎服務..."
 kubectl apply -f "$PSScriptRoot/database.yaml" -f "$PSScriptRoot/seq.yaml" -f "$PSScriptRoot/redis.yaml" -f "$PSScriptRoot/cloudflared.yaml"

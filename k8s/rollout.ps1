@@ -24,6 +24,9 @@ function Assert-Ok($msg) {
 # 部署前安全檢查（main 分支、無未提交變更、與遠端同步）
 . "$PSScriptRoot/assert-deploy-safety.ps1"
 
+# 必填 secret 檢查（secret 由先前 deploy.ps1 已建於 cluster）——缺/空就中止換版
+. "$PSScriptRoot/assert-required-secrets.ps1"
+
 $config = @{
     backend  = @{ repo = "minqq/presentation.webapi"; dockerfile = "Presentation.WebApi/Dockerfile"; context = "." }
     frontend = @{ repo = "minqq/frontend";            dockerfile = "web/Dockerfile";                 context = "web" }
