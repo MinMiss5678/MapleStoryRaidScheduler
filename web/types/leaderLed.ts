@@ -89,6 +89,11 @@ export type TeamCandidate = {
 // 開隊 command（對齊後端 CreateTeamCommand；LeaderDiscordId 由後端從登入身分注入）
 export type CreateTeamRequirementJobInput = { job: string; minAttackPower: number };
 export type CreateTeamRequirementInput = { count: number; minClearCount: number; minLevel: number; jobs: CreateTeamRequirementJobInput[] };
+// 招募熱力圖（leader-recruitment-heatmap）
+export type HeatmapCell = { slotDateTime: string; filledCount: number }; // slotDateTime = +8 ISO
+export type RecruitmentHeatmap = { totalRequired: number; cells: HeatmapCell[] };
+export type RecruitmentHeatmapCommand = { bossId: number; days: number; requirements: CreateTeamRequirementInput[] };
+
 export type CreateTeamCommand = {
     bossId: number;
     slotDateTime: string;

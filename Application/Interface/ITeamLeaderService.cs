@@ -17,6 +17,9 @@ public interface ITeamLeaderService
     /// <summary>本隊招募缺口（還缺哪些職業幾位）——隊長挑候選時對照組成。僅隊長本人可查。</summary>
     Task<IEnumerable<RecruitmentGapRowDto>> GetRecruitmentGapAsync(int teamSlotId, ulong leaderDiscordId);
 
+    /// <summary>招募熱力圖（leader-recruitment-heatmap）：草稿需求 → 未來 N 天各整點的組成可填程度，供隊長挑開團時段。</summary>
+    Task<RecruitmentHeatmapDto> GetRecruitmentHeatmapAsync(RecruitmentHeatmapCommand command);
+
     /// <summary>本隊已確認組成（角色/職業/誰是隊長）——已入隊成員或隊長可查（不露 Discord 身分）。</summary>
     Task<IEnumerable<TeamMemberDto>> GetTeamMembersAsync(int teamSlotId, ulong requesterDiscordId);
 

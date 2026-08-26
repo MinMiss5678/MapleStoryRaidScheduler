@@ -164,10 +164,29 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
         return rows.Select(r => new RevokedInvite((ulong)r.DiscordId, r.DmMessageId is { } m ? (ulong)m : null)).ToList();
     }
 
+    public async Task<IReadOnlyCollection<ConfirmedBooking>> GetConfirmedBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to)
+    {
+        // 招募熱力圖：一次撈範圍內全部 Confirmed 訂位，呼叫端 in-memory 依精確 SlotDateTime 分格（對齊 uq_tsc_confirmed_overlap）。
+        const string sql = """
+            SELECT "SlotDateTime", "DiscordId" FROM "TeamSlotCharacter"
+            WHERE "Status" = 'Confirmed' AND "DiscordId" <> 0
+              AND "SlotDateTime" >= @from AND "SlotDateTime" <= @to;
+            """;
+        var rows = await _dbContext.QueryAsync<BookingRow>(sql,
+            new { from = from.ToUniversalTime(), to = to.ToUniversalTime() });
+        return rows.Select(r => new ConfirmedBooking(r.SlotDateTime, (ulong)r.DiscordId)).ToList();
+    }
+
     private sealed class RevokedInviteRow
     {
         public long DiscordId { get; set; }
         public long? DmMessageId { get; set; }
+    }
+
+    private sealed class BookingRow
+    {
+        public DateTimeOffset SlotDateTime { get; set; }
+        public long DiscordId { get; set; }
     }
 
     private class MemberRow
