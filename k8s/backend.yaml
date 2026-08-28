@@ -23,15 +23,15 @@ spec:
               value: http://+:5230
             - name: Redis__Configuration
               value: redis:6379
-            # secret 改檔案交付（volume mount /run/secrets，見 plans/2026-08-25-k8s-secrets-file-mount.md）
+            # secret 改檔案交付（volume mount /etc/maple-secrets，見 plans/2026-08-25-k8s-secrets-file-mount.md）
             - name: ConnectionStrings__DefaultConnectionFile
-              value: /run/secrets/db_connection
+              value: /etc/maple-secrets/db_connection
             - name: Discord__BotTokenFile
-              value: /run/secrets/discord_bot_token
+              value: /etc/maple-secrets/discord_bot_token
             - name: Discord__ClientId
               value: "836636705498595340"
             - name: Discord__ClientSecretFile
-              value: /run/secrets/discord_client_secret
+              value: /etc/maple-secrets/discord_client_secret
             - name: Discord__RedirectUri
               value: https://maplestory.paralleluniversegame.uk/callback
             - name: Discord__GuildId
@@ -39,7 +39,7 @@ spec:
             - name: App__AppUrl
               value: https://maplestory.paralleluniversegame.uk
             - name: Jwt__SecretKeyFile
-              value: /run/secrets/jwt_secret_key
+              value: /etc/maple-secrets/jwt_secret_key
             - name: Jwt__Issuer
               value: https://maplestory.paralleluniversegame.uk
             - name: Jwt__Audience
@@ -54,19 +54,19 @@ spec:
               value: 8dd473dc-86d4-441b-8e66-99ee810c74b3
             # 空值 secret（未設定）掛成空檔 → code 讀到空字串即視為未設定（同原 optional 語意）
             - name: MicrosoftMail__RefreshTokenFile
-              value: /run/secrets/microsoft_mail_refresh_token
+              value: /etc/maple-secrets/microsoft_mail_refresh_token
             - name: MicrosoftMail__ToAddress
               value: jeremywsm@gmail.com
             - name: MicrosoftMail__WebhookSecretFile
-              value: /run/secrets/microsoft_mail_webhook_secret
+              value: /etc/maple-secrets/microsoft_mail_webhook_secret
             # sentry.io 錯誤追蹤（見 plans/2026-08-03-bugsink-integration.md）：optional——
             # 沒設定就不掛 Sentry sink（見 Program.cs 的 Sentry:Dsn 判斷），不該讓 pod 啟動失敗。
             - name: Sentry__DsnFile
-              value: /run/secrets/sentry_dsn
+              value: /etc/maple-secrets/sentry_dsn
             # DiscordId 送 Sentry 前的 HMAC 密鑰（見 plans/2026-08-04-sentry-discordid-hmac.md）：
             # optional——沒設就不送 DiscordId tag（BeforeSend 判斷），不該讓 pod 啟動失敗。
             - name: Sentry__DiscordIdHashKeyFile
-              value: /run/secrets/discord_hash_key
+              value: /etc/maple-secrets/discord_hash_key
           ports:
             - containerPort: 5230
           resources:
@@ -92,10 +92,12 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
-          # secret 檔案交付：maple-secrets 掛成唯讀檔於 /run/secrets（只掛 backend 需要的 key）
+          # secret 檔案交付：maple-secrets 整包掛成唯讀檔於 /etc/maple-secrets。
+          # 不用 /run/secrets：k8s 的 serviceaccount token 掛在 /var/run/secrets/kubernetes.io（=/run/secrets 底下），
+          # 唯讀掛 /run/secrets 會擋掉那個 mountpoint → 容器 RunContainerError 起不來（compose 用 /run/secrets 無此問題）。
           volumeMounts:
             - name: secrets
-              mountPath: /run/secrets
+              mountPath: /etc/maple-secrets
               readOnly: true
       volumes:
         - name: secrets
