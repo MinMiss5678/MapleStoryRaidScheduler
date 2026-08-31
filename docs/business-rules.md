@@ -20,6 +20,8 @@
 | CT4 | 隊伍容量 = `Boss.RequireMembers`（唯一硬上限；需求列不改容量） | `Boss` / `ConfirmMemberAsync` |
 | CT5 | `TeamSlot.Source` 一律 `"leader"`（舊 `auto`/`admin` 來源隨自動排團退場） | `TeamSlotSource` |
 | CT6 | 開隊可**帶自己角色**（`LeaderCharacterId`，須本人角色）→ 佔 1 位、同交易自動 `Confirmed`；不帶＝只揪人不佔位 | `TeamLeaderService.CreateTeamAsync` |
+| CT7 | **需求人數總和不可超過容量**：各需求列 `Count` 相加 ≤ `Boss.RequireMembers`（否則未指定名額為負、需求與容量矛盾）→ 違反擋「需求人數總和不可超過隊伍容量」 | `TeamLeaderService.CreateTeamAsync`（composition-quota） |
+| CT8 | 需求列可帶 `MinLevel`（人物等級門檻，`0`＝不限）；**群組級**（整列一個門檻，非每職業各設） | `TeamSlotRequirement.MinLevel`；`plans/2026-08-25-character-level.md` |
 
 ## 二、成員狀態（Membership Status）
 
@@ -35,7 +37,7 @@
 |---|---|---|
 | CD1 | **排程團**候選池 = 角色 `IsSeekingRaid=true`（參戰 opt-in）× 其玩家 `PlayerAvailabilityStanding`（常設可用時段）與開團時間 weekday+time 重疊 | `TeamCandidateQuery.GetPoolAsync` |
 | CD2 | `PlayerAvailabilityOverride`（特定日期例外）**蓋寫**常設時段：該日標不可用 → 即使常設可用也排除 | `AvailabilityOverrideService` / 候選過濾 |
-| CD3 | 需求過濾：職業符合任一需求列的 `Jobs` + 攻擊力 ≥ 該職業 `MinAttackPower` + **通關數 ≥ `MinClearCount`**（`CharacterBossClear` 同玩家跨角色對該王加總） | `TeamLeaderService.GetCandidatesAsync` |
+| CD3 | 需求過濾：職業符合任一需求列的 `Jobs` + 攻擊力 ≥ 該職業 `MinAttackPower` + **通關數 ≥ `MinClearCount`**（`CharacterBossClear` 同玩家跨角色對該王加總）+ **人物等級 ≥ 該列 `MinLevel`**（群組級硬篩，`0`＝不限） | `TeamLeaderService.IsCandidateEligible` |
 | CD4 | **即時團**候選來自玩家掛的 `LfgIntent`（現在想打該王的人），**略過時段比對** | `TeamCandidateQuery.GetInstantPoolAsync` |
 | CD5 | 狀態感知去重：排除「其玩家已在本隊 active（Confirmed/Invited/Applied）」與「已在該開團時刻別隊 Confirmed（對齊 `uq_tsc_confirmed_overlap`）」者 | `TeamLeaderService.GetCandidatesAsync` |
 | CD6 | **即時找隊 leader-led（非公開看板）**：玩家在 `/teams/instant` 只**管理自己**的找隊意圖（後端只回本人），別人一律由隊長開即時團時經 CD4 撈為候選、web 內 invite→accept——不對外公開他人身分 | `LfgQuery.GetBoardAsync`（僅回本人） |
@@ -60,6 +62,8 @@
 | CF2 | **同隊超編**：定案前對 `(classId=1002, teamSlotId)` 取交易級 advisory lock 序列化，鎖內**重讀** `CountConfirmed` vs `Boss.RequireMembers`，達容量 → 拋「隊伍已滿」；再以 `xmin`（`Version`）樂觀鎖改狀態 | `RegistrationLock.AcquireTeamSlotEditLockAsync` / `ConfirmMemberAsync` |
 | CF3 | **跨隊分身**：同玩家同 `SlotDateTime` 的 `Confirmed` 唯一（`uq_tsc_confirmed_overlap`）→ 第二筆 23505 → 409（per-team 鎖管不到跨隊，這是唯一原子擋） | migration `000011` |
 | CF4 | 定案使隊伍額滿 → 自動撤銷其餘待接受邀請（`RevokePendingInvitesAsync`，仍在同一把鎖內）+ 各發一則通知 | `ConfirmMemberAsync` |
+| CF4a | **職業配額**（composition-quota）：定案除容量(CF2)外，用**二分匹配**（`CompositionQuota.IsFeasible`：已確認職業 + 此人職業能否對上「需求列名額 + 不限名額」）判斷此職業是否還有位；配不上 → 擋「此職業名額已滿」。支援 OR 群組／職業重疊／容量溢位一體處理 | `TeamLeaderService.ConfirmMemberAsync`；`Domain/Helpers/CompositionQuota.cs` |
+| CF4b | **per-job 自動撤邀**：定案後隊伍**未額滿**但某些職業配額被填滿（`IsFeasible(confirmed+該職業)` 失敗）→ **只撤該職業**的待接受邀請（`RevokePendingInvitesByJobsAsync`），保留其他職業的邀請（不誤殺 Pull 超額搶位） | `ConfirmMemberAsync` / `GetPendingInviteJobsAsync` |
 | CF5 | 入隊後清掉該玩家的 `LfgIntent`（已找到隊、不再列為即時候選）；排程 accept 無意圖 → no-op | `ConfirmMemberAsync` |
 | CF6 | `lock_timeout`（預設 5 秒）逾時拋 `AdvisoryLockTimeoutException` → 轉「隊伍忙碌中，請稍後重試」 | `RegistrationLock` |
 
@@ -72,6 +76,7 @@
 | N4 | 組隊通知事件走 **transactional outbox**：commit 才生效、rollback 丟棄，bot 的 `OutboxDispatcher` 讀已提交列 → **跨行程可靠 + crash-safe**（取代原 in-process `AfterCommit`） | `Outbox` / `OutboxDispatcher`；`architecture.md §7 Transactional Outbox` |
 | N5 | Discord 通知**只由 bot 端**發（讀已提交狀態）→ 無「發了又 rollback」風險 | `OutboxDispatcher` |
 | N6 | Outbox 已處理列（`ProcessedAt` 非 null）超過 **30 天**由 `OutboxRetentionJob` 每 24 小時清一次；未處理列不管多舊都不刪 | `OutboxRetentionJob`；`architecture.md §7 Transactional Outbox` |
+| N7 | **撤邀改「編輯原 DM」**：自動撤邀（CF4/CF4b）優先**編輯**當初那則邀請 DM（移除按鈕、保留 embed、換提示文字），而非再送一則新訊息——靠邀請送出時回寫的 `TeamSlotCharacter.DmMessageId`；查無 id 才退回送新 DM | `TeamNotificationOutboxHandler`（`InviteRevokedCleanup` / `EditDirectMessageAsync`）；`plans/2026-08-25-dm-revoke-cleanup.md` |
 
 ## 七、認證與授權（Auth）
 
@@ -110,6 +115,8 @@
 |---|---|---|
 | C1 | 修改角色**只更新 Name + AttackPower**：`UpdateAsync` 的 SQL 不寫入 Job、Id(code) 是識別鍵不更動 → **職業與代碼不可改，前端繞過也無效（後端強制）** | `CharacterRepository.UpdateAsync` + `CharacterForm`（前端鎖欄位） |
 | C2 | 名稱最長 20 字、代碼最長 5 字（前端輸入限制） | `CharacterForm` |
+| C3 | 角色帶 **`Level`（人物等級，自填）**，範圍 **1–200**（遊戲現行上限；`[Range(1,200)]` 後端驗證）；供需求列 `MinLevel` 過濾（CD3） | `CharacterRequest`；`plans/2026-08-25-character-level.md` |
+| C4 | `TeamSlotCharacter.Level` 是**入隊當下的等級快照**（與 `SlotDateTime`/職業/攻擊一併去正規化），隊員組成頁顯示的是快照、非角色現值 | `TeamSlotCharacter.Level`；migration `000023` |
 
 ## 十一、顯示與可見性（Visibility）
 
@@ -119,11 +126,12 @@
 | V2 | **隊員組成**：**已 `Confirmed` 成員或隊長**可查該隊成員（角色/職業/攻擊/祝福、標記隊長）；外人 → 403 | `TeamLeaderService.GetTeamMembersAsync` |
 | V3 | **尋隊（公開面）**回已 `Confirmed` 成員能力（職業/攻擊/祝福）供判斷配置，但**不露 Discord/角色身分**（§9.12） | `TeamMembershipQuery.GetOpenTeamsAsync` |
 | V4 | 顯示「**別人**」一律以 `discordName` 呈現（候選/審核/隊員/轉讓，認的是「人」）；「**自己的角色**」情境（我的角色、我的邀請/已加入卡、開隊/申請選角）才顯示角色名 | 各查詢 / 前端 |
+| V5 | **招募熱力圖**：隊長設好草稿需求（王 + 需求列）後，可查未來 N 天各**整點**格的「組成可填程度」＝該格可用且符合資格的候選能填滿需求列名額的比例（`MaxRequirementSlotsFilled / ΣCount`，已排除該時刻別隊 `Confirmed`）；開團前挑時段用、僅 `Scheduled`，任何登入者可查 | `TeamLeaderService.GetRecruitmentHeatmapAsync`；`POST /api/teamSlot/Heatmap`；`plans/2026-08-26-leader-recruitment-heatmap.md` |
 
 ---
 
 ## 維護原則
 
-- 改任一行為時，**同步更新對應規則列**（尤其 CF2/CF3、CD3、N2/N4、AU4、G2 這類容易被改壞的不變量）。
+- 改任一行為時，**同步更新對應規則列**（尤其 CF2/CF3/CF4a/CF4b、CD3、N2/N4、AU4、G2 這類容易被改壞的不變量）。
 - 每條規則理想上對應一個測試——測試是這份清單的**可執行版本**。缺測試的規則列可視為「待補測試」清單。
 - 新功能：動手前先在 `plans/` 寫輕量 spec（目標/規則/邊界/驗收），確認後再把穩定規則收進本表。
