@@ -394,19 +394,20 @@ flowchart LR
 | `Scheduled` | 約定的 `SlotDateTime`（**不得早於現在**——period-less 後不再解析／綁 `Period`，改驗時間本身合法） | 參戰中角色 × 常設可用時段 overlap 開團時間 | 無（`SlotDateTime` 過了自然失效） |
 | `Instant` | 現在（`now`） | 玩家掛的找隊意圖 `LfgIntent`（隊長 pull 為候選、跳過時段比對；**非公開看板**） | `ExpiresAt = now + 3h` TTL |
 
-開隊時附一組**需求列**（`TeamSlotRequirement`：`Count` + `MinClearCount` + `Jobs[{Job, MinAttackPower}]`；子表 `TeamSlotRequirementJob`）。需求只用來**過濾候選 + 前端招募告示**，不強制隊伍職業組成（容量只認 `Boss.RequireMembers`）。
+開隊時附一組**需求列**（`TeamSlotRequirement`：`Count` + `MinClearCount` + `MinLevel`（群組級人物等級門檻，`0`＝不限）+ `Jobs[{Job, MinAttackPower}]`；子表 `TeamSlotRequirementJob`）。需求驅動**候選過濾 + 前端招募告示 + 定案時的職業配額**（見下「入隊定案」）；容量硬上限仍只認 `Boss.RequireMembers`。開隊時驗**各需求列 `Count` 相加 ≤ 容量**（否則不限名額為負、需求與容量矛盾）。
 
 ### 候選過濾（Pull）
 
 `GetCandidatesAsync`：
 
-- **Scheduled**：候選池 = `IsSeekingRaid` 的角色 × 其玩家 `PlayerAvailabilityStanding`（常設可用時段）與開團時間 weekday+time 重疊；`PlayerAvailabilityOverride`（特定日期例外）蓋過常設。再依需求列過濾：職業符合、攻擊力 ≥ 門檻、**通關數**（`CharacterBossClear` 同玩家跨角色對該王加總）≥ `MinClearCount`。
+- **Scheduled**：候選池 = `IsSeekingRaid` 的角色 × 其玩家 `PlayerAvailabilityStanding`（常設可用時段）與開團時間 weekday+time 重疊；`PlayerAvailabilityOverride`（特定日期例外）蓋過常設。再依需求列過濾（`IsCandidateEligible`）：職業符合、攻擊力 ≥ 門檻、**通關數**（`CharacterBossClear` 同玩家跨角色對該王加總）≥ `MinClearCount`、**人物等級 ≥ `MinLevel`**。
 - **Instant**：候選來自 `LfgIntent`（現在想打該王的人），略過時段比對。
 - 兩者都做**狀態感知去重**：排除「其玩家已在本隊 active（`Confirmed`/`Invited`/`Applied`）」者，以及「已在該開團時刻別隊 `Confirmed`」者（對齊跨隊重疊約束，見下）。
 
 ### 招募缺口・隊員組成・顯示身分
 
 - **招募缺口**（`GetRecruitmentGapAsync`）：對每條需求列數已 `Confirmed` 的同職業成員，`還缺 = Count − 已配`（**逐列貪婪**、限定職業列先配再配不限）；前端在候選/審核頁顯示「還缺 主教×1…」，並依需求職業分組、缺的排前。軟提示——不改容量、不強制組成。
+- **招募熱力圖**（`GetRecruitmentHeatmapAsync`，`POST /api/teamSlot/Heatmap`）：開團**前**用草稿需求試算「哪個時段招得滿」。候選池撈一次，逐「日期 × 整點」格算該格可用（`PlayerAvailabilityStanding` × override，`HourInWindow` 處理跨午夜繞回）且符合資格、並排除該時刻已在別隊 `Confirmed`（`GetConfirmedBookingsInRangeAsync`）的候選，用 `MaxRequirementSlotsFilled / ΣCount` 得該格填充比。前端 `RecruitmentHeatmapPanel` 畫 date×hour 綠格、點格帶入 `SlotDateTime`。僅 `Scheduled`、任何登入者可查。
 - **隊員組成**（`GetTeamMembersAsync`）：已 `Confirmed` 成員或隊長可看該隊成員（角色/職業/攻擊/祝福、標記隊長）；外人 403。**尋隊**（公開面 `GetOpenTeamsAsync`）則只回成員能力、**不露身分**（§9.12）。
 - **顯示身分**：面向「別人」的清單（候選/審核/隊員/轉讓）一律以 `discordName` 呈現（認的是「人」）；「自己的角色」情境（我的角色、我的邀請/已加入卡、開隊/申請選角）才顯示角色名。
 - **即時找隊 leader-led**：玩家在 `/teams/instant` 只管理自己的 `LfgIntent`（`GetBoardAsync` 只回本人，不公開他人）；別人一律由隊長開即時團經候選（`GetInstantPoolAsync`）邀。`LfgIntent` 同角色同王唯一（`uq_lfgintent_char_boss`；`BossId` 必填），重貼走 upsert 刷新 TTL。
@@ -416,11 +417,13 @@ flowchart LR
 
 每個狀態改動（邀請、接受、核准、額滿撤銷…）在**同一 UoW 交易**內 enqueue 一則 `TeamNotification` outbox 列 → bot 端 handler 撈去發 Discord DM（見「§7 Transactional Outbox」）。崩了不遺失、跨行程送達。
 
+**撤邀改「編輯原 DM」**：自動撤邀（額滿或職業配額滿，見下）不再送第二則訊息洗版，而是 enqueue `InviteRevokedCleanup` 讓 handler **編輯**當初那則邀請 DM——移除按鈕、保留 embed、換提示文字。靠邀請送出時回寫的 `TeamSlotCharacter.DmMessageId`（handler 送出邀請 DM 後 `PersistDmMessageIdAsync` 存回）；查無 id 才退回送新 DM（見 `plans/2026-08-25-dm-revoke-cleanup.md`）。
+
 ---
 
 ## 入隊定案的併發控制
 
-`ConfirmMemberAsync`（把 `Invited`/`Applied` 定案成 `Confirmed`）要擋兩種 race：**同隊多人同時定案 → 超編**，以及**同一玩家同時段被兩隊定案 → 分身**。兩種用不同機制。
+`ConfirmMemberAsync`（把 `Invited`/`Applied` 定案成 `Confirmed`）在同一把 per-team 鎖內擋三件事：**同隊多人同時定案 → 超編**（容量）、**職業配額**（此人職業是否還有名額）、以及**同一玩家同時段被兩隊定案 → 分身**（跨隊）。三者用不同機制。
 
 ### 同隊超編：per-team 悲觀鎖 + 容量重讀 + 樂觀鎖
 
@@ -444,6 +447,14 @@ sequenceDiagram
 ```
 
 `ConfirmMemberAsync` 取 `(classId=1002, teamSlotId)` 的交易級 `pg_advisory_xact_lock`（`IRegistrationLock.AcquireTeamSlotEditLockAsync`），在鎖內**重讀** `CountConfirmedAsync` 與 `Boss.RequireMembers` 比對容量，再用 `xmin`（`TeamSlotCharacter.Version`）樂觀鎖改狀態（狀態已被別人動過 → 0 rows → 「請重新整理」）。同隊定案序列化、防超編；不同隊的鎖互不阻塞。額滿時順帶 `RevokePendingInvitesAsync` 自動撤銷其餘待接受邀請（仍在同一把鎖內，不與「同時另一人接受」競態）。
+
+### 職業配額：二分匹配（composition-quota）
+
+需求列不改容量，但**定案時**會擋「此職業名額已滿」。判斷不是「數同職業人數」——因需求列可 OR 多職業、職業可跨列重疊、還有不限名額（容量 − ΣCount）當通用池，貪婪數會誤判。改用 **`Domain/Helpers/CompositionQuota.cs` 的 Kuhn 二分匹配**：
+
+- **定案擋**（`IsFeasible(已確認職業 + 此人職業, 需求列, 容量)`）：把「成員」對「需求列名額 + 不限名額」做最大匹配，配不上此人 → 拋「此職業名額已滿」。
+- **per-job 自動撤邀**：定案後若隊伍**未額滿但某些職業已配額滿**（`IsFeasible(confirmed + 該職業)` 失敗），只撤**那些職業**的待接受邀請（`RevokePendingInvitesByJobsAsync`，職業清單來自 `GetPendingInviteJobsAsync`），保留其他職業的邀請——不誤殺 Pull 的「超額搶位」策略。撤邀走 `InviteRevokedCleanup` 編輯原 DM（見上「通知」）。
+- 熱力圖的 `MaxRequirementSlotsFilled`（候選供給 → 能填幾個需求列名額）是同一套二分匹配的另一個方向。
 
 ### 跨隊分身：`uq_tsc_confirmed_overlap` 唯一索引
 
