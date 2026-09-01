@@ -30,12 +30,17 @@ public class SystemConfigService : ISystemConfigService
             LeaveRateWarnEnabled = dbModel.LeaveRateWarnEnabled,
             LeaveRateWindowMonths = dbModel.LeaveRateWindowMonths,
             LeaveRateThreshold = dbModel.LeaveRateThreshold,
-            LeaveRateMinSample = dbModel.LeaveRateMinSample
+            LeaveRateMinSample = dbModel.LeaveRateMinSample,
+            AvailabilityFreshnessDays = dbModel.AvailabilityFreshnessDays
         };
     }
 
     public async Task UpdateAsync(SystemConfig config)
     {
+        // app 前線驗證：新鮮度門檻 ≥ 1（0/負值會把全員的常設時段清空，見 plans/2026-09-01-availability-freshness-decay.md）。
+        if (config.AvailabilityFreshnessDays < 1)
+            throw new Application.Exceptions.BusinessException("新鮮度門檻（天）必須 ≥ 1。");
+
         var repository = _dbContext.Repository<SystemConfigDbModel>();
         var existing = (await repository.GetAllAsync<SystemConfigDbModel>()).FirstOrDefault();
 
@@ -46,7 +51,8 @@ public class SystemConfigService : ISystemConfigService
                 LeaveRateWarnEnabled = config.LeaveRateWarnEnabled,
                 LeaveRateWindowMonths = config.LeaveRateWindowMonths,
                 LeaveRateThreshold = config.LeaveRateThreshold,
-                LeaveRateMinSample = config.LeaveRateMinSample
+                LeaveRateMinSample = config.LeaveRateMinSample,
+                AvailabilityFreshnessDays = config.AvailabilityFreshnessDays
             });
         }
         else
@@ -55,6 +61,7 @@ public class SystemConfigService : ISystemConfigService
             existing.LeaveRateWindowMonths = config.LeaveRateWindowMonths;
             existing.LeaveRateThreshold = config.LeaveRateThreshold;
             existing.LeaveRateMinSample = config.LeaveRateMinSample;
+            existing.AvailabilityFreshnessDays = config.AvailabilityFreshnessDays;
             await repository.UpdateAsync(existing);
         }
 

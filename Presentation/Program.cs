@@ -111,6 +111,12 @@ public class Program
                  services.AddScoped<ITeamSlotEditLock, TeamSlotEditLock>();
                  services.AddScoped<ITeamLeaderService, TeamLeaderService>();
 
+                 // 新鮮度提醒 DM 按鈕（留任/移除我）→ TeamActionInteractionHandler 走 ProfileService.Reaffirm/OptOut
+                 // → bot 需一併註冊 ProfileService 及其兩個尚未註冊的依賴（ValidateOnBuild 會抓漏）。
+                 services.AddScoped<ICharacterRepository, CharacterRepository>();
+                 services.AddScoped<IPlayerAvailabilityStandingRepository, PlayerAvailabilityStandingRepository>();
+                 services.AddScoped<IProfileService, ProfileService>();
+
                  services.ConfigureEventHandlers(b => b
                      .AddEventHandlers<MemberUpdatedHandler>()
                      .AddEventHandlers<MemberRemovedHandler>()
@@ -130,7 +136,8 @@ public class Program
                  services.AddSingleton<ISessionCache, RedisSessionCache>();
 
                  // Outbox：bot 是純消費端——dispatcher 輪詢已提交列、派給 handler 發 Discord DM。
-                 // 寫入端（IOutbox.Enqueue）在 API（TeamLeaderService 發 TeamNotification）；bot 不 enqueue。
+                 // 寫入端（IOutbox.Enqueue）主要在 API（TeamLeaderService 發 TeamNotification）；
+                 // 例外：bot 的 AvailabilityFreshnessNudgeJob 也 enqueue（新鮮度提醒 DM）——它是單一實例背景 job，同交易 enqueue+標記。
                  // dispatcher 自開專屬連線（不共用 singleton IDbConnection，免與 Discord 事件/計時器互踩）。
                  services.AddSingleton<IOutboxHandler, TeamNotificationOutboxHandler>();  // leader-led 組隊通知 → Discord DM
                  // 三個背景 poller 的相依（IDbConnectionFactory / IOutboxHandler / ILogger）皆可由 DI 解析
@@ -138,6 +145,7 @@ public class Program
                  services.AddHostedService<OutboxDispatcher>();
                  services.AddHostedService<OutboxRetentionJob>();
                  services.AddHostedService<LfgIntentCleanupJob>();
+                 services.AddHostedService<AvailabilityFreshnessNudgeJob>();  // 階段二：新鮮度快過期提醒（enqueue FreshnessNudge DM）
 
                  // 註冊自動執行的 Background Services
                  services.AddHostedService<DiscordBotService>();       // Discord 啟動管理

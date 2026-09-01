@@ -10,7 +10,10 @@ public enum TeamActionFamily
     Application,
 
     /// <summary>隊長轉讓 → 新隊長候選：接受 / 拒絕（走 RespondLeaderTransferAsync）。id＝teamSlotId。</summary>
-    Transfer
+    Transfer,
+
+    /// <summary>新鮮度提醒 → 玩家：留任 / 移除我（走 Reaffirm/OptOut）。id 不帶意義（0），對象＝點擊者本人。</summary>
+    Freshness
 }
 
 /// <summary>
@@ -37,6 +40,7 @@ public static class TeamActionButton
             case "inv": family = TeamActionFamily.Invite; break;
             case "app": family = TeamActionFamily.Application; break;
             case "xfer": family = TeamActionFamily.Transfer; break;
+            case "frsh": family = TeamActionFamily.Freshness; break;
             default: return false;
         }
         var (pos, neg) = Verbs(family);
@@ -51,13 +55,15 @@ public static class TeamActionButton
         TeamActionFamily.Invite => "inv",
         TeamActionFamily.Application => "app",
         TeamActionFamily.Transfer => "xfer",
+        TeamActionFamily.Freshness => "frsh",
         _ => "inv"
     };
 
-    // 申請審核用「核准/拒絕」語意（approve/reject）；邀請與轉讓用「接受/拒絕」（accept/decline）。
+    // 申請審核用「核准/拒絕」（approve/reject）；新鮮度用「留任/移除」（stay/optout）；邀請與轉讓用「接受/拒絕」（accept/decline）。
     private static (string positive, string negative) Verbs(TeamActionFamily family) => family switch
     {
         TeamActionFamily.Application => ("approve", "reject"),
+        TeamActionFamily.Freshness => ("stay", "optout"),
         _ => ("accept", "decline")
     };
 

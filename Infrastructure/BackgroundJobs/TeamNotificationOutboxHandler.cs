@@ -106,6 +106,7 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
             TeamNotificationAction.InviteResponse => (TeamActionFamily.Invite, "接受", "拒絕"),
             TeamNotificationAction.ApplicationReview => (TeamActionFamily.Application, "核准", "拒絕"),
             TeamNotificationAction.TransferResponse => (TeamActionFamily.Transfer, "接受", "拒絕"),
+            TeamNotificationAction.FreshnessNudge => (TeamActionFamily.Freshness, "留任", "移除我"),
             _ => throw new InvalidOperationException($"未支援的通知動作 {action}")
         };
         return new[]

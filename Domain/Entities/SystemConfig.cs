@@ -16,4 +16,9 @@ public class SystemConfig
     public int LeaveRateThreshold { get; set; } = 30;
     /// <summary>最小樣本數：窗內參加 < 此數不算率（避免 1/1=100% 小樣本誤判）。</summary>
     public int LeaveRateMinSample { get; set; } = 5;
+
+    // ── 常設可用時段新鮮度（見 plans/2026-09-01-availability-freshness-decay.md）──
+    /// <summary>新鮮度門檻（天）：玩家逾此天數無任何組隊實質動作 → 其常設時段不再列入候選/熱力圖供給。
+    /// 預設 30（對齊 admin Session 30 天 sliding、Outbox 30 天保留）。admin 可即時調；app 層驗 ≥ 1。</summary>
+    public int AvailabilityFreshnessDays { get; set; } = 30;
 }

@@ -16,15 +16,18 @@ public class ProfileService : IProfileService
     private readonly IPlayerAvailabilityStandingRepository _standingRepository;
     private readonly ICharacterRepository _characterRepository;
     private readonly ICharacterQuery _characterQuery;
+    private readonly IPlayerRepository _playerRepository;
 
     public ProfileService(
         IPlayerAvailabilityStandingRepository standingRepository,
         ICharacterRepository characterRepository,
-        ICharacterQuery characterQuery)
+        ICharacterQuery characterQuery,
+        IPlayerRepository playerRepository)
     {
         _standingRepository = standingRepository;
         _characterRepository = characterRepository;
         _characterQuery = characterQuery;
+        _playerRepository = playerRepository;
     }
 
     public async Task<ProfileDto> GetAsync(ulong discordId)
@@ -82,5 +85,15 @@ public class ProfileService : IProfileService
 
         // 角色 opt-in（replace：listed=true、其餘=false）
         await _characterRepository.SetSeekingRaidForDiscordAsync(command.DiscordId, command.SeekingCharacterIds);
+
+        // 心跳（新鮮度衰退，plans/2026-09-01）：重設常設時段/參戰＝最直接的「我還在、時段還準」re-affirm → bump。
+        await _playerRepository.BumpLastAffirmedAsync(command.DiscordId);
     }
+
+    // 新鮮度提醒 DM 的「留任」：重置新鮮度衰退時鐘（bump 節流在 repo，但被提醒者必已 > 節流窗、會真寫）。
+    public Task ReaffirmFreshnessAsync(ulong discordId) => _playerRepository.BumpLastAffirmedAsync(discordId);
+
+    // 新鮮度提醒 DM 的「移除我」：關閉全部角色參戰（空集合＝全 false）；不動 PlayerAvailabilityStanding → 可逆。
+    public Task OptOutSeekingAsync(ulong discordId) =>
+        _characterRepository.SetSeekingRaidForDiscordAsync(discordId, System.Array.Empty<string>());
 }

@@ -10,7 +10,12 @@ namespace Application.Queries;
 /// </summary>
 public interface ITeamCandidateQuery
 {
-    Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int bossId);
+    /// <summary>
+    /// 排程候選池。<paramref name="freshnessSince"/>＝新鮮度下限（now − admin 設定天數）：只收
+    /// LastAffirmedAt 為 NULL（永久新鮮）或晚於此的玩家，濾掉 stale opt-in（見
+    /// plans/2026-09-01-availability-freshness-decay.md）。
+    /// </summary>
+    Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int bossId, DateTimeOffset freshnessSince);
 
     /// <summary>即時團候選池（period-less §8 Phase 3）：未過期的 LfgIntent（BossId 為 null 或 = 該王），非常設時段。</summary>
     Task<IEnumerable<CandidatePoolItem>> GetInstantPoolAsync(int bossId);

@@ -50,4 +50,36 @@ public class PlayerRepository : IPlayerRepository
         const string sql = "UPDATE \"Player\" SET \"Role\"=@Role WHERE \"DiscordId\"=@DiscordId";
         return await _dbContext.ExecuteAsync(sql, new { Role = role, DiscordId = (long)discordId });
     }
+
+    public async Task BumpLastAffirmedAsync(ulong discordId)
+    {
+        // 節流：LastAffirmedAt 為 NULL 或已舊於 1 天才真寫 → 同玩家同日多次動作只寫一次（避免寫放大）。
+        // 只碰 LastAffirmedAt 一欄（不動 DiscordName/Role），與 UpdateRoleAsync 同 targeted 風格。
+        const string sql = """
+            UPDATE "Player" SET "LastAffirmedAt" = now()
+            WHERE "DiscordId" = @DiscordId
+              AND ("LastAffirmedAt" IS NULL OR "LastAffirmedAt" < now() - interval '1 day')
+            """;
+        await _dbContext.ExecuteAsync(sql, new { DiscordId = (long)discordId });
+    }
+
+    public async Task<IReadOnlyCollection<ulong>> GetFreshnessNudgeTargetsAsync(int nudgeAfterDays)
+    {
+        const string sql = """
+            SELECT p."DiscordId"
+            FROM "Player" p
+            WHERE p."LastAffirmedAt" IS NOT NULL
+              AND p."LastAffirmedAt" < now() - make_interval(days => @nudgeAfterDays)
+              AND (p."FreshnessNudgedAt" IS NULL OR p."FreshnessNudgedAt" <= p."LastAffirmedAt")
+              AND EXISTS (SELECT 1 FROM "Character" c WHERE c."DiscordId" = p."DiscordId" AND c."IsSeekingRaid")
+            """;
+        var ids = await _dbContext.QueryAsync<long>(sql, new { nudgeAfterDays });
+        return ids.Select(x => (ulong)x).ToList();
+    }
+
+    public async Task MarkFreshnessNudgedAsync(ulong discordId)
+    {
+        const string sql = """UPDATE "Player" SET "FreshnessNudgedAt" = now() WHERE "DiscordId" = @DiscordId""";
+        await _dbContext.ExecuteAsync(sql, new { DiscordId = (long)discordId });
+    }
 }

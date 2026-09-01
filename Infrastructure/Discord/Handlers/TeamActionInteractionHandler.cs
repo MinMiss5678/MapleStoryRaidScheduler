@@ -21,11 +21,13 @@ public class TeamActionInteractionHandler : IEventHandler<ComponentInteractionCr
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ITeamLeaderService _teamLeaderService;
+    private readonly IProfileService _profileService;
 
-    public TeamActionInteractionHandler(IUnitOfWork unitOfWork, ITeamLeaderService teamLeaderService)
+    public TeamActionInteractionHandler(IUnitOfWork unitOfWork, ITeamLeaderService teamLeaderService, IProfileService profileService)
     {
         _unitOfWork = unitOfWork;
         _teamLeaderService = teamLeaderService;
+        _profileService = profileService;
     }
 
     public async Task HandleEventAsync(DiscordClient sender, ComponentInteractionCreatedEventArgs eventArgs)
@@ -114,6 +116,16 @@ public class TeamActionInteractionHandler : IEventHandler<ComponentInteractionCr
             case TeamActionFamily.Transfer:
                 await _teamLeaderService.RespondLeaderTransferAsync(id, clickerId, positive ? "accept" : "decline");
                 return positive ? "✅ 已接受轉讓、你成為新隊長。" : "已拒絕轉讓。";
+
+            case TeamActionFamily.Freshness:
+                // 對象＝點擊者本人（id 不帶意義）。留任→重置新鮮度；移除我→關參戰（保留時段）。
+                if (positive)
+                {
+                    await _profileService.ReaffirmFreshnessAsync(clickerId);
+                    return "✅ 已留在找團名單。";
+                }
+                await _profileService.OptOutSeekingAsync(clickerId);
+                return "已移出找團名單（你填的可用時段仍保留，隨時可重新開啟）。";
 
             default:
                 throw new BusinessException("未知的動作。");

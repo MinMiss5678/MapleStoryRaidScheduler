@@ -14,7 +14,7 @@ public class TeamCandidateQuery : ITeamCandidateQuery
         _dbContext = dbContext;
     }
 
-    public async Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int bossId)
+    public async Task<IEnumerable<CandidatePoolItem>> GetPoolAsync(int bossId, DateTimeOffset freshnessSince)
     {
         // period-less（§8 Phase 2，B 案）：候選 = 參戰中(IsSeekingRaid)角色 × 其玩家的常設可用時段。
         // 不再吃 period/報名；bossId 只用來算「本王總通關」（跨該玩家角色加總）。同人多時段 → 多列，下面 group 收斂。
@@ -46,10 +46,12 @@ public class TeamCandidateQuery : ITeamCandidateQuery
             JOIN "PlayerAvailabilityStanding" a ON a."DiscordId" = c."DiscordId"
             LEFT JOIN clear_total ct            ON ct."DiscordId" = c."DiscordId"
             LEFT JOIN "CharacterPreferredBoss" pbx ON pbx."CharacterId" = c."Id" AND pbx."BossId" = @bossId
-            WHERE c."IsSeekingRaid";
+            WHERE c."IsSeekingRaid"
+              -- 新鮮度過濾（anti-stale opt-in）：NULL＝永久新鮮（backfill 保守），否則須晚於門檻。
+              AND (p."LastAffirmedAt" IS NULL OR p."LastAffirmedAt" > @freshnessSince);
             """;
 
-        var rows = await _dbContext.QueryAsync<PoolRow>(sql, new { bossId });
+        var rows = await _dbContext.QueryAsync<PoolRow>(sql, new { bossId, freshnessSince });
 
         // 同角色多時段 → 多列，group 回一筆 CandidatePoolItem（帶其時段清單）
         return rows
