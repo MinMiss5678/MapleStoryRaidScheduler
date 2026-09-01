@@ -102,6 +102,22 @@ export default function AdminConfigPage() {
                                 </label>
                             </div>
 
+                            <div className="border-t border-border pt-4 mt-2">
+                                <div className="mb-3">
+                                    <h2 className="text-lg font-bold">常設可用時段新鮮度</h2>
+                                    <p className="text-sm text-muted-foreground">玩家逾此天數無任何組隊動作（開團／申請／接受／編輯時段…）→ 其常設時段不再列入候選與招募熱力圖供給。</p>
+                                </div>
+                                <label className="space-y-2 block max-w-[12rem]">
+                                    <span className="text-sm font-medium text-muted-foreground">新鮮度門檻（天）</span>
+                                    <input
+                                        type="number" min={1}
+                                        className="w-full h-10 px-3 text-sm rounded-lg bg-[var(--background)] text-[var(--foreground)] border border-border focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        value={config.availabilityFreshnessDays}
+                                        onChange={(e) => setConfig({ ...config, availabilityFreshnessDays: parseInt(e.target.value) || 0 })}
+                                    />
+                                </label>
+                            </div>
+
                             <div className="flex justify-end pt-4">
                                 <button
                                     onClick={handleSave}

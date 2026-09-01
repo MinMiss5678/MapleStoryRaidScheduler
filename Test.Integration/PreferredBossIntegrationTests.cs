@@ -61,7 +61,7 @@ public class PreferredBossIntegrationTests
             """, new { });
         await db.ExecuteAsync("""INSERT INTO "CharacterPreferredBoss"("CharacterId","BossId") VALUES ('cPref', @boss);""", new { boss });
 
-        var pool = (await new TeamCandidateQuery(_fx.CreateDbContext()).GetPoolAsync(boss)).ToList();
+        var pool = (await new TeamCandidateQuery(_fx.CreateDbContext()).GetPoolAsync(boss, DateTimeOffset.UtcNow.AddDays(-30))).ToList();
 
         var pref = pool.Single(x => x.CharacterId == "cPref");
         var none = pool.Single(x => x.CharacterId == "cNone");

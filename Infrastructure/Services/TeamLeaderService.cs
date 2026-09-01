@@ -25,6 +25,7 @@ public class TeamLeaderService : ITeamLeaderService
     private readonly ITeamMembershipQuery _membershipQuery;
     private readonly ISystemConfigService _systemConfigService;
     private readonly ILfgIntentRepository _lfgIntentRepository;
+    private readonly IPlayerRepository _playerRepository;
     private readonly string _appUrl;
 
     public TeamLeaderService(
@@ -39,6 +40,7 @@ public class TeamLeaderService : ITeamLeaderService
         ITeamMembershipQuery membershipQuery,
         ISystemConfigService systemConfigService,
         ILfgIntentRepository lfgIntentRepository,
+        IPlayerRepository playerRepository,
         IOptions<AppOptions> appOptions)
     {
         _bossRepository = bossRepository;
@@ -52,8 +54,18 @@ public class TeamLeaderService : ITeamLeaderService
         _membershipQuery = membershipQuery;
         _systemConfigService = systemConfigService;
         _lfgIntentRepository = lfgIntentRepository;
+        _playerRepository = playerRepository;
         _appUrl = appOptions.Value.AppUrl;
     }
+
+    // 心跳（常設時段新鮮度衰退，plans/2026-09-01-availability-freshness-decay.md）：組隊實質動作後 bump
+    // 動作者的 LastAffirmedAt（節流在 repository、僅隔日才真寫）。放共用 Application 層 → web + bot 兩路徑
+    // 皆涵蓋（bot 的接受/婉拒直呼本 service、繞過 HTTP）。與動作同交易：動作失敗 rollback 會連 bump 一起退 → 只有成功動作留痕。
+    private Task BumpActivityAsync(ulong actorDiscordId) => _playerRepository.BumpLastAffirmedAsync(actorDiscordId);
+
+    // 新鮮度下限 = now − admin 設定天數（SystemConfig.AvailabilityFreshnessDays）。供排程候選池濾掉 stale opt-in。
+    private async Task<DateTimeOffset> GetFreshnessSinceAsync() =>
+        DateTimeOffset.UtcNow.AddDays(-(await _systemConfigService.GetAsync()).AvailabilityFreshnessDays);
 
     // leader-led §11 通知：與狀態改動同交易 enqueue 一則 outbox（原子，崩了不遺失）→ bot handler 發 Discord DM。
     // target=0（如未認領隊無 leader）則略過。訊息在此組好（有王名/時段 context），handler 只負責送。
@@ -109,6 +121,7 @@ public class TeamLeaderService : ITeamLeaderService
 
     public async Task<int> CreateTeamAsync(CreateTeamCommand command)
     {
+        await BumpActivityAsync(command.LeaderDiscordId);   // 心跳：開團＝最強活躍訊號（含不帶角色純揪人）
         // Boss FK 前線檢查 → 404（見 plans/2026-08-06-validation-layering.md §2）
         var boss = await _bossRepository.GetByIdAsync(command.BossId);
         if (boss == null)
@@ -206,7 +219,7 @@ public class TeamLeaderService : ITeamLeaderService
         var isInstant = team.Kind == TeamSlotKind.Instant;
         var pool = isInstant
             ? await _candidateQuery.GetInstantPoolAsync(team.BossId)
-            : await _candidateQuery.GetPoolAsync(team.BossId);
+            : await _candidateQuery.GetPoolAsync(team.BossId, await GetFreshnessSinceAsync());
         // 狀態感知去重：排除「其玩家已在本隊 active（Confirmed/Invited/Applied）」者——避免重列已入隊/待處理、再邀撞 409。
         // 以 DiscordId 為準（active-membership 一人一隊一個）；保留 Rejected/Left → 位子重開時可重邀。
         var activeIds = await _memberRepository.GetActiveMemberDiscordIdsAsync(teamSlotId);
@@ -287,7 +300,7 @@ public class TeamLeaderService : ITeamLeaderService
             return result;   // 無需求 → 空熱力圖
 
         // 池撈一次 + 依門檻（職業/攻擊/等級/通關）過濾一次（與時間無關）。即時池不看時段、對熱力圖無意義 → 用排程池。
-        var eligible = (await _candidateQuery.GetPoolAsync(command.BossId))
+        var eligible = (await _candidateQuery.GetPoolAsync(command.BossId, await GetFreshnessSinceAsync()))
             .Where(p => IsCandidateEligible(p, requirements))
             .ToList();
         if (eligible.Count == 0)
@@ -374,6 +387,7 @@ public class TeamLeaderService : ITeamLeaderService
 
     public async Task InviteMemberAsync(int teamSlotId, string characterId, ulong leaderDiscordId)
     {
+        await BumpActivityAsync(leaderDiscordId);   // 心跳：隊長邀請
         var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
         if (team == null)
             throw new NotFoundException($"TeamSlot {teamSlotId} not found");
@@ -426,6 +440,7 @@ public class TeamLeaderService : ITeamLeaderService
 
     public async Task AcceptInviteAsync(int memberId, ulong currentDiscordId)
     {
+        await BumpActivityAsync(currentDiscordId);   // 心跳：玩家接受邀請
         var member = await _memberRepository.GetByIdAsync(memberId);
         if (member == null)
             throw new NotFoundException($"Invitation {memberId} not found");
@@ -513,6 +528,7 @@ public class TeamLeaderService : ITeamLeaderService
 
     public async Task DeclineInviteAsync(int memberId, ulong currentDiscordId)
     {
+        await BumpActivityAsync(currentDiscordId);   // 心跳：玩家婉拒（仍是 presence——他在、有回應）
         var member = await _memberRepository.GetByIdAsync(memberId);
         if (member == null)
             throw new NotFoundException($"Invitation {memberId} not found");
@@ -530,6 +546,7 @@ public class TeamLeaderService : ITeamLeaderService
 
     public async Task ApplyAsync(int teamSlotId, string characterId, ulong applicantDiscordId)
     {
+        await BumpActivityAsync(applicantDiscordId);   // 心跳：玩家申請
         var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
         if (team == null)
             throw new NotFoundException($"TeamSlot {teamSlotId} not found");
@@ -577,6 +594,7 @@ public class TeamLeaderService : ITeamLeaderService
 
     public async Task ApproveAsync(int memberId, ulong leaderDiscordId)
     {
+        await BumpActivityAsync(leaderDiscordId);   // 心跳：隊長核准（申請者已在 Apply 時 bump 過）
         var member = await _memberRepository.GetByIdAsync(memberId);
         if (member == null)
             throw new NotFoundException($"Application {memberId} not found");
@@ -593,6 +611,7 @@ public class TeamLeaderService : ITeamLeaderService
 
     public async Task RejectAsync(int memberId, ulong leaderDiscordId)
     {
+        await BumpActivityAsync(leaderDiscordId);   // 心跳：隊長拒絕申請
         var member = await _memberRepository.GetByIdAsync(memberId);
         if (member == null)
             throw new NotFoundException($"Application {memberId} not found");
@@ -631,6 +650,7 @@ public class TeamLeaderService : ITeamLeaderService
 
     public async Task LeaveTeamAsync(int teamSlotId, ulong currentDiscordId)
     {
+        await BumpActivityAsync(currentDiscordId);   // 心跳：退隊也是 deliberate 動作＝presence
         // 只能退自己在該隊的 Confirmed 成員資格（一人一隊至多一個 Confirmed）。查無 → 不在此隊/已退。
         var member = await _memberRepository.GetConfirmedMemberAsync(teamSlotId, currentDiscordId);
         if (member == null)
@@ -670,6 +690,7 @@ public class TeamLeaderService : ITeamLeaderService
 
     public async Task RespondLeaderTransferAsync(int teamSlotId, ulong currentDiscordId, string action)
     {
+        await BumpActivityAsync(currentDiscordId);   // 心跳：回應隊長轉讓
         var team = await _teamSlotRepository.GetByIdAsync(teamSlotId);
         if (team == null)
             throw new NotFoundException($"TeamSlot {teamSlotId} not found");

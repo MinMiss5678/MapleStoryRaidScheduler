@@ -12,6 +12,8 @@ public class TeamActionButtonTests
     [InlineData(TeamActionFamily.Application, false, 7, "app:reject:7")]
     [InlineData(TeamActionFamily.Transfer, true, 9, "xfer:accept:9")]
     [InlineData(TeamActionFamily.Transfer, false, 9, "xfer:decline:9")]
+    [InlineData(TeamActionFamily.Freshness, true, 0, "frsh:stay:0")]
+    [InlineData(TeamActionFamily.Freshness, false, 0, "frsh:optout:0")]
     public void CustomId_格式正確(TeamActionFamily family, bool positive, int id, string expected)
     {
         Assert.Equal(expected, TeamActionButton.CustomId(family, positive, id));
@@ -24,6 +26,8 @@ public class TeamActionButtonTests
     [InlineData("app:reject:7", TeamActionFamily.Application, false, 7)]
     [InlineData("xfer:accept:9", TeamActionFamily.Transfer, true, 9)]
     [InlineData("xfer:decline:9", TeamActionFamily.Transfer, false, 9)]
+    [InlineData("frsh:stay:0", TeamActionFamily.Freshness, true, 0)]
+    [InlineData("frsh:optout:0", TeamActionFamily.Freshness, false, 0)]
     public void TryParse_合法(string customId, TeamActionFamily expFamily, bool expPositive, int expId)
     {
         Assert.True(TeamActionButton.TryParse(customId, out var family, out var positive, out var id));

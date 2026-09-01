@@ -41,10 +41,12 @@ public class TeamLeaderServiceTests
             _membershipQueryMock.Object,
             _systemConfigServiceMock.Object,
             _lfgIntentRepositoryMock.Object,
+            _playerRepositoryMock.Object,
             Options.Create(new AppOptions { AppUrl = "https://test.local" }));
     }
 
     private readonly Mock<ILfgIntentRepository> _lfgIntentRepositoryMock = new();
+    private readonly Mock<IPlayerRepository> _playerRepositoryMock = new();
 
     private CreateTeamCommand ValidCommand() => new()
     {
@@ -382,7 +384,7 @@ public class TeamLeaderServiceTests
         _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10)).ReturnsAsync(new HashSet<ulong>());
         _memberRepositoryMock.Setup(r => r.GetConfirmedDiscordIdsAtAsync(It.IsAny<DateTimeOffset>())).ReturnsAsync(new HashSet<ulong>());
         _candidateQueryMock.Setup(q => q.GetOverridesForDateAsync(It.IsAny<DateOnly>())).ReturnsAsync(Array.Empty<AvailabilityOverrideItem>());
-        _candidateQueryMock.Setup(q => q.GetPoolAsync(1)).ReturnsAsync(new[] { item });
+        _candidateQueryMock.Setup(q => q.GetPoolAsync(1, It.IsAny<DateTimeOffset>())).ReturnsAsync(new[] { item });
     }
 
     private static CandidatePoolItem WarnCandidate() => new()
@@ -418,7 +420,7 @@ public class TeamLeaderServiceTests
         var prefersThis = PrefCandidate("cThis", 703, prefersThis: true, hasAnyPref: true);
         SetupCandidatesPipeline(prefersThis);
         // 輸入故意亂序 → 驗證是後端排的
-        _candidateQueryMock.Setup(q => q.GetPoolAsync(1)).ReturnsAsync(new[] { prefersOther, noPref, prefersThis });
+        _candidateQueryMock.Setup(q => q.GetPoolAsync(1, It.IsAny<DateTimeOffset>())).ReturnsAsync(new[] { prefersOther, noPref, prefersThis });
 
         var result = (await _service.GetCandidatesAsync(10)).ToList();
 
@@ -682,7 +684,7 @@ public class TeamLeaderServiceTests
 
         Assert.Single(result);
         _candidateQueryMock.Verify(q => q.GetInstantPoolAsync(1), Times.Once);
-        _candidateQueryMock.Verify(q => q.GetPoolAsync(It.IsAny<int>()), Times.Never);
+        _candidateQueryMock.Verify(q => q.GetPoolAsync(It.IsAny<int>(), It.IsAny<DateTimeOffset>()), Times.Never);
         _candidateQueryMock.Verify(q => q.GetOverridesForDateAsync(It.IsAny<DateOnly>()), Times.Never);
     }
 
@@ -945,4 +947,19 @@ public class TeamLeaderServiceTests
         await Assert.ThrowsAsync<Application.Exceptions.NotFoundException>(() => _service.ApplyAsync(10, "cX", 999));
         _memberRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>()), Times.Never);
     }
+
+    // ── 新鮮度心跳（plans/2026-09-01-availability-freshness-decay.md）：列舉每個生命週期動作都 bump 動作者 ──
+    // bump 掛在方法首行 → 即使後續 setup 未備而拋例外，bump 呼叫仍已觸發（此測只驗「有接線、bump 對的人」；
+    // 「失敗要 rollback 掉 bump」是 UoW/交易層行為，交整合測）。防「新增動作忘了 bump」（曾漏 CreateTeamAsync）。
+    private async Task RunSwallow(Func<Task> act) { try { await act(); } catch { /* 只驗 bump 已觸發 */ } }
+
+    [Fact] public async Task Bump_CreateTeam_Leader() { await RunSwallow(() => _service.CreateTeamAsync(ValidCommand())); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(999UL), Times.Once); }
+    [Fact] public async Task Bump_InviteMember_Leader() { await RunSwallow(() => _service.InviteMemberAsync(10, "c", 777UL)); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(777UL), Times.Once); }
+    [Fact] public async Task Bump_Apply_Applicant() { await RunSwallow(() => _service.ApplyAsync(10, "c", 111UL)); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(111UL), Times.Once); }
+    [Fact] public async Task Bump_AcceptInvite_Player() { await RunSwallow(() => _service.AcceptInviteAsync(5, 222UL)); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(222UL), Times.Once); }
+    [Fact] public async Task Bump_DeclineInvite_Player() { await RunSwallow(() => _service.DeclineInviteAsync(5, 333UL)); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(333UL), Times.Once); }
+    [Fact] public async Task Bump_Approve_Leader() { await RunSwallow(() => _service.ApproveAsync(5, 444UL)); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(444UL), Times.Once); }
+    [Fact] public async Task Bump_Reject_Leader() { await RunSwallow(() => _service.RejectAsync(5, 555UL)); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(555UL), Times.Once); }
+    [Fact] public async Task Bump_LeaveTeam_Member() { await RunSwallow(() => _service.LeaveTeamAsync(10, 666UL)); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(666UL), Times.Once); }
+    [Fact] public async Task Bump_RespondLeaderTransfer_Responder() { await RunSwallow(() => _service.RespondLeaderTransferAsync(10, 888UL, "accept")); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(888UL), Times.Once); }
 }

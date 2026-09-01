@@ -15,7 +15,8 @@ public class TeamActionInteractionHandlerTests
 {
     private readonly Mock<IUnitOfWork> _uow = new();
     private readonly Mock<ITeamLeaderService> _svc = new();
-    private TeamActionInteractionHandler Handler => new(_uow.Object, _svc.Object);
+    private readonly Mock<IProfileService> _profile = new();
+    private TeamActionInteractionHandler Handler => new(_uow.Object, _svc.Object, _profile.Object);
 
     [Fact]
     public async Task 邀請_接受_走AcceptInvite_commit()
@@ -64,6 +65,23 @@ public class TeamActionInteractionHandlerTests
         var r = await Handler.HandleAsync(TeamActionFamily.Transfer, false, 3, 300UL);
         _svc.Verify(s => s.RespondLeaderTransferAsync(3, 300UL, "decline"), Times.Once);
         Assert.Contains("已拒絕轉讓", r);
+    }
+
+    [Fact]
+    public async Task 新鮮度_留任_走Reaffirm_對點擊者()
+    {
+        var r = await Handler.HandleAsync(TeamActionFamily.Freshness, true, 0, 400UL);
+        _profile.Verify(p => p.ReaffirmFreshnessAsync(400UL), Times.Once);
+        _uow.Verify(u => u.CommitAsync(), Times.Once);
+        Assert.Contains("留在找團名單", r);
+    }
+
+    [Fact]
+    public async Task 新鮮度_移除我_走OptOut_對點擊者()
+    {
+        var r = await Handler.HandleAsync(TeamActionFamily.Freshness, false, 0, 400UL);
+        _profile.Verify(p => p.OptOutSeekingAsync(400UL), Times.Once);
+        Assert.Contains("移出找團名單", r);
     }
 
     [Fact]

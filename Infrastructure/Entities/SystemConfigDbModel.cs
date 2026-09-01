@@ -12,4 +12,5 @@ public class SystemConfigDbModel
     public int LeaveRateWindowMonths { get; set; }
     public int LeaveRateThreshold { get; set; }
     public int LeaveRateMinSample { get; set; }
+    public int AvailabilityFreshnessDays { get; set; }
 }

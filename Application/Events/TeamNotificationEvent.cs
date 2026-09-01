@@ -83,5 +83,12 @@ public enum TeamNotificationAction
     /// 邀請被自動撤銷（額滿/名額滿）→ 編輯被邀者原 DM 成「已失效」+ 移除按鈕（dm-revoke-cleanup）。
     /// 不送新訊息、不帶按鈕；用 <see cref="TeamNotificationEvent.EditMessageId"/> 定位要改的訊息、<see cref="TeamNotificationEvent.Message"/> 當新內容。
     /// </summary>
-    InviteRevokedCleanup = 4
+    InviteRevokedCleanup = 4,
+
+    /// <summary>
+    /// 常設時段新鮮度「快過期」提醒（階段二）→ 玩家 DM 附「留任 / 移除我」。
+    /// 動作對象＝點擊者本人（非團/成員），故 <see cref="TeamNotificationEvent.ActionId"/> 不帶意義（設 0）。
+    /// 留任→bump LastAffirmedAt；移除我→關參戰（保留時段）。見 plans/2026-09-01-availability-freshness-decay.md。
+    /// </summary>
+    FreshnessNudge = 5
 }

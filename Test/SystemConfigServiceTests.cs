@@ -93,4 +93,13 @@ public class SystemConfigServiceTests
         _repoMock.Verify(r => r.UpdateAsync(It.Is<SystemConfigDbModel>(m =>
             m.LeaveRateWarnEnabled && m.LeaveRateThreshold == 50)), Times.Once);
     }
+
+    [Fact]
+    public async Task UpdateAsync_ThrowsBusiness_WhenFreshnessDaysBelowOne()
+    {
+        // 0/負值會把全員常設時段清空 → app 前線擋（plans/2026-09-01-availability-freshness-decay.md）；碰 DB 前就丟。
+        await Assert.ThrowsAsync<Application.Exceptions.BusinessException>(
+            () => _service.UpdateAsync(new SystemConfig { AvailabilityFreshnessDays = 0 }));
+        _repoMock.Verify(r => r.UpdateAsync(It.IsAny<SystemConfigDbModel>()), Times.Never);
+    }
 }

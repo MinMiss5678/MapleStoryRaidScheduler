@@ -34,6 +34,7 @@ public class TeamLeaderServiceIntegrationTests
         new TeamMembershipQuery(db),
         new SystemConfigService(db),
         new LfgIntentRepository(db),
+        new PlayerRepository(db),
         Microsoft.Extensions.Options.Options.Create(new Application.Options.AppOptions { AppUrl = "https://test.local" }));
 
     // 併發 accept 忠實模擬 UoW middleware：各自 Begin/Commit → advisory lock（交易級）才真的序列化。
