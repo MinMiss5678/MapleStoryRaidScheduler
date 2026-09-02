@@ -17,23 +17,27 @@ public class TeamSlotCharacterRepository : ITeamSlotCharacterRepository
 
     public async Task<int> CreateAsync(TeamSlotCharacter teamSlot)
     {
-        return await _dbContext.Repository<TeamSlotCharacterDbModel>().InsertAsync(new TeamSlotCharacterDbModel
-        {
-            TeamSlotId = teamSlot.TeamSlotId,
-            DiscordId = (long)teamSlot.DiscordId,
-            DiscordName = teamSlot.DiscordName,
-            CharacterId = teamSlot.CharacterId,
-            CharacterName = teamSlot.CharacterName,
-            Job = teamSlot.Job,
-            AttackPower = teamSlot.AttackPower,
-            Level = teamSlot.Level,
-            Rounds = teamSlot.Rounds,
-            IsManual = teamSlot.IsManual,
+        // 必須回「新 serial Id」而非 rows-affected——InviteMember/Apply 拿這個 Id 當 ActionId 綁 DM 按鈕
+        // （接受/核准）。舊版用 Repository.InsertAsync 回 rows-affected(恆=1)，導致非第一筆成員的 DM 按鈕
+        // 指向不存在的 memberId → 點了「找不到對應項目」（web accept 不受影響、只有 Discord DM 按鈕爆）。
+        var sql = new InsertBuilder<TeamSlotCharacterDbModel>();
+        sql.Set(x => x.TeamSlotId, teamSlot.TeamSlotId)
+            .Set(x => x.DiscordId, (long)teamSlot.DiscordId)
+            .Set(x => x.DiscordName, teamSlot.DiscordName)
+            .Set(x => x.CharacterId, teamSlot.CharacterId)
+            .Set(x => x.CharacterName, teamSlot.CharacterName)
+            .Set(x => x.Job, teamSlot.Job)
+            .Set(x => x.AttackPower, teamSlot.AttackPower)
+            .Set(x => x.Level, teamSlot.Level)
+            .Set(x => x.Rounds, teamSlot.Rounds)
+            .Set(x => x.IsManual, teamSlot.IsManual)
             // leader-led：舊路徑（fill/auto-assign）不設 → 預設 Confirmed / SlotDateTime=null（不變行為）；
             // leader 邀請設 Invited + 隊時間（跨隊重疊 unique 用）。
-            Status = teamSlot.Status,
-            SlotDateTime = teamSlot.SlotDateTime
-        });
+            .Set(x => x.Status, teamSlot.Status)
+            // timestamptz 只收 offset=0：非 UTC 的 DateTimeOffset 會被 Npgsql 拒（同 TeamSlotRepository 的 ToUniversalTime）。
+            .Set(x => x.SlotDateTime, teamSlot.SlotDateTime?.ToUniversalTime())
+            .ReturnId();
+        return await _dbContext.ExecuteScalarAsync(sql);
     }
 
     /// <summary>某隊已 Confirmed 的真實成員數（排除 vacancy 哨兵 DiscordId=0）——leader accept 的容量把關。</summary>
