@@ -110,4 +110,26 @@ public class TeamSlotCharacterRepositoryIntegrationTests
         Assert.Equal(501UL, bookings[0].DiscordId);
         Assert.Equal(inRange.ToUniversalTime(), bookings[0].SlotDateTime.ToUniversalTime());
     }
+
+    [Fact]
+    public async Task CreateAsync_ReturnsIncrementingSerialId_NotRowsAffected()
+    {
+        // 迴歸：CreateAsync 必須回「新 serial Id」而非 rows-affected(恆=1)。舊 bug 讓 InviteMember/Apply 拿 1 當
+        // ActionId 綁 DM 按鈕 → 非第一筆成員的 DM 接受/核准按鈕指向不存在的 memberId →「找不到對應項目」
+        //（web accept 從查詢拿 memberId、不受影響，故 E2E 沒抓到；只有真點 Discord DM 按鈕才爆）。
+        await _fx.ResetAsync();
+        var bossId = await Seed.BossAsync(_fx.ConnectionString);
+        var teamId = await Seed.TeamSlotAsync(_fx.ConnectionString, bossId, TeamSlotSource.Leader);
+        await Seed.PlayerAsync(_fx.ConnectionString, 811, "A");
+        await Seed.PlayerAsync(_fx.ConnectionString, 812, "B");
+
+        var repo = new TeamSlotCharacterRepository(_fx.CreateDbContext());
+        var id1 = await repo.CreateAsync(new TeamSlotCharacter
+        { TeamSlotId = teamId, DiscordId = 811, DiscordName = "A", Job = "英雄", Status = TeamSlotMemberStatus.Invited });
+        var id2 = await repo.CreateAsync(new TeamSlotCharacter
+        { TeamSlotId = teamId, DiscordId = 812, DiscordName = "B", Job = "主教", Status = TeamSlotMemberStatus.Invited });
+
+        Assert.True(id1 >= 1);
+        Assert.True(id2 > id1, $"CreateAsync 應回遞增 serial Id，得 id1={id1} id2={id2}（回 rows-affected 的舊 bug）");
+    }
 }
