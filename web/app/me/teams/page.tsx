@@ -5,7 +5,7 @@ import { Users, Mail, Check, X, Swords, Clock, User, Zap, LogOut, UserCog } from
 import toast from "react-hot-toast";
 import { useMyInvitations } from "@/hooks/queries/useMyInvitations";
 import { useMyTeams } from "@/hooks/queries/useMyTeams";
-import { TeamComposition } from "./TeamComposition";
+import { TeamComposition } from "../TeamComposition";
 import { leaderService } from "@/services/leaderService";
 import { invalidateTeamQueries } from "@/lib/invalidateTeamQueries";
 import { InvitationAction } from "@/types/leaderLed";

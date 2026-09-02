@@ -10,6 +10,7 @@ import { invalidateTeamQueries } from "@/lib/invalidateTeamQueries";
 import { ApiError } from "@/services/apiClient";
 import { formatSlot } from "@/utils/dateTimeUtil";
 import { TransferControl } from "./TransferControl";
+import { TeamComposition } from "../TeamComposition";
 
 export default function LedTeamsPage() {
     const { data: teams = [], isLoading } = useLedTeams();
@@ -69,6 +70,7 @@ export default function LedTeamsPage() {
                             {t.description && (
                                 <p className="text-sm bg-muted/50 rounded-lg px-3 py-2 whitespace-pre-wrap">{t.description}</p>
                             )}
+                            <TeamComposition teamSlotId={t.teamSlotId} />
                             <div className="flex gap-2 pt-1">
                                 <Link
                                     href={`/teams/${t.teamSlotId}/candidates`}
