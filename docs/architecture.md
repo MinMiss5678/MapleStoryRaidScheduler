@@ -32,7 +32,7 @@ graph TD
     User -->|OAuth2 登入| DiscordOAuth["Discord OAuth2"]
     DiscordOAuth -->|授權 code| Backend
 
-    Infrastructure -.->|"錯誤事件（與 Seq 同為 Serilog sink，平行輸出：BeforeSend 去敏 DiscordId HMAC／scrub・選填・僅 prod）"| Sentry["Sentry\n錯誤追蹤（第三方）"]
+    Infrastructure -.->|"錯誤事件（選填・僅 prod）"| Sentry["Sentry\n錯誤追蹤（第三方）"]
 ```
 
 ### 分層架構與依賴方向
