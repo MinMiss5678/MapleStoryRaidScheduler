@@ -78,6 +78,17 @@ public class Program
                      services.AddDiscordClient(token, intents);
                  }
 
+                 // Dispatcher 角色（REST-only、永不 ConnectAsync）：關掉 gateway 分片協調器
+                 // → 換成 NullShardOrchestrator（DSharpPlus 第一方 DisableGateway，官方定位 "bots that only make REST requests"）。
+                 //   ① 同一顆 token 不連 gateway → 不撞 prod bot / gateway 角色的 gateway session（可安全多 pod）；
+                 //   ② 修掉 nightly 的 dispose-NRE：從沒 ConnectAsync 的 DiscordClient 被 DI dispose 時，
+                 //      SingleShardOrchestrator.StopAsync → GatewayClient.DisconnectAsync 會丟 NRE；
+                 //      NullShardOrchestrator.StopAsync 是 no-op → 關機乾淨。
+                 // 送 DM 仍走 REST（DiscordService.OpenDmChannelAsync 用 GetUserAsync，REST/cache-aware、不依賴 gateway 成員快取）。
+                 // 必須在 AddDiscordClient 之後呼叫（DisableGateway = Replace<IShardOrchestrator>，需先有註冊）。
+                 if (!isGateway)
+                     services.DisableGateway();
+
                  // 資料庫連線：連線字串集中到 IDbConnectionFactory（單一來源）→ scoped IDbConnection 與
                  // 背景 poller（OutboxDispatcher 等，各自 factory.Create() 自開專屬連線）共用同一份設定。
                  var defaultConnectionFile = config["ConnectionStrings:DefaultConnectionFile"];
