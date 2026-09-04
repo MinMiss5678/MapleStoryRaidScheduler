@@ -1,26 +1,22 @@
 using System.Collections.Concurrent;
 using Application.Interface;
-using Application.Options;
 using DSharpPlus;
 using DSharpPlus.Entities;
 using DSharpPlus.Exceptions;
-using Microsoft.Extensions.Options;
 
 namespace Infrastructure.Services;
 
 public class DiscordService : IDiscordService
 {
     private readonly DiscordClient _discordClient;
-    private readonly DiscordOptions _discordOptions;
 
-    // userId → DM 頻道快取（DM 頻道 id 對同一人永久固定）。命中則直接送訊，跳過「取成員 + 開 DM 頻道」兩次 REST。
+    // userId → DM 頻道快取（DM 頻道 id 對同一人永久固定）。命中則直接送訊，跳過「取 user + 開 DM 頻道」兩次 REST。
     // per-pod 記憶體快取（KISS）：重啟即失、多 pod 各建各的、皆可接受；跨 pod 共用非必要（見 plans/2026-08-07-dm-notification-api-call-reduction.md）。
     private readonly ConcurrentDictionary<ulong, DiscordDmChannel> _dmChannelCache = new();
 
-    public DiscordService(DiscordClient discordClient, IOptions<DiscordOptions> discordOptions)
+    public DiscordService(DiscordClient discordClient)
     {
         _discordClient = discordClient;
-        _discordOptions = discordOptions.Value;
     }
 
     public Task SendDirectMessageAsync(ulong discordId, string message)
@@ -106,16 +102,15 @@ public class DiscordService : IDiscordService
         }, b.CustomId, b.Label);
 
     /// <summary>
-    /// 開 DM 頻道。成員先查本地快取（bot 已開 GuildMembers intent + 常駐 gateway → 多半命中、不打 REST），
-    /// 未命中才 <c>GetMemberAsync</c> REST fallback（正確性不變）。<c>GetGuildAsync</c> 由 gateway 快取供應、不打 REST。
-    /// 對方關 DM → UnauthorizedException(403)、退公會 → NotFoundException(404)：皆由呼叫端 handler 當永久失敗分流，不在此吞。
+    /// 開 DM 頻道：<c>GetUserAsync</c>(REST、cache-aware) → <c>CreateDmChannelAsync</c>。
+    /// 不經 guild 成員快取 → gateway 未連線（dispatcher 角色，見 plans/2026-09-04-multi-pod-outbox-dispatch.md）也可用，
+    /// 且避開「REST 取得的 guild `_members` 為 null → GetMemberAsync NRE」。有 gateway 時 GetUserAsync 命中 user 快取、不打 REST；
+    /// 熱路徑仍靠上方 _dmChannelCache。對方關 DM → UnauthorizedException(403)、查無此人 → NotFoundException(404)：
+    /// 皆由呼叫端 handler 當永久失敗分流，不在此吞。
     /// </summary>
     private async Task<DiscordDmChannel> OpenDmChannelAsync(ulong discordId)
     {
-        var guild = await _discordClient.GetGuildAsync(Convert.ToUInt64(_discordOptions.GuildId));
-        var member = guild.Members.TryGetValue(discordId, out var cachedMember)
-            ? cachedMember
-            : await guild.GetMemberAsync(discordId);
-        return await member.CreateDmChannelAsync();
+        var user = await _discordClient.GetUserAsync(discordId);
+        return await user.CreateDmChannelAsync();
     }
 }
