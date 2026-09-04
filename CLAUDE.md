@@ -54,6 +54,12 @@ docker compose down      # stop all services
 
 Services: `database` (PostgreSQL 18, port 5432), `backend` (.NET 9, port 5230), `frontend` (Next.js, port 3000), `bot` (Discord bot), `cloudflared` (tunnel).
 
+### 本機 WSL Docker（Windows）踩雷要點
+
+本機 Docker 跑在 WSL2 Ubuntu（原生 dockerd、非 Docker Desktop）。多步驟本機作業（E2E / demo / 壓測）**一定要知道的一件事**：
+
+- **別讓 WSL 閒置自動關閉停掉容器**：每個 `wsl … bash -lc '…'` 是獨立呼叫，呼叫「之間」若沒常駐程序撐著，WSL2 閒置就關整個 distro → 容器被停（症狀：db/容器 **exit 0**、你上一條指令結束後約 1–2 分死，害 backend/bot 連不到 DB）。**要活一段時間的本機 stack 用「前景 `docker compose up`（不加 `-d`）當背景常駐」撐住 WSL，別用 `up -d`；平常也別手動 `wsl --shutdown`（`autoMemoryReclaim` 會自己收記憶體，shutdown 反而觸發冷啟網路不穩）。**
+
 ## Architecture
 
 Clean Architecture with DDD — dependency flows inward: Presentation → Application → Domain ← Infrastructure.
