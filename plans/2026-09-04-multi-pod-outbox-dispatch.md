@@ -51,10 +51,12 @@
 
 ## 驗收
 
-- [ ] N 筆 × M pod × ≥2 node（dry-run）→ **每筆恰一次、重複數 = 0、遺漏 = 0**，無選主。
-- [ ] Chaos（殺 pod / 關 node 中途）→ 最終 count 不變、無重複（at-least-once + SKIP LOCKED 釋鎖接手）。
-- [ ] 真送模式小量驗:429 時尊重 Retry-After、不失敗、不重複送。
-- [ ] 記一組數據:N / M / node 數 / 耗時 / 429 次數 / 重複數(=0)——當履歷佐證。
+- [x] **N×M 併發正確性（2026-09-04，整合測 `OutboxConcurrencyIntegrationTests`）**：M 個「真」`OutboxDispatcher`（各自連線＝各 pod）併發搶 N 筆，只靠 `FOR UPDATE SKIP LOCKED`、無選主 →
+  - `M個dispatcher併發搶N列_每列恰處理一次_無重複無遺漏`（N=400, M=6）：**恰一次**（處理集合＝{0..399} 每列剛好一次、重複=0、遺漏=0）；
+  - `Chaos_處理中殺一個dispatcher_未提交列被他人接手_最終無遺漏`（N=400, M=5）：中途取消一個 dispatcher → 其 claim-未 commit 列隨 tx rollback 釋鎖、被存活 pod 接手 → **at-least-once、無遺漏**。
+  - 兩支綠（本機 Testcontainers postgres:18，經 socat 橋接 WSL docker）；CI 的 integration-test job 也會跑（ubuntu host docker）。多節點對正確性非必要（DB 層性質，見下方誠實取捨）→ 本機 M 併發即證。
+- [ ] （選配 HA 敘事）真多 node k3s：≥2 機 podAntiAffinity 分散、殺 pod / 關 node 中途仍全數派發——只加「真分散式 + node 故障」故事，不影響已證的正確性。
+- [ ] 真送模式小量驗:429 時尊重 Retry-After、不失敗、不重複送。（已驗單筆真送＝dispatcher 完整跑；多 pod 共 token 的 429 密度未壓測。）
 
 ## 非範圍 / 誠實取捨（YAGNI）
 
@@ -65,8 +67,8 @@
 ## 風險 / 待確認
 
 - **REST-only 送出（✅ 已實測確認 2026-09-04）**:spike 用 `AddDiscordClient` 建 client、**不 ConnectAsync**，`GetUserAsync(id)` → `CreateDmChannelAsync()` → `SendMessageAsync()` **真送成功、免 gateway**（不撞 prod bot 的 gateway session）。`GetUserAsync` REST/cache-aware、繞過會 NRE 的 `guild._members`。同一份 `OpenDmChannelAsync`（GetUserAsync 版）兩角色通用。見 [DSharpPlus#309](https://github.com/DSharpPlus/DSharpPlus/issues/309)、[discussions/990](https://github.com/DSharpPlus/DSharpPlus/discussions/990)。
-- ⚠️ **新 gotcha（spike 抓到）**：**從沒 ConnectAsync 的 `DiscordClient` 被 DI dispose 時，`DisconnectAsync()` 丟 NRE**（nightly：dispose 假設已連線）。不影響送出（只在關機 dispose 時），但 dispatcher 角色關機會噴未處理例外 → 需繞掉（不讓 DI dispose 該 client / shutdown 前處理 / 待 nightly 修）。
-- ⚠️ **DM 送出未被 CI E2E 覆蓋**（只在真 Discord 走）→ 改 `OpenDmChannelAsync` 後**必須真送一次 DM 驗證**才可 ship（spike 已驗過送出本身）。
+- ✅ **dispose-NRE 已解（2026-09-04，第一方 API）**：原 gotcha＝**從沒 ConnectAsync 的 `DiscordClient` 被 DI dispose → `SingleShardOrchestrator.StopAsync → GatewayClient.DisconnectAsync` 丟 NRE**（nightly：dispose 假設已連線）。**解法用 DSharpPlus 第一方 `services.DisableGateway()`**（`AddDiscordClient` 之後、僅 `!isGateway` 的 dispatcher 角色呼叫）：把 `IShardOrchestrator` 換成 `NullShardOrchestrator`（官方定位「bots that only make REST requests」），其 `StopAsync` 是 no-op → 關機乾淨、無 NRE，且同 token 不連 gateway。比原設想的「register-instance 讓 DI 不 dispose」hack 乾淨。已讀 02542 dll 確認含此 API、`NullShardOrchestrator.StopAsync` 確為 no-op；`Presentation/Program.cs` build 0 錯誤。
+- ✅ **DM 送出真驗（2026-09-04，dispatcher 完整跑）**：真 `Presentation`（`Dispatch:Role=Dispatcher` + `DisableGateway`）連最小 Postgres，`OutboxDispatcher` 以 `FOR UPDATE SKIP LOCKED` 搶一筆 `TeamNotification` 列 → handler REST 三連（`GET /users/{id}` 200 → `POST /users/@me/channels` 200 → `POST /channels/{id}/messages` 200）**真送 DM 成功** → 標 `ProcessedAt`、`AttemptCount=0`、無 `LastError`，全程無 ERROR/NRE。DM 送出這條（非 CI/E2E 覆蓋）已端到端驗證。**唯一未直接觀察**：host 自身 graceful shutdown log（Windows `taskkill` 無法對無視窗 console 送 graceful 訊號）——但關機 disposal 走的正是 spike 已驗的同一條 `ServiceProvider→DiscordClient.Dispose→NullShardOrchestrator.StopAsync` no-op 路徑。
 - 多 pod 共用一顆 token 的 **REST 429 密度**;dry-run 模式可完全繞開（純 DB 驗）。
 - k3s **跨機器 join**:node token、防火牆(6443 API、8472/UDP flannel VXLAN、10250 kubelet)。
 - outbox 目前是「bot 行程專屬」註冊(`TeamNotificationOutboxHandler` 註解);拆角色後確認 dispatcher 角色仍正確載入該 handler、gateway 角色**不**重複跑派發(否則兩邊搶——雖 SKIP LOCKED 也安全,但語意上 dispatcher 專責較清楚)。
