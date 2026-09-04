@@ -47,6 +47,14 @@ public class Program
              .ConfigureServices((context, services) =>
              {
                  var config = context.Configuration;
+
+                 // 角色拆分（多 pod 派發，見 plans/2026-09-04-multi-pod-outbox-dispatch.md）：
+                 //   All（預設，向後相容單 pod prod）= gateway + 派發；
+                 //   Gateway = 只連 gateway 收互動 + 單一實例背景 job；Dispatcher = 只跑 OutboxDispatcher、不連 gateway（可多 pod）。
+                 var role = (config["Dispatch:Role"] ?? "All").Trim();
+                 var isGateway = role is "All" or "Gateway";
+                 var isDispatcher = role is "All" or "Dispatcher";
+
                  var tokenFile = config["Discord:BotTokenFile"];
 
                  if (!string.IsNullOrEmpty(tokenFile) && File.Exists(tokenFile))
@@ -117,10 +125,12 @@ public class Program
                  services.AddScoped<IPlayerAvailabilityStandingRepository, PlayerAvailabilityStandingRepository>();
                  services.AddScoped<IProfileService, ProfileService>();
 
-                 services.ConfigureEventHandlers(b => b
-                     .AddEventHandlers<MemberUpdatedHandler>()
-                     .AddEventHandlers<MemberRemovedHandler>()
-                     .AddEventHandlers<TeamActionInteractionHandler>());
+                 // 事件 handler（互動按鈕 / 成員異動撤 session）只在連 gateway 的角色需要。
+                 if (isGateway)
+                     services.ConfigureEventHandlers(b => b
+                         .AddEventHandlers<MemberUpdatedHandler>()
+                         .AddEventHandlers<MemberRemovedHandler>()
+                         .AddEventHandlers<TeamActionInteractionHandler>());
 
                  services.AddMemoryCache();
 
@@ -142,13 +152,18 @@ public class Program
                  services.AddSingleton<IOutboxHandler, TeamNotificationOutboxHandler>();  // leader-led 組隊通知 → Discord DM
                  // 三個背景 poller 的相依（IDbConnectionFactory / IOutboxHandler / ILogger）皆可由 DI 解析
                  // → 直接型別註冊，免手動 new。各自仍 factory.Create() 自開專屬連線（不共用 scoped IDbConnection）。
-                 services.AddHostedService<OutboxDispatcher>();
-                 services.AddHostedService<OutboxRetentionJob>();
-                 services.AddHostedService<LfgIntentCleanupJob>();
-                 services.AddHostedService<AvailabilityFreshnessNudgeJob>();  // 階段二：新鮮度快過期提醒（enqueue FreshnessNudge DM）
+                 // 派發器：dispatcher / All 角色跑（可多 pod，SKIP LOCKED 各搶各的列、免 Leader Election）。
+                 if (isDispatcher)
+                     services.AddHostedService<OutboxDispatcher>();
 
-                 // 註冊自動執行的 Background Services
-                 services.AddHostedService<DiscordBotService>();       // Discord 啟動管理
+                 // 單一實例背景 job（清理 / 提醒 / 連 gateway）掛在 gateway 角色（1 replica）→ 避免多 dispatcher pod 重複執行。
+                 if (isGateway)
+                 {
+                     services.AddHostedService<OutboxRetentionJob>();
+                     services.AddHostedService<LfgIntentCleanupJob>();
+                     services.AddHostedService<AvailabilityFreshnessNudgeJob>();  // 階段二：新鮮度快過期提醒（enqueue FreshnessNudge DM）
+                     services.AddHostedService<DiscordBotService>();              // 連 gateway（ConnectAsync）+ 收互動
+                 }
 
                  services.Configure<DiscordOptions>(
                      config.GetSection("Discord"));
