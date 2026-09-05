@@ -1,0 +1,39 @@
+# 種 N 筆 HaDemo outbox 列（Action 無關，dry-run handler 只讀 payload.n）。
+# 重跑會 TRUNCATE 重種 → 冪等；改 N 就改 generate_series 上界（此處 0..999 ＝ 1000 筆）。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ha-demo-seed
+  namespace: ha-demo
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: postgres:18
+          env:
+            - { name: PGPASSWORD, value: hademo }
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              until pg_isready -h ha-demo-db -U postgres; do echo "wait db..."; sleep 2; done
+              psql -h ha-demo-db -U postgres -d hademo -v ON_ERROR_STOP=1 <<'SQL'
+              CREATE TABLE IF NOT EXISTS "OutboxMessage" (
+                  "Id"           bigserial   PRIMARY KEY,
+                  "Type"         text        NOT NULL,
+                  "Payload"      jsonb       NOT NULL,
+                  "OccurredAt"   timestamptz NOT NULL DEFAULT now(),
+                  "ProcessedAt"  timestamptz,
+                  "AttemptCount" integer     NOT NULL DEFAULT 0,
+                  "LastError"    text
+              );
+              CREATE INDEX IF NOT EXISTS "ix_outbox_unprocessed"
+                  ON "OutboxMessage" ("Id") WHERE "ProcessedAt" IS NULL;
+              TRUNCATE "OutboxMessage" RESTART IDENTITY;
+              INSERT INTO "OutboxMessage" ("Type","Payload")
+              SELECT 'HaDemo', jsonb_build_object('n', g) FROM generate_series(0, 999) AS g;
+              SELECT count(*) AS seeded FROM "OutboxMessage";
+              SQL

@@ -1,0 +1,43 @@
+# outbox-dispatcher：N 個純派發 pod（Role=Dispatcher → 不連 gateway、可多 pod；DryRun=true → 不真送、只記 log）。
+# topologySpreadConstraints 把 pod 平均散到不同 node（maxSkew=1）→ 真跨機器。NODE_NAME 由 downward API 注入 → log 可標 node。
+# 前提：image minqq/presentation:hademo 需已含 DryRunOutboxHandler（見 docs/multi-node-k3s-ha-demo.md 步驟 0：重建+推）。
+# 用獨立 :hademo tag（非 prod 的 :latest）→ 不覆蓋 prod image。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: outbox-dispatcher
+  namespace: ha-demo
+spec:
+  replicas: 4
+  selector:
+    matchLabels: { app: outbox-dispatcher }
+  template:
+    metadata:
+      labels: { app: outbox-dispatcher }
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway   # node 不足時仍排得上（demo 不因擠不下卡 Pending）
+          labelSelector:
+            matchLabels: { app: outbox-dispatcher }
+      containers:
+        - name: dispatcher
+          image: minqq/presentation:hademo
+          env:
+            - { name: Dispatch__Role, value: "Dispatcher" }
+            - { name: Dispatch__DryRun, value: "true" }
+            # demo DB（明文，隔離叢集）。dispatcher 自開專屬連線輪詢 OutboxMessage。
+            - name: ConnectionStrings__DefaultConnection
+              value: "Host=ha-demo-db;Port=5432;Database=hademo;Username=postgres;Password=hademo"
+            # dry-run 不會真的用到 token（DisableGateway + handler 不送），給 dummy 讓 DI 建得起 DiscordClient。
+            - { name: Discord__BotToken, value: "dry-run-dummy-token-unused" }
+            # dispatcher 角色不解析 ISessionCache → Redis 實際不撥；AbortOnConnectFail=false 也 fail-open。
+            - { name: Redis__Configuration, value: "localhost:6379" }
+            # node 名（downward API）→ dry-run handler 記進 log，佐證「真跨 node」。
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef: { fieldPath: spec.nodeName }
+          resources:
+            requests: { memory: 64Mi }
+            limits: { memory: 160Mi }
