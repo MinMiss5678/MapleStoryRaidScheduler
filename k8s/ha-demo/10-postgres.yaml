@@ -1,0 +1,41 @@
+# Demo 專用 Postgres（拋棄式，密碼寫死＝demo 隔離叢集、非 prod）。dispatcher 只碰 OutboxMessage。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ha-demo-db
+  namespace: ha-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ha-demo-db }
+  template:
+    metadata:
+      labels: { app: ha-demo-db }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18
+          # 硬殺整台 node（非 graceful pod 刪除）→ 被殺 pod 的 DB 連線半開，Postgres 靠 TCP keepalive
+          # 才會偵測（預設數小時），期間其 FOR UPDATE 列鎖懸著 → 那批列 SKIP LOCKED 被跳過、卡住不派發
+          # （資料不丟、只是 pending）。設 idle_in_transaction_session_timeout=30s → 孤兒交易 30s 自動中止、
+          # 釋鎖 → 存活 pod 立即接手 → 硬殺 node 也能自我修復（不必手動 pg_terminate_backend）。實測見
+          # docs/multi-node-k3s-ha-demo.md 步驟 4 的「已知陷阱」。
+          args: ["-c", "idle_in_transaction_session_timeout=30000"]
+          env:
+            - { name: POSTGRES_USER, value: postgres }
+            - { name: POSTGRES_DB, value: hademo }
+            - { name: POSTGRES_PASSWORD, value: hademo }
+          ports:
+            - containerPort: 5432
+          # demo：不掛 PVC（跑完即棄，資料不需持久）。
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ha-demo-db
+  namespace: ha-demo
+spec:
+  selector: { app: ha-demo-db }
+  ports:
+    - port: 5432
+      targetPort: 5432

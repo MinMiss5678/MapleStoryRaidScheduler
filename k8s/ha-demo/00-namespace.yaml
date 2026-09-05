@@ -1,0 +1,5 @@
+# 多 node k3s HA demo：獨立 namespace，跑完 `kubectl delete ns ha-demo` 一鍵清乾淨（不碰 prod 的 maple-raid）。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ha-demo

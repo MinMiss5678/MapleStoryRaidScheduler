@@ -55,7 +55,14 @@
   - `M個dispatcher併發搶N列_每列恰處理一次_無重複無遺漏`（N=400, M=6）：**恰一次**（處理集合＝{0..399} 每列剛好一次、重複=0、遺漏=0）；
   - `Chaos_處理中殺一個dispatcher_未提交列被他人接手_最終無遺漏`（N=400, M=5）：中途取消一個 dispatcher → 其 claim-未 commit 列隨 tx rollback 釋鎖、被存活 pod 接手 → **at-least-once、無遺漏**。
   - 兩支綠（本機 Testcontainers postgres:18，經 socat 橋接 WSL docker）；CI 的 integration-test job 也會跑（ubuntu host docker）。多節點對正確性非必要（DB 層性質，見下方誠實取捨）→ 本機 M 併發即證。
-- [ ] （選配 HA 敘事）真多 node k3s：≥2 機 podAntiAffinity 分散、殺 pod / 關 node 中途仍全數派發——只加「真分散式 + node 故障」故事，不影響已證的正確性。
+- [~] **多 node k3s HA demo：產出物完成 + dry-run 本機驗過（2026-09-05）**。
+  - **程式碼**：`DryRunOutboxHandler`（Type=`HaDemo`，claim 後只記 `HADEMO_CLAIM n/pod/node` log、不真送）；Program.cs 於 `Dispatch:DryRun=true` 才註冊（prod 零影響）。本機真 dispatcher（Role=Dispatcher + DryRun + dummy token）跑：20 筆 HaDemo → 20 筆 HADEMO_CLAIM、DB 20/20 processed、**Discord API 呼叫 = 0**。
+  - **manifests / 腳本 / runbook**：`k8s/ha-demo/`（namespace、demo postgres、seed job、dispatcher Deployment＋topologySpreadConstraints＋NODE_NAME downward）＋ `verify.sh`（彙總跨 pod log 斷言恰一次/無漏＋node 分布）＋ `docs/multi-node-k3s-ha-demo.md`（k3s join→部署→驗→chaos→拆）。4 個 YAML 語法驗過。
+  - **已真跑（2026-09-05，3×EC2 t3.small ap-northeast-1）**：k3s server+2 agent（跨 3 node）、image `minqq/presentation:hademo`、4 dispatcher pod 散在 3 node。
+    - **Happy path**：N=1000 → total=1000 / distinct=1000 / **dup=0**（恰一次、無漏、無選主）。
+    - **Chaos（硬殺 node mid-drain）**：N=200000、drain ~2500/s、殺當下剩 ~47780 → 存活 2 node 收到剩 **40 卡住** → 診斷＝被殺 node 2 pod 的孤兒 `idle in transaction` 各持 20 列 `FOR UPDATE`（硬殺→連線半開、DB 未偵測）→ terminate 孤兒連線後秒接手 → **200000/200000 processed、0 遺漏**。
+    - **實測發現 + 修復**：硬殺 node ≠ graceful 刪 pod（後者 rollback 立即釋鎖）；硬殺要靠 `idle_in_transaction_session_timeout`（已加進 `10-postgres.yaml`＝30s 自動回收孤兒鎖 → 自我修復）。詳見 `docs/multi-node-k3s-ha-demo.md` 步驟 4「已知陷阱」。
+    - **自我修復實測（timeout=30s 版）**：晚殺 agent2（3 dispatcher pod）於 rem=36920 → 存活 pod 收到剩 **60 列卡住**（3×batch20，孤兒 FOR UPDATE）→ 平台維持 ~23s → 孤兒交易 idle 滿 30s 被自動中止、釋鎖 → 存活 pod 接手 → 0，**全程零手動 terminate**，200000/200000。
 - [ ] 真送模式小量驗:429 時尊重 Retry-After、不失敗、不重複送。（已驗單筆真送＝dispatcher 完整跑；多 pod 共 token 的 429 密度未壓測。）
 
 ## 非範圍 / 誠實取捨（YAGNI）
