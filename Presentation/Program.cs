@@ -161,6 +161,10 @@ public class Program
                  // 例外：bot 的 AvailabilityFreshnessNudgeJob 也 enqueue（新鮮度提醒 DM）——它是單一實例背景 job，同交易 enqueue+標記。
                  // dispatcher 自開專屬連線（不共用 singleton IDbConnection，免與 Discord 事件/計時器互踩）。
                  services.AddSingleton<IOutboxHandler, TeamNotificationOutboxHandler>();  // leader-led 組隊通知 → Discord DM
+                 // 多 node HA demo dry-run：Dispatch:DryRun=true 才註冊——只認 "HaDemo" 種子列、claim 後記 log 不真送
+                 // （見 DryRunOutboxHandler / plans/2026-09-04-…§3）。prod 不設此旗標 → 完全不載入。
+                 if (string.Equals(config["Dispatch:DryRun"], "true", StringComparison.OrdinalIgnoreCase))
+                     services.AddSingleton<IOutboxHandler, DryRunOutboxHandler>();
                  // 三個背景 poller 的相依（IDbConnectionFactory / IOutboxHandler / ILogger）皆可由 DI 解析
                  // → 直接型別註冊，免手動 new。各自仍 factory.Create() 自開專屬連線（不共用 scoped IDbConnection）。
                  // 派發器：dispatcher / All 角色跑（可多 pod，SKIP LOCKED 各搶各的列、免 Leader Election）。
