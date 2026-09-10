@@ -18,7 +18,14 @@ public class DbContext
     // 部署時 DI 注入真 logger,connection_acquire_ms 進 Serilog → 坐實「client 延遲多出的秒數在等連線、非等鎖」。
     private readonly ILogger<DbContext>? _logger;
 
-    public DbContext(IDbConnection connection, ILogger<DbContext>? logger = null)
+    // 測試以 Moq new Mock<DbContext>(conn) 建 proxy → 需要真正的單參數 ctor
+    //（C# optional 參數不算多載、只會有一個 2-參 ctor，Castle proxy 找不到 1-參 ctor 會炸）。
+    public DbContext(IDbConnection connection) : this(connection, null)
+    {
+    }
+
+    // DI（AddScoped<DbContext>）挑「最貪婪且可解析」的 ctor → 此 2-參版；ILogger<DbContext> 由 logging 註冊提供。
+    public DbContext(IDbConnection connection, ILogger<DbContext>? logger)
     {
         Connection = connection;
         _logger = logger;
