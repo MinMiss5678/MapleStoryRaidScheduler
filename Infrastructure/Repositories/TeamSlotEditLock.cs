@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Domain.Exceptions;
 using Domain.Repositories;
 using Infrastructure.Dapper;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace Infrastructure.Repositories;
@@ -21,10 +23,15 @@ public class TeamSlotEditLock : ITeamSlotEditLock
     // 用字串內插組 SQL 沒有注入風險（SET 系語句本身也不支援 bind 參數）。
     private readonly string _lockTimeout;
 
-    public TeamSlotEditLock(DbContext dbContext, string lockTimeout = "5s")
+    // 壓測用:量「真正等鎖時間」(pg_advisory_xact_lock 從發出到取得)。optional logger → 不動 DI/測試建構子;
+    // 部署時 DI 會注入真 logger,advisory_lock_wait_ms 進 Serilog(Console + Seq),再讀分布定 lock_timeout。
+    private readonly ILogger<TeamSlotEditLock>? _logger;
+
+    public TeamSlotEditLock(DbContext dbContext, string lockTimeout = "5s", ILogger<TeamSlotEditLock>? logger = null)
     {
         _dbContext = dbContext;
         _lockTimeout = lockTimeout;
+        _logger = logger;
     }
 
     public async Task AcquireTeamSlotEditLockAsync(int teamSlotId)
@@ -42,9 +49,14 @@ public class TeamSlotEditLock : ITeamSlotEditLock
 
         try
         {
+            var sw = Stopwatch.StartNew();
             await _dbContext.ExecuteAsync(
                 "SELECT pg_advisory_xact_lock(@classId, @objId)",
                 new { classId, objId });
+            sw.Stop();
+            // 這段＝「發出取鎖 → 拿到鎖」的真實等鎖時間（不含進交易前的連線池/Kestrel 排隊）→ 拿來定 lock_timeout。
+            _logger?.LogInformation("advisory_lock_wait_ms={Ms} classId={ClassId} objId={ObjId}",
+                sw.ElapsedMilliseconds, classId, objId);
         }
         catch (PostgresException ex) when (ex.SqlState == LockNotAvailableSqlState)
         {
