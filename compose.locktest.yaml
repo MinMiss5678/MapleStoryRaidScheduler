@@ -1,0 +1,60 @@
+# 壓測 locktest2：量 connection_acquire_ms（取連線 / pool rent）+ advisory_lock_wait_ms（真等鎖）。
+# PG max_connections=200 > Npgsql pool cap 100 → 隔離 pool-rent（PG 不先拒連線污染量測）。
+# 起法：docker compose -f compose.locktest.yaml up -d ；日誌用 docker logs 抓 metric 行解析百分位。
+services:
+  db:
+    image: postgres:18
+    command: ["postgres", "-c", "max_connections=200"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: locktest
+      POSTGRES_DB: presentationdb
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d presentationdb"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: migrate/migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./db/migrations:/migrations
+    command:
+      - "-path=/migrations"
+      - "-database"
+      - "postgres://postgres:locktest@db:5432/presentationdb?sslmode=disable"
+      - "up"
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    image: minqq/presentation.webapi:locktest2
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development           # test-login 端點只在非 Production 有效
+      ASPNETCORE_URLS: http://+:5230
+      # Maximum Pool Size=100（Npgsql 預設）→ VUS 500 時 ~400 請求在此等連線 = 要量的 pool-rent
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=presentationdb;Username=postgres;Password=locktest;Maximum Pool Size=100"
+      Redis__Configuration: "redis:6379"
+      Jwt__SecretKey: "locktest-secret-key-not-for-production-0123456789"
+      Jwt__Issuer: "locktest"
+      Jwt__Audience: "locktest"
+      Logging__LogLevel__Default: "Warning"          # 砍框架噪音
+      Logging__LogLevel__Infrastructure: "Information" # 只留我的 metric（DbContext / TeamSlotEditLock）
+    ports:
+      - "5230:5230"

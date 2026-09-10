@@ -23,7 +23,7 @@ public class TeamSlotEditLock : ITeamSlotEditLock
     // 用字串內插組 SQL 沒有注入風險（SET 系語句本身也不支援 bind 參數）。
     private readonly string _lockTimeout;
 
-    // 壓測用:量「真正等鎖時間」(pg_advisory_xact_lock 從發出到取得)。optional logger → 不動 DI/測試建構子;
+    // 壓測用:量「等鎖時間」(pg_advisory_xact_lock 從發出到取得)。optional logger → 不動 DI/測試建構子;
     // 部署時 DI 會注入真 logger,advisory_lock_wait_ms 進 Serilog(Console + Seq),再讀分布定 lock_timeout。
     private readonly ILogger<TeamSlotEditLock>? _logger;
 
