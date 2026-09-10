@@ -448,7 +448,7 @@ sequenceDiagram
     B->>DB: 重讀 CountConfirmed（已達容量）→ 拋「隊伍已滿」
 ```
 
-`ConfirmMemberAsync` 取 `(classId=1002, teamSlotId)` 的交易級 `pg_advisory_xact_lock`（`IRegistrationLock.AcquireTeamSlotEditLockAsync`），在鎖內**重讀** `CountConfirmedAsync` 與 `Boss.RequireMembers` 比對容量，再用 `xmin`（`TeamSlotCharacter.Version`）樂觀鎖改狀態（狀態已被別人動過 → 0 rows → 「請重新整理」）。同隊定案序列化、防超編；不同隊的鎖互不阻塞。額滿時順帶 `RevokePendingInvitesAsync` 自動撤銷其餘待接受邀請（仍在同一把鎖內，不與「同時另一人接受」競態）。
+`ConfirmMemberAsync` 取 `(classId=1002, teamSlotId)` 的交易級 `pg_advisory_xact_lock`（`ITeamSlotEditLock.AcquireTeamSlotEditLockAsync`），在鎖內**重讀** `CountConfirmedAsync` 與 `Boss.RequireMembers` 比對容量，再用 `xmin`（`TeamSlotCharacter.Version`）樂觀鎖改狀態（狀態已被別人動過 → 0 rows → 「請重新整理」）。同隊定案序列化、防超編；不同隊的鎖互不阻塞。額滿時順帶 `RevokePendingInvitesAsync` 自動撤銷其餘待接受邀請（仍在同一把鎖內，不與「同時另一人接受」競態）。
 
 ### 職業配額：二分匹配（composition-quota）
 
@@ -472,7 +472,7 @@ CREATE UNIQUE INDEX uq_tsc_confirmed_overlap
 
 ### lock_timeout 安全邊際
 
-`RegistrationLock` 取鎖前 `SET LOCAL lock_timeout`（預設 5 秒），區分「正常排隊等一下」跟「持鎖方卡死」：逾時拋 `AdvisoryLockTimeoutException`，`ConfirmMemberAsync` 接住轉「隊伍忙碌中，請稍後重試」。
+`TeamSlotEditLock` 取鎖前 `SET LOCAL lock_timeout`（預設 5 秒），區分「正常排隊等一下」跟「持鎖方卡死」：逾時拋 `AdvisoryLockTimeoutException`，`ConfirmMemberAsync` 接住轉「隊伍忙碌中，請稍後重試」。
 
 > 選型：本規模用 advisory lock + xmin + 唯一索引即可，不需 SERIALIZABLE 重試迴圈或分散式鎖服務。
 

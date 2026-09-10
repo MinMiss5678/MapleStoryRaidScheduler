@@ -59,13 +59,13 @@
 | # | 規則 | 來源 |
 |---|---|---|
 | CF1 | `AcceptInvite`〔玩家〕與 `Approve`〔隊長〕共用 `ConfirmMemberAsync` 定案 | `TeamLeaderService.ConfirmMemberAsync` |
-| CF2 | **同隊超編**：定案前對 `(classId=1002, teamSlotId)` 取交易級 advisory lock 序列化，鎖內**重讀** `CountConfirmed` vs `Boss.RequireMembers`，達容量 → 拋「隊伍已滿」；再以 `xmin`（`Version`）樂觀鎖改狀態 | `RegistrationLock.AcquireTeamSlotEditLockAsync` / `ConfirmMemberAsync` |
+| CF2 | **同隊超編**：定案前對 `(classId=1002, teamSlotId)` 取交易級 advisory lock 序列化，鎖內**重讀** `CountConfirmed` vs `Boss.RequireMembers`，達容量 → 拋「隊伍已滿」；再以 `xmin`（`Version`）樂觀鎖改狀態 | `TeamSlotEditLock.AcquireTeamSlotEditLockAsync` / `ConfirmMemberAsync` |
 | CF3 | **跨隊分身**：同玩家同 `SlotDateTime` 的 `Confirmed` 唯一（`uq_tsc_confirmed_overlap`）→ 第二筆 23505 → 409（per-team 鎖管不到跨隊，這是唯一原子擋） | migration `000011` |
 | CF4 | 定案使隊伍額滿 → 自動撤銷其餘待接受邀請（`RevokePendingInvitesAsync`，仍在同一把鎖內）+ 各發一則通知 | `ConfirmMemberAsync` |
 | CF4a | **職業配額**（composition-quota）：定案除容量(CF2)外，用**二分匹配**（`CompositionQuota.IsFeasible`：已確認職業 + 此人職業能否對上「需求列名額 + 不限名額」）判斷此職業是否還有位；配不上 → 擋「此職業名額已滿」。支援 OR 群組／職業重疊／容量溢位一體處理 | `TeamLeaderService.ConfirmMemberAsync`；`Domain/Helpers/CompositionQuota.cs` |
 | CF4b | **per-job 自動撤邀**：定案後隊伍**未額滿**但某些職業配額被填滿（`IsFeasible(confirmed+該職業)` 失敗）→ **只撤該職業**的待接受邀請（`RevokePendingInvitesByJobsAsync`），保留其他職業的邀請（不誤殺 Pull 超額搶位） | `ConfirmMemberAsync` / `GetPendingInviteJobsAsync` |
 | CF5 | 入隊後清掉該玩家的 `LfgIntent`（已找到隊、不再列為即時候選）；排程 accept 無意圖 → no-op | `ConfirmMemberAsync` |
-| CF6 | `lock_timeout`（預設 5 秒）逾時拋 `AdvisoryLockTimeoutException` → 轉「隊伍忙碌中，請稍後重試」 | `RegistrationLock` |
+| CF6 | `lock_timeout`（預設 5 秒）逾時拋 `AdvisoryLockTimeoutException` → 轉「隊伍忙碌中，請稍後重試」 | `TeamSlotEditLock` |
 
 ## 六、通知（Notification）
 
