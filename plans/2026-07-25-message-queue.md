@@ -28,12 +28,27 @@
 
 ### Phase 2（選配）：更多 async 工作流上 MQ
 - 例如把 Discord 通知 / 重排程從 in-process background job 改成 MQ consumer（獨立擴、重試、DLQ）。
-- 另一角度：報名的 `AutoAssignAsync` 目前同步在請求內跑 + advisory lock 防併發；改成「報名 → enqueue assign 工作 → 單一 consumer 序列處理」可用**佇列天然序列化**取代 advisory lock（但改 UX 語意成 async，需另評估）。
+- 另一角度（併發序列化）：現行 `ConfirmMemberAsync`（入隊定案，classId 1002）同步在請求內跑 + advisory lock 防超編；理論上可改「enqueue → 單一 per-team consumer 序列處理」用**佇列天然序列化**取代 advisory lock。但**吞吐天花板不變、且改成 async UX** → 詳見下節「MQ 對入隊定案的角色」。（註：舊 `AutoAssignAsync` 自動排團引擎已於 period-less 退役，此處改指現行熱路徑。）
 
 ### 非範圍（YAGNI）
 - 不引入 event sourcing / saga orchestration。
 - 不做多 broker 抽象層（直接用選定 broker 的 client；避免過早抽象）。
 - runtime 不碰 Dapper。
+
+## MQ 對「入隊定案 `ConfirmMemberAsync`」的角色 — 連線壓力 vs 吞吐（2026-09-11 壓測後補）
+
+> 承 `plans/2026-09-01-load-testing-postrefactor.md`。這節釐清「把 confirm 改走 MQ」到底解什麼、不解什麼——結論仍 YAGNI，但用實測把理由釘死。
+
+- **現況**：confirm 同步在請求內跑：取連線 → advisory lock（classId 1002 / teamSlotId）→ 重讀 count vs 容量 → xmin flip → commit。**等待期間連線一直被佔著**。
+- **壓測實測（2 台 EC2，VUS 500 同隊）**：
+  - 等鎖 p99 持平 **~0.7s**（鎖不是瓶頸、5s `lock_timeout` ~6.5× 餘裕、0% 誤觸發）。
+  - client 延遲大宗在**取得DB連線**，但**不是 pool 槽位不足**：pool 100→600 取得DB連線 p99 幾乎沒降（2502→2261ms）、CPU 峰值仍 23% idle → 主因是「爆量現開連線的建立成本」。
+  - **根本天花板是「序列化吞吐」**：pool 調大只是把等待從連線搬到鎖（等鎖 0.7s→3.8s、client 反而更慢）。
+- **MQ 能解 / 不能解**：
+  - ✅ **能**：confirm 改「enqueue → 秒回 → 單一（per-team）consumer 序列處理」→ **請求秒回、連線立刻釋放** → 這是**唯一能在等待期間放掉連線的做法**（換鎖形式如原子條件寫，等待時仍佔著連線）；附帶削峰、背壓、重試 / DLQ。
+  - ❌ **不能**：**吞吐天花板不變**（consumer 仍序列化，佇列天然序列化 = 換載體、不是變快）；且把「按接受 → 當下知道進隊 / 隊滿」變**非同步** → 賠即時 UX（要補通知 / 輪詢 + 「意圖 vs 已確認」狀態機）。
+- **連線壓力的第一手不是 MQ**：要緩解連線佔用 / `too many clients`，先動**連線層**——調 `max_connections` 留 headroom / 釘 pool 上限 / PgBouncer 收斂（backend + bot + dispatcher 多 pool 共用同一 PG 額度）。MQ 是「請求處理模型 sync→async」，降連線佔用只是副作用。
+- **結論（YAGNI）**：真實幾十人、單團 ~6 位 → 序列化與連線壓力都碰不到；那個「爆」是壓測灌 500 人同團造的假象。**現況 advisory lock 最簡單好懂**；MQ 對 confirm 是「要 async / 削峰 / 獨立擴 consumer」時才上，不是現在的 bug。
 
 ## 關鍵決策（動手前拍板）
 
