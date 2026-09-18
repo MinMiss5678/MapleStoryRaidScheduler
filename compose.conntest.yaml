@@ -1,0 +1,79 @@
+# 連線競爭測試：backend pool + bot pollers 共用同一個 PG max_connections。
+# 刻意把 PG max_connections 設低(30)、backend pool 25、bot(Dispatcher 角色)~3 poller 連線
+# → 加壓讓 backend 撐滿 pool 後,總連線數逼近/超過 30 → 新連線(psql/bot 重連)被 `too many clients` 拒。
+# Application Name 標記 → pg_stat_activity 分得出 backend vs bot。
+services:
+  db:
+    image: postgres:18
+    command: ["postgres", "-c", "max_connections=30"]   # 低額度,凸顯競爭
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: locktest
+      POSTGRES_DB: presentationdb
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d presentationdb"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: migrate/migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./db/migrations:/migrations
+    command:
+      - "-path=/migrations"
+      - "-database"
+      - "postgres://postgres:locktest@db:5432/presentationdb?sslmode=disable"
+      - "up"
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    image: minqq/presentation.webapi:locktest2
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5230
+      # backend 自己的 pool（想吃到 25 條）；Application Name=backend 供 pg_stat_activity 辨識
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=presentationdb;Username=postgres;Password=locktest;Maximum Pool Size=25;Application Name=backend"
+      Redis__Configuration: "redis:6379"
+      Jwt__SecretKey: "conntest-secret-key-not-for-production-0123456789"
+      Jwt__Issuer: "conntest"
+      Jwt__Audience: "conntest"
+      Logging__LogLevel__Default: "Warning"
+    ports:
+      - "5230:5230"
+
+  bot:
+    image: minqq/presentation:conntest
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      Dispatch__Role: "Dispatcher"          # 只跑 OutboxDispatcher + 背景 poller、DisableGateway、不連 Discord gateway
+      Dispatch__DryRun: "true"              # 即使有 outbox 列也不真送 DM
+      Discord__BotToken: "dummy-token-gateway-disabled-not-used"  # gateway 關了 → 不會真用到,只滿足非空檢查
+      Discord__GuildId: "0"
+      # bot 自己的 pool（另一個程序 = 另一組連線）；Application Name=bot 供辨識
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=presentationdb;Username=postgres;Password=locktest;Application Name=bot"
+      Redis__Configuration: "redis:6379"
+      Seq__ServerUrl: ""
+      App__AppUrl: "http://localhost"
