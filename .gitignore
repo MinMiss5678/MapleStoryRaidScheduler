@@ -3,6 +3,8 @@
 *bin/
 appsettings.json
 .junie
+.aiignore
+.claude/
 TestResults/
 Test/TestResults*/
 secrets/
