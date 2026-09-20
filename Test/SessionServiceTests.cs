@@ -89,6 +89,7 @@ public class SessionServiceTests
     public async Task GetAsync_CachedSession_ReturnsCachedResult()
     {
         var session = ValidSession(789UL);
+        session.SessionId = "sid-cache";
         _sessionQueryMock.Setup(q => q.GetAsync("sid-cache")).ReturnsAsync(session);
 
         var result1 = await _sessionService.GetAsync("sid-cache", "789"); // DB
