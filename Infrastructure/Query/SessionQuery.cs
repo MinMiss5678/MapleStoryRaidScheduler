@@ -20,6 +20,7 @@ public class SessionQuery : ISessionQuery
         var sql = new QueryBuilder();
         sql.Select<SessionDbModel>(x => new
         {
+            x.SessionId,
             x.DiscordId,
             x.SessionExpiry
         })
