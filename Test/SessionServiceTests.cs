@@ -100,6 +100,25 @@ public class SessionServiceTests
         _sessionQueryMock.Verify(q => q.GetAsync("sid-cache"), Times.Once); // 命中快取不再查 DB
     }
 
+    // ★ 攻擊測試：快取以 discordId 為 key，命中時「不比對 sessionId」= session 冒用漏洞。
+    // 攻擊情境：知道某人的 discordId、其 session 又在快取熱窗口內 → 帶「任意/偽造的 sessionId」也能通過。
+    // 此測試證明修正（cached.SessionId != sessionId → null）真的擋住攻擊；移掉該比對這條會變紅。
+    [Fact]
+    public async Task GetAsync_快取命中_sessionId不符_回Null_擋session冒用()
+    {
+        // Arrange：先用「正確 sessionId」讓快取熱起來（快取以 discordId=789 為 key）
+        var session = ValidSession(789UL);
+        session.SessionId = "sid-real";
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-real")).ReturnsAsync(session);
+        Assert.NotNull(await _sessionService.GetAsync("sid-real", "789")); // 走 DB、寫入快取
+
+        // Act：攻擊者知道 discordId=789，帶「偽造的 sessionId」打過來（此時快取是熱的）
+        var forged = await _sessionService.GetAsync("sid-forged", "789");
+
+        // Assert：必須被擋（回 null）——不能因為 discordId 的快取命中就放行
+        Assert.Null(forged);
+    }
+
     [Fact]
     public async Task GetAsync_過SessionExpiry_回Null_且不刷新Discord()
     {
