@@ -13,3 +13,16 @@ indent_size = 4
 
 [*.{json,yml,yaml,csproj,props,targets}]
 indent_size = 2
+
+# ReSharper 品質門檻規則（CI inspectcode job 擋這些，見 .github/scripts/inspectcode-gate.py）。
+# 設成 warning 只為了讓 Rider 顯示的等級與 CI 一致；CI 以規則清單判斷，不看這裡的 severity。
+[*.cs]
+resharper_unused_type_global_highlighting = warning
+resharper_unused_member_local_highlighting = warning
+resharper_unused_parameter_local_highlighting = warning
+resharper_unused_variable_highlighting = warning
+resharper_redundant_assignment_highlighting = warning
+resharper_variable_hides_outer_variable_highlighting = warning
+resharper_possible_multiple_enumeration_highlighting = warning
+resharper_check_namespace_highlighting = warning
+resharper_use_await_using_highlighting = warning

@@ -30,8 +30,8 @@ public class BossServiceTests
         var result = await _bossService.GetAllAsync();
 
         // Assert
-        Assert.Single(result);
-        Assert.Equal("Zakum", result.First().Name);
+        var boss = Assert.Single(result);
+        Assert.Equal("Zakum", boss.Name);
     }
 
     [Fact]
