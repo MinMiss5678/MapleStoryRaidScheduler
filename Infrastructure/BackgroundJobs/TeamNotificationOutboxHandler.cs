@@ -2,6 +2,7 @@ using System.Text.Json;
 using Application.Events;
 using Application.Interface;
 using Dapper;
+using Domain.Entities;
 using DSharpPlus.Exceptions;
 using Infrastructure.Discord;
 using Microsoft.Extensions.Logging;
@@ -51,6 +52,9 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
             // None（含舊事件反序列化）→ 純文字。
             if (e.Action != TeamNotificationAction.None && e.ActionId is { } actionId)
             {
+                // 延遲送達時可能已失效（邀請已撤／已滿、申請已處理、轉讓已取消）→ 不送，免留下按不了的死按鈕
+                await EnsureStillPendingAsync(e.Action, actionId, e.TargetDiscordId);
+
                 var buttons = BuildButtons(e.Action, actionId);
                 var messageId = e.Embed is { } embedData
                     ? await _discordService.SendDirectMessageAsync(e.TargetDiscordId, BuildActionEmbed(e.Action, embedData), buttons)
@@ -77,8 +81,32 @@ public class TeamNotificationOutboxHandler : IOutboxHandler
             // 已退公會（bot 只能私訊同公會者）→ 永久失敗，同樣吞掉不重試。
             _logger.LogInformation("玩家 {Id} 不在公會，通知略過", e.TargetDiscordId);
         }
-        // 其餘例外（網路、429 限流等暫時失敗）→ 讓它 throw → outbox 重試（暫時錯才該重試）。
+        // 其餘例外 → 讓它 throw → outbox 依錯誤分類退避重試（OutboxRetryPolicy）。
+        // 429 先由 DSharpPlus 內部依 Retry-After 重試，用完才丟 RateLimitException 到這裡。
     }
+
+    // 有按鈕的通知送出前確認動作仍待處理；查無列或狀態已變 → 丟 OutboxDeliverySkippedException（dispatcher 結案、不警示）。
+    private async Task EnsureStillPendingAsync(TeamNotificationAction action, int actionId, ulong target)
+    {
+        await using var conn = _connectionFactory.Create();
+        await conn.OpenAsync();
+        var stillPending = action switch
+        {
+            TeamNotificationAction.InviteResponse => await MemberStatusIsAsync(conn, actionId, TeamSlotMemberStatus.Invited),
+            TeamNotificationAction.ApplicationReview => await MemberStatusIsAsync(conn, actionId, TeamSlotMemberStatus.Applied),
+            TeamNotificationAction.TransferResponse => await conn.ExecuteScalarAsync<bool>(
+                """SELECT EXISTS(SELECT 1 FROM "TeamSlot" WHERE "Id" = @id AND "PendingLeaderDiscordId" = @target)""",
+                new { id = actionId, target = (long)target }),
+            _ => true
+        };
+        if (!stillPending)
+            throw new OutboxDeliverySkippedException($"{action} {actionId} no longer pending");
+    }
+
+    private static Task<bool> MemberStatusIsAsync(System.Data.Common.DbConnection conn, int memberId, string status) =>
+        conn.ExecuteScalarAsync<bool>(
+            """SELECT EXISTS(SELECT 1 FROM "TeamSlotCharacter" WHERE "Id" = @id AND "Status" = @status)""",
+            new { id = memberId, status });
 
     // 回寫邀請 DM 的 message id 到成員列（供撤邀時編輯 DM）。自開專屬連線（factory，singleton-safe，同 poller 慣例）。
     // best-effort：寫失敗只記 log、不 rethrow——否則整筆 outbox 會重送、重發 DM（重送比丟失 id 糟）。
