@@ -6,7 +6,7 @@ using DSharpPlus.EventArgs;
 using Infrastructure.Discord;
 using Npgsql;
 
-namespace Presentation.Infrastructure.Discord.Handlers;
+namespace Infrastructure.Discord.Handlers;
 
 /// <summary>
 /// DM 內建動作按鈕的互動處理（discord-inline-actions）：邀請（接受/拒絕）、申請審核（核准/拒絕）、

@@ -29,7 +29,7 @@ public class RedisSessionCacheIntegrationTests : IClassFixture<RedisFixture>
     [Fact]
     public async Task Set後Get拿得回同一份()
     {
-        using var redis = _fx.Connect();
+        await using var redis = _fx.Connect();
         var cache = Cache(redis);
         var discordId = Guid.NewGuid().ToString();
         var session = NewSession(123);
@@ -45,8 +45,8 @@ public class RedisSessionCacheIntegrationTests : IClassFixture<RedisFixture>
     [Fact]
     public async Task 撤銷跨連線_模擬跨pod_立即生效()
     {
-        using var redisA = _fx.Connect();
-        using var redisB = _fx.Connect();
+        await using var redisA = _fx.Connect();
+        await using var redisB = _fx.Connect();
         var cacheA = Cache(redisA);
         var cacheB = Cache(redisB);
         var discordId = Guid.NewGuid().ToString();

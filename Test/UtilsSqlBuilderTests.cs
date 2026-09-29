@@ -82,7 +82,7 @@ public class UtilsSqlBuilderTests
           .Select<TestCharacter>(x => new { x.Id })
           .Where<TestCharacter>(x => x.Id == 1);
 
-        var (sql, param) = qb.Build();
+        var (sql, _) = qb.Build();
         Assert.Contains("WHERE", sql);
     }
 
@@ -212,7 +212,7 @@ public class UtilsSqlBuilderTests
     [Fact]
     public void InsertBuilder_BasicInsert_BuildsCorrectSql()
     {
-        var (sql, param) = new InsertBuilder<TestCharacter>()
+        var (sql, _) = new InsertBuilder<TestCharacter>()
             .Set(x => x.Name, "Hero")
             .Set(x => x.Age, 20)
             .Build();

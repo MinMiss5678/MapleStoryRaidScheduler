@@ -22,7 +22,7 @@ public class IdempotencyRedisIntegrationTests : IClassFixture<RedisFixture>
     [Fact]
     public async Task 第一次_true_同key重複_false()
     {
-        using var redis = _fx.Connect();
+        await using var redis = _fx.Connect();
         var store = StoreOn(redis);
         var key = Guid.NewGuid().ToString();
 
@@ -33,7 +33,7 @@ public class IdempotencyRedisIntegrationTests : IClassFixture<RedisFixture>
     [Fact]
     public async Task 不同key_都_true()
     {
-        using var redis = _fx.Connect();
+        await using var redis = _fx.Connect();
         var store = StoreOn(redis);
 
         Assert.True(await store.TryMarkAsync(Guid.NewGuid().ToString(), Ttl));
@@ -44,8 +44,8 @@ public class IdempotencyRedisIntegrationTests : IClassFixture<RedisFixture>
     public async Task 跨連線_模擬跨pod_同key第二個_false()
     {
         // 兩條獨立連線（不同 multiplexer）= 兩個 pod，共用同一 Redis
-        using var redisA = _fx.Connect();
-        using var redisB = _fx.Connect();
+        await using var redisA = _fx.Connect();
+        await using var redisB = _fx.Connect();
         var key = Guid.NewGuid().ToString();
 
         Assert.True(await StoreOn(redisA).TryMarkAsync(key, Ttl));   // pod A 第一次 → 放行
