@@ -4,18 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Language
 
-使用**繁體中文**進行溝通與回覆，並用**台灣慣用技術詞、避免大陸用語**（溝通、程式碼註解、commit、計畫文件一律適用；寫前自查）。常見對照：
-
-| 大陸用語 | 台灣用語 |
-|---|---|
-| 落地（實現/導入）、全棧 | 實作／導入／實現、全端 |
-| 數據、信息、網絡、用戶 | 資料、資訊、網路、使用者 |
-| 服務器、內存、硬盤、緩存、隊列 | 伺服器、記憶體、硬碟、快取、佇列 |
-| 事務（DB）、回滾、默認/缺省、部署 | 交易、回溯／復原、預設、部署 |
-| 智能、反饋、文件夾、視頻、屏幕、質量 | 智慧、回饋、資料夾、影片、螢幕、品質 |
-| 對象（OOP）、函數、數組、指針、調用 | 物件、函式、陣列、指標、呼叫 |
-
-（「對象」僅 OOP 情境改「物件」；作「目標/對象」解時保留。「映射」CS 情境可保留或用「對應」。）
+繁體中文 + 台灣慣用技術詞、避免大陸用語的規則與對照表已移至全域 `~/.claude/CLAUDE.md`，所有專案自動套用。
 
 ## Commands
 
@@ -56,9 +45,7 @@ Services: `database` (PostgreSQL 18, port 5432), `backend` (.NET 9, port 5230), 
 
 ### 本機 WSL Docker（Windows）踩雷要點
 
-本機 Docker 跑在 WSL2 Ubuntu（原生 dockerd、非 Docker Desktop）。多步驟本機作業（E2E / demo / 壓測）**一定要知道的一件事**：
-
-- **別讓 WSL 閒置自動關閉停掉容器**：每個 `wsl … bash -lc '…'` 是獨立呼叫，呼叫「之間」若沒常駐程序撐著，WSL2 閒置就關整個 distro → 容器被停（症狀：db/容器 **exit 0**、你上一條指令結束後約 1–2 分死，害 backend/bot 連不到 DB）。**要活一段時間的本機 stack 用「前景 `docker compose up`（不加 `-d`）當背景常駐」撐住 WSL，別用 `up -d`；平常也別手動 `wsl --shutdown`（`autoMemoryReclaim` 會自己收記憶體，shutdown 反而觸發冷啟網路不穩）。**
+WSL2 原生 Docker 的共通踩雷（Git Bash 要包 `wsl … bash -lc`、WSL 閒置自動關閉會停容器、前景 `up` 撐住、別手動 `wsl --shutdown`）已移至全域 `~/.claude/CLAUDE.md`。本專案特有：多步驟本機作業（E2E / demo / 壓測）尤其要注意，容器被停會害 backend/bot 連不到 DB。
 
 ## Architecture
 
