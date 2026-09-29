@@ -166,7 +166,7 @@ public class TeamLeaderServiceTests
 
         _teamSlotRepositoryMock.Verify(r => r.DeleteAsync(10), Times.Once);
         // 只通知非隊長的成員（排除按解散的隊長本人）→ 2 則，不是 3
-        _outboxMock.Verify(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>()), Times.Exactly(2));
+        _outboxMock.Verify(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>(), It.IsAny<DateTimeOffset?>()), Times.Exactly(2));
     }
 
     [Fact]
@@ -174,8 +174,8 @@ public class TeamLeaderServiceTests
     {
         // 建構子注入 AppOptions.AppUrl = "https://test.local"（見 ctor）→ NotifyAsync 應把它接在訊息末尾。
         object? captured = null;
-        _outboxMock.Setup(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>()))
-            .Callback<string, object>((_, evt) => captured = evt);
+        _outboxMock.Setup(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>(), It.IsAny<DateTimeOffset?>()))
+            .Callback<string, object, DateTimeOffset?>((_, evt, _) => captured = evt);
 
         _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
             .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 999, SlotDateTime = DateTimeOffset.UtcNow });
@@ -962,4 +962,66 @@ public class TeamLeaderServiceTests
     [Fact] public async Task Bump_Reject_Leader() { await RunSwallow(() => _service.RejectAsync(5, 555UL)); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(555UL), Times.Once); }
     [Fact] public async Task Bump_LeaveTeam_Member() { await RunSwallow(() => _service.LeaveTeamAsync(10, 666UL)); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(666UL), Times.Once); }
     [Fact] public async Task Bump_RespondLeaderTransfer_Responder() { await RunSwallow(() => _service.RespondLeaderTransferAsync(10, 888UL, "accept")); _playerRepositoryMock.Verify(p => p.BumpLastAffirmedAsync(888UL), Times.Once); }
+
+    // ── 通知有效期限（plans/2026-09-22-outbox-retry-backoff.md D2–D4）──────────────
+    private void SetupInvite(TeamSlot team)
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10)).ReturnsAsync(team);
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
+        _characterQueryMock.Setup(q => q.GetByIdAsync("cX"))
+            .ReturnsAsync(new Character { Id = "cX", DiscordId = 202, Name = "C", Job = "箭神", AttackPower = 900 });
+        _memberRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<TeamSlotCharacter>())).ReturnsAsync(55);
+    }
+
+    [Fact]
+    public async Task InviteMemberAsync_排程隊_通知期限為隊伍時間()
+    {
+        var slot = DateTimeOffset.UtcNow.AddDays(1);
+        SetupInvite(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 111, SlotDateTime = slot, Kind = TeamSlotKind.Scheduled });
+        DateTimeOffset? captured = DateTimeOffset.MinValue;
+        _outboxMock.Setup(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>(), It.IsAny<DateTimeOffset?>()))
+            .Callback<string, object, DateTimeOffset?>((_, _, d) => captured = d);
+
+        await _service.InviteMemberAsync(10, "cX", 111);
+
+        Assert.Equal(slot, captured);
+    }
+
+    [Fact]
+    public async Task InviteMemberAsync_即時隊_通知期限為ExpiresAt()
+    {
+        var expires = DateTimeOffset.UtcNow.AddHours(3);
+        SetupInvite(new TeamSlot
+        {
+            Id = 10,
+            BossId = 1,
+            LeaderDiscordId = 111,
+            SlotDateTime = DateTimeOffset.UtcNow,
+            Kind = TeamSlotKind.Instant,
+            ExpiresAt = expires
+        });
+        DateTimeOffset? captured = DateTimeOffset.MinValue;
+        _outboxMock.Setup(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>(), It.IsAny<DateTimeOffset?>()))
+            .Callback<string, object, DateTimeOffset?>((_, _, d) => captured = d);
+
+        await _service.InviteMemberAsync(10, "cX", 111);
+
+        Assert.Equal(expires, captured);
+    }
+
+    [Fact]
+    public async Task 純文字通知_解散_通知期限為null()
+    {
+        _teamSlotRepositoryMock.Setup(r => r.GetByIdAsync(10))
+            .ReturnsAsync(new TeamSlot { Id = 10, BossId = 1, LeaderDiscordId = 999, SlotDateTime = DateTimeOffset.UtcNow.AddDays(1) });
+        _bossRepositoryMock.Setup(b => b.GetByIdAsync(1)).ReturnsAsync(new Boss { Id = 1, Name = "王", RequireMembers = 6 });
+        _memberRepositoryMock.Setup(r => r.GetActiveMemberDiscordIdsAsync(10)).ReturnsAsync(new HashSet<ulong> { 101 });
+        DateTimeOffset? captured = DateTimeOffset.MinValue;
+        _outboxMock.Setup(o => o.EnqueueAsync(OutboxEventType.TeamNotification, It.IsAny<object>(), It.IsAny<DateTimeOffset?>()))
+            .Callback<string, object, DateTimeOffset?>((_, _, d) => captured = d);
+
+        await _service.DeleteTeamAsync(10, leaderDiscordId: 999);
+
+        Assert.Null(captured);
+    }
 }

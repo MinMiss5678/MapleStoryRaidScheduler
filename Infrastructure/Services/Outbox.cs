@@ -12,7 +12,7 @@ namespace Infrastructure.Services;
 public class Outbox : IOutbox
 {
     private const string InsertSql =
-        """INSERT INTO "OutboxMessage" ("Type", "Payload") VALUES (@Type, @Payload::jsonb)""";
+        """INSERT INTO "OutboxMessage" ("Type", "Payload", "DeliverBefore") VALUES (@Type, @Payload::jsonb, @DeliverBefore)""";
 
     private readonly DbContext _dbContext;
 
@@ -21,10 +21,10 @@ public class Outbox : IOutbox
         _dbContext = dbContext;
     }
 
-    public async Task EnqueueAsync(string type, object payload)
+    public async Task EnqueueAsync(string type, object payload, DateTimeOffset? deliverBefore = null)
     {
         var json = JsonSerializer.Serialize(payload);
         // 走 DbContext 的交易（ExecuteAsync 帶 Transaction）→ 與業務資料同一筆交易
-        await _dbContext.ExecuteAsync(InsertSql, new { Type = type, Payload = json });
+        await _dbContext.ExecuteAsync(InsertSql, new { Type = type, Payload = json, DeliverBefore = deliverBefore });
     }
 }
