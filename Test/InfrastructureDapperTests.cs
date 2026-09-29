@@ -1,39 +1,12 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.Data;
-using Domain.Attributes;
 using Infrastructure.Dapper;
 using Moq;
 using Xunit;
 
 namespace Test;
 
-// 測試用 entity (帶有 [Key])
-[Table("TestEntity")]
-public class DapperTestEntity
-{
-    [Key]
-    public int Id { get; set; }
-    public string Name { get; set; } = "";
-}
-
-// 測試用 entity (帶有 [ExplicitKey])
-[Table("ExplicitTestEntity")]
-public class ExplicitKeyTestEntity
-{
-    [ExplicitKey]
-    public string Id { get; set; } = "";
-    public string Name { get; set; } = "";
-}
-
 public class InfrastructureDapperTests
 {
-    private Mock<IDbConnection> CreateMockConnection()
-    {
-        var mockConn = new Mock<IDbConnection>();
-        return mockConn;
-    }
-
     // ========== TimeOnlyTypeHandler ==========
 
     [Theory]
