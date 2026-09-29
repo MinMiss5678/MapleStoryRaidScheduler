@@ -21,7 +21,7 @@ public class RedisRateLimiterIntegrationTests : IClassFixture<RedisFixture>
     [Fact]
     public async Task 視窗內達上限後被擋()
     {
-        using var redis = _fx.Connect();
+        await using var redis = _fx.Connect();
         var limiter = Limiter(redis, $"rl:{Guid.NewGuid()}", limit: 3);
 
         for (int i = 0; i < 3; i++)
@@ -32,8 +32,8 @@ public class RedisRateLimiterIntegrationTests : IClassFixture<RedisFixture>
     [Fact]
     public async Task 跨連線_模擬跨pod_共用同一計數()
     {
-        using var redisA = _fx.Connect();
-        using var redisB = _fx.Connect();
+        await using var redisA = _fx.Connect();
+        await using var redisB = _fx.Connect();
         var key = $"rl:{Guid.NewGuid()}";
         var a = Limiter(redisA, key, 2);
         var b = Limiter(redisB, key, 2);

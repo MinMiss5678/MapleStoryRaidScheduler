@@ -118,13 +118,13 @@ public class DapperRepository<T> : IRepository<T> where T : class
 
     public async Task<int> InsertAsync(T entity)
     {
-        var sql = GenerateInsertSql(entity);
+        var sql = GenerateInsertSql();
         return await _connection.ExecuteAsync(sql, entity, _transaction);
     }
 
     public async Task<int> UpdateAsync(T entity)
     {
-        var sql = GenerateUpdateSql(entity);
+        var sql = GenerateUpdateSql();
         return await _connection.ExecuteAsync(sql, entity, _transaction);
     }
 
@@ -136,18 +136,19 @@ public class DapperRepository<T> : IRepository<T> where T : class
     }
 
     // ====== 自動產生 SQL ======
-    private string GenerateInsertSql(T entity)
+    private string GenerateInsertSql()
     {
         var props = typeof(T).GetProperties()
-            .Where(p => _isExplicitKey || p.Name != _keyName);
+            .Where(p => _isExplicitKey || p.Name != _keyName)
+            .ToList();
         var columns = string.Join(",", props.Select(p => $"\"{p.Name}\""));
         var values = string.Join(",", props.Select(p => $"@{p.Name}"));
         return $"INSERT INTO \"{_tableName}\" ({columns}) VALUES ({values})";
     }
 
-    private string GenerateUpdateSql(T entity)
+    private string GenerateUpdateSql()
     {
-        var props = typeof(T).GetProperties().Where(p => p.Name != _keyName);
+        var props = typeof(T).GetProperties().Where(p => p.Name != _keyName).ToList();
         var setClause = string.Join(",", props.Select(p => $"\"{p.Name}\"=@{p.Name}"));
         return $"UPDATE \"{_tableName}\" SET {setClause} WHERE \"{_keyName}\"=@{_keyName}";
     }

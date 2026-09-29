@@ -13,7 +13,7 @@ using Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Presentation.Infrastructure.Discord.Handlers;
+using Infrastructure.Discord.Handlers;
 using Serilog;
 using StackExchange.Redis;
 

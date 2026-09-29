@@ -3,7 +3,7 @@ using DSharpPlus;
 using DSharpPlus.EventArgs;
 using Domain.Repositories;
 
-namespace Presentation.Infrastructure.Discord.Handlers;
+namespace Infrastructure.Discord.Handlers;
 
 public class MemberUpdatedHandler : IEventHandler<GuildMemberUpdatedEventArgs>
 {

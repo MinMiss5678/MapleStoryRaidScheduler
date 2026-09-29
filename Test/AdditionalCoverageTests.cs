@@ -60,9 +60,7 @@ public class AdditionalCoverageTests
         // 不支援的二元運算子 (例如 Add)
         var params_ = new DynamicParameters();
         var visitor = new SqlExpressionVisitor("a", params_);
-        // x.Id + 1 會是 Add 運算子，不在 switch 中
-        Expression<Func<TestCharacter, int>> rawExpr = x => x.Id + 1;
-        // 我們需要手動建立一個不支援的 BinaryExpression
+        // 手動建立不支援的 BinaryExpression：x.Id + 1 是 Add 運算子，不在 switch 中
         var param = Expression.Parameter(typeof(TestCharacter), "x");
         var left = Expression.Property(param, "Id");
         var right = Expression.Constant(1);

@@ -2,7 +2,7 @@ using Application.Interface;
 using DSharpPlus;
 using DSharpPlus.EventArgs;
 
-namespace Presentation.Infrastructure.Discord.Handlers;
+namespace Infrastructure.Discord.Handlers;
 
 public class MemberRemovedHandler : IEventHandler<GuildMemberRemovedEventArgs>
 {

@@ -2,7 +2,7 @@ using Application.Exceptions;
 using Application.Interface;
 using Infrastructure.Discord;
 using Moq;
-using Presentation.Infrastructure.Discord.Handlers;
+using Infrastructure.Discord.Handlers;
 using Xunit;
 
 namespace Test;

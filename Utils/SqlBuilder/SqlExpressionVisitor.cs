@@ -139,17 +139,10 @@ public class SqlExpressionVisitor : ExpressionVisitor
 
             if (isEnumerable || isStaticEnumerable)
             {
-                object? collection = null;
                 var collectionExpr = node.Object ?? node.Arguments[0];
-
-                if (collectionExpr is ConstantExpression constExpr)
-                {
-                    collection = constExpr.Value;
-                }
-                else
-                {
-                    collection = Expression.Lambda(collectionExpr).Compile().DynamicInvoke();
-                }
+                var collection = collectionExpr is ConstantExpression constExpr
+                    ? constExpr.Value
+                    : Expression.Lambda(collectionExpr).Compile().DynamicInvoke();
 
                 if (collection is not System.Collections.IEnumerable enumerable)
                     throw new NotSupportedException("Contains only supports IEnumerable");
