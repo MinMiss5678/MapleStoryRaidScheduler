@@ -17,3 +17,9 @@ loadtest-results*.log
 # Stryker.NET mutation testing output
 **/StrykerOutput/
 stryker-output*/
+
+# 個人 IDE 狀態（Rider 測試 session、略過檢查清單等），不進版控
+*.DotSettings.user
+
+# 本機專屬 override（WSL mirrored 模式 port 避讓），CI 不載入
+compose.e2e.local.yaml
