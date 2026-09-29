@@ -9,5 +9,6 @@ public interface IOutbox
 {
     /// <param name="type">事件類型，對應 <see cref="IOutboxHandler.Type"/>。</param>
     /// <param name="payload">事件內容，序列化成 JSON 存入（自描述、可稽核）。</param>
-    Task EnqueueAsync(string type, object payload);
+    /// <param name="deliverBefore">有效期限：過了就不送（dispatcher 標 expired）。null＝預設建立後 24h；一律不超過建立後 24h。</param>
+    Task EnqueueAsync(string type, object payload, DateTimeOffset? deliverBefore = null);
 }

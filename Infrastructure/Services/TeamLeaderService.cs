@@ -72,7 +72,7 @@ public class TeamLeaderService : ITeamLeaderService
     private async Task NotifyAsync(int bossId, DateTimeOffset slot, ulong target, string path,
         Func<string, string, string> buildMessage,
         TeamNotificationAction action = TeamNotificationAction.None, int? actionId = null,
-        TeamEmbedData? embed = null)
+        TeamEmbedData? embed = null, DateTimeOffset? deliverBefore = null)
     {
         if (target == 0) return;
         var boss = await _bossRepository.GetByIdAsync(bossId);
@@ -84,8 +84,13 @@ public class TeamLeaderService : ITeamLeaderService
         if (action == TeamNotificationAction.None && !string.IsNullOrWhiteSpace(_appUrl))
             message += $"\n{_appUrl}{path}";
         await _outbox.EnqueueAsync(OutboxEventType.TeamNotification,
-            new TeamNotificationEvent { TargetDiscordId = target, Message = message, Action = action, ActionId = actionId, Embed = embed });
+            new TeamNotificationEvent { TargetDiscordId = target, Message = message, Action = action, ActionId = actionId, Embed = embed },
+            deliverBefore);
     }
+
+    // 有按鈕通知的有效期限＝隊伍時間：隊伍時間過了，邀請/申請/轉讓就沒意義（見 plans/2026-09-22-outbox-retry-backoff.md）。
+    private static DateTimeOffset ActionDeadline(TeamSlot team) =>
+        team.Kind == TeamSlotKind.Instant && team.ExpiresAt is { } expiresAt ? expiresAt : team.SlotDateTime;
 
     // dm-revoke-cleanup：enqueue 一則「編輯被邀者 DM 成已失效 + 移按鈕」事件。走 outbox（非直接呼叫 Discord）——
     // 因 ConfirmMember 可能跑在無 DiscordClient 的 WebApi 行程，編輯動作一律交 bot 端 handler 執行。
@@ -435,7 +440,7 @@ public class TeamLeaderService : ITeamLeaderService
         // 通知被邀玩家：帶 InviteResponse + memberId + embed → bot 渲染成員 embed +「接受/拒絕」按鈕。
         await NotifyAsync(team.BossId, team.SlotDateTime, character.DiscordId, "/me/teams",
             (bossName, time) => $"隊長邀請你加入「{bossName}」{time} 的隊伍。",
-            TeamNotificationAction.InviteResponse, memberId, embed);
+            TeamNotificationAction.InviteResponse, memberId, embed, ActionDeadline(team));
     }
 
     public async Task AcceptInviteAsync(int memberId, ulong currentDiscordId)
@@ -589,7 +594,7 @@ public class TeamLeaderService : ITeamLeaderService
         // 通知隊長有新申請：帶 ApplicationReview + memberId + embed → bot 渲染申請者能力 + roster + 核准/拒絕。
         await NotifyAsync(team.BossId, team.SlotDateTime, team.LeaderDiscordId ?? 0, $"/teams/{team.Id}/applications",
             (bossName, time) => $"有玩家申請加入你「{bossName}」{time} 的隊伍。",
-            TeamNotificationAction.ApplicationReview, memberId, embed);
+            TeamNotificationAction.ApplicationReview, memberId, embed, ActionDeadline(team));
     }
 
     public async Task ApproveAsync(int memberId, ulong leaderDiscordId)
@@ -685,7 +690,7 @@ public class TeamLeaderService : ITeamLeaderService
         var embed = await BuildEmbedSnapshotAsync(team, teamSlotId);
         await NotifyAsync(team.BossId, team.SlotDateTime, member.DiscordId, "/me/teams",
             (bossName, time) => $"隊長想把「{bossName}」{time} 的隊長轉給你。",
-            TeamNotificationAction.TransferResponse, teamSlotId, embed);
+            TeamNotificationAction.TransferResponse, teamSlotId, embed, ActionDeadline(team));
     }
 
     public async Task RespondLeaderTransferAsync(int teamSlotId, ulong currentDiscordId, string action)

@@ -28,10 +28,12 @@ spec:
                   "OccurredAt"   timestamptz NOT NULL DEFAULT now(),
                   "ProcessedAt"  timestamptz,
                   "AttemptCount" integer     NOT NULL DEFAULT 0,
-                  "LastError"    text
+                  "LastError"    text,
+                  "NextRetryAt"   timestamptz,
+                  "DeliverBefore" timestamptz
               );
               CREATE INDEX IF NOT EXISTS "ix_outbox_unprocessed"
-                  ON "OutboxMessage" ("Id") WHERE "ProcessedAt" IS NULL;
+                  ON "OutboxMessage" ("NextRetryAt" NULLS FIRST, "Id") WHERE "ProcessedAt" IS NULL;
               TRUNCATE "OutboxMessage" RESTART IDENTITY;
               INSERT INTO "OutboxMessage" ("Type","Payload")
               SELECT 'HaDemo', jsonb_build_object('n', g) FROM generate_series(0, 999) AS g;
