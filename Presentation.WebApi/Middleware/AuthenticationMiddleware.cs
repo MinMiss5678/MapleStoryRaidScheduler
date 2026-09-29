@@ -49,7 +49,7 @@ public class AuthenticationMiddleware : IMiddleware
             var session = await _sessionService.GetAsync(sessionId, discordId!);
             if (session == null)
             {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 context.Response.Cookies.Delete($"sessionId{discordId}");
                 return;
             }
@@ -75,6 +75,31 @@ public class AuthenticationMiddleware : IMiddleware
         {
             context.Request.Cookies.TryGetValue("jwtToken", out var token);
             var validateTokenResult = _jwtService.ValidateToken(token!);
+            if (!validateTokenResult.IsValid && validateTokenResult.Exception is SecurityTokenExpiredException)
+            {
+                var claims = _jwtService.ReadJsonWebToken(token!);
+                var newJwt = await _authService.RefreshToken(claims.DiscordId);
+                if (!string.IsNullOrEmpty(newJwt))
+                {
+                    var refreshed = _jwtService.ValidateToken(newJwt);
+                    if (!refreshed.IsValid || refreshed.DiscordId != claims.DiscordId)
+                    {
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        return;
+                    }
+
+                    context.Response.Cookies.Append("jwtToken", newJwt, new CookieOptions
+                    {
+                        HttpOnly = true,
+                        Secure = true,
+                        SameSite = SameSiteMode.Strict,
+                        Expires = DateTimeOffset.UtcNow.AddDays(30)
+                    });
+                    validateTokenResult = refreshed;
+                }
+            }
+
+            // 刷新後使用新 token 的身分與角色，統一走下方的端點授權檢查。
             if (validateTokenResult.IsValid)
             {
                 // Role 從 JWT claim 讀取，不查 DB（真無狀態）
@@ -83,33 +108,6 @@ public class AuthenticationMiddleware : IMiddleware
                     new Claim("discordId", validateTokenResult.DiscordId.ToString()),
                     new Claim(ClaimTypes.Role, validateTokenResult.Role ?? "")
                 }, "jwt");
-            }
-            else if (validateTokenResult.Exception is SecurityTokenExpiredException)
-            {
-                var jwtTokenClaims = _jwtService.ReadJsonWebToken(token!); // 走到過期分支代表 token 存在（非 null）
-                var newJwt = await _authService.RefreshToken(jwtTokenClaims.DiscordId);
-                if (newJwt != null)
-                {
-                    context.Response.Cookies.Append("jwtToken", newJwt, new CookieOptions
-                    {
-                        HttpOnly = true,
-                        Secure = true,
-                        SameSite = SameSiteMode.Strict,
-                        Expires = DateTimeOffset.UtcNow.AddDays(30)
-                    });
-
-                    // 從新 JWT 讀取重新查詢後的 role
-                    var newValidationResult = _jwtService.ValidateToken(newJwt);
-                    identity = new ClaimsIdentity(new[]
-                    {
-                        new Claim("discordId", jwtTokenClaims.DiscordId.ToString()),
-                        new Claim(ClaimTypes.Role, newValidationResult.Role ?? "")
-                    }, "jwt");
-
-                    context.User = new ClaimsPrincipal(identity);
-                    await next(context);
-                    return;
-                }
             }
         }
 
