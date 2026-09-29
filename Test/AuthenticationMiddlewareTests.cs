@@ -14,9 +14,9 @@ namespace Test;
 /// <summary>
 /// AuthenticationMiddleware 單元測試：釘住核心安全分支——
 /// AllowAnonymous 放行、無憑證 401、session 查無 403、角色不符 403、有效 session/JWT 帶身分放行，
-/// 以及 JWT 過期→RefreshToken 的「編排」分支（續期成功放行 / 續不動回 401）。
+/// 以及 JWT 過期刷新、刷新結果驗證和 JWT 角色授權。
 /// mock 四個服務，不碰 DB。
-/// 只驗編排（給定 mock 結果走哪條分支、行為對不對）；真 JWT 過期辨識 + 真 refresh 的端到端屬整合測試層。
+/// 只驗編排（給定 mock 結果走哪條分支、行為對不對）；真 JWT 過期辨識由 JwtServiceTests 驗證。
 /// </summary>
 public class AuthenticationMiddlewareTests
 {
@@ -87,14 +87,14 @@ public class AuthenticationMiddlewareTests
     }
 
     [Fact]
-    public async Task session_查無_回_403_不放行()
+    public async Task session_查無_回_401_不放行()
     {
         _session.Setup(s => s.GetAsync("abc", "123")).ReturnsAsync((Session?)null);
 
         var (nextCalled, context) = await Run(BuildContext("discordId=123; sessionId123=abc"));
 
         Assert.False(nextCalled);
-        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
     }
 
     [Fact]
@@ -125,40 +125,81 @@ public class AuthenticationMiddlewareTests
         Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
     }
 
-    [Fact]
-    public async Task JWT過期_續期成功_發新token放行且role取自新token()
+    [Theory]
+    [InlineData("user", "admin", false)]
+    [InlineData("admin", "admin", true)]
+    [InlineData("user", "user", true)]
+    public async Task ExpiredJwt_RefreshesAndEnforcesNewRole(string role, string requiredRole, bool allowed)
     {
-        // 過期（帶 SecurityTokenExpiredException）→ 讀舊 token 的 discordId → 續期拿到新 token
         _jwt.Setup(j => j.ValidateToken("expiredtok"))
             .Returns(new JwtValidationResult { IsValid = false, Exception = new SecurityTokenExpiredException() });
+        _auth.Setup(a => a.RefreshToken(It.IsAny<ulong>())).ReturnsAsync("newtok");
         _jwt.Setup(j => j.ReadJsonWebToken("expiredtok"))
             .Returns(new JwtTokenClaims { DiscordId = 789 });
-        _auth.Setup(a => a.RefreshToken(789UL)).ReturnsAsync("newtok");
-        // 新 token 重新驗證後的 role（刻意跟舊的不同，才驗得出 role 取自新 token）
         _jwt.Setup(j => j.ValidateToken("newtok"))
-            .Returns(new JwtValidationResult { IsValid = true, DiscordId = 789, Role = "admin" });
+            .Returns(new JwtValidationResult { IsValid = true, DiscordId = 789, Role = role });
 
-        var (nextCalled, context) = await Run(BuildContext("jwtToken=expiredtok"));
+        var (nextCalled, context) = await Run(BuildContext("jwtToken=expiredtok", new AuthorizeRoleAttribute(requiredRole)));
 
-        Assert.True(nextCalled);
-        Assert.Equal("789", context.User.FindFirst("discordId")?.Value);       // discordId 取自（舊）token
-        Assert.Equal("admin", context.User.FindFirst(ClaimTypes.Role)?.Value); // role 取自新 token
-        Assert.Contains("jwtToken=newtok", context.Response.Headers["Set-Cookie"].ToString()); // 有回寫新 cookie
+        Assert.Equal(allowed, nextCalled);
+        Assert.Equal(allowed ? StatusCodes.Status200OK : StatusCodes.Status403Forbidden, context.Response.StatusCode);
+        Assert.Contains("jwtToken=newtok", context.Response.Headers["Set-Cookie"].ToString());
+        _auth.Verify(a => a.RefreshToken(789), Times.Once);
+        if (allowed)
+        {
+            Assert.Equal("789", context.User.FindFirst("discordId")?.Value);
+            Assert.Equal(role, context.User.FindFirst(ClaimTypes.Role)?.Value);
+        }
     }
 
-    [Fact]
-    public async Task JWT過期_續期失敗_回401不放行()
+    [Theory]
+    [InlineData(null, false, 789UL)]
+    [InlineData("", false, 789UL)]
+    [InlineData("invalid", false, 789UL)]
+    [InlineData("wrong-account", true, 999UL)]
+    public async Task ExpiredJwt_RefreshFailureOrInvalidResult_Returns401(string? newToken, bool valid, ulong discordId)
     {
-        // 安全分支：過期又續不動 → 不得放行
         _jwt.Setup(j => j.ValidateToken("expiredtok"))
-            .Returns(new JwtValidationResult { IsValid = false, Exception = new SecurityTokenExpiredException() });
+            .Returns(new JwtValidationResult { Exception = new SecurityTokenExpiredException() });
         _jwt.Setup(j => j.ReadJsonWebToken("expiredtok"))
             .Returns(new JwtTokenClaims { DiscordId = 789 });
-        _auth.Setup(a => a.RefreshToken(789UL)).ReturnsAsync((string?)null);
+        _auth.Setup(a => a.RefreshToken(789)).ReturnsAsync(newToken);
+        if (!string.IsNullOrEmpty(newToken))
+            _jwt.Setup(j => j.ValidateToken(newToken))
+                .Returns(new JwtValidationResult { IsValid = valid, DiscordId = discordId, Role = "admin" });
 
-        var (nextCalled, context) = await Run(BuildContext("jwtToken=expiredtok"));
+        var (nextCalled, context) = await Run(BuildContext("jwtToken=expiredtok", new AuthorizeRoleAttribute("admin")));
 
         Assert.False(nextCalled);
         Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
+        Assert.Empty(context.Response.Headers["Set-Cookie"].ToString());
+    }
+
+    [Fact]
+    public async Task InvalidSignature_DoesNotRefresh()
+    {
+        _jwt.Setup(j => j.ValidateToken("forged"))
+            .Returns(new JwtValidationResult { Exception = new SecurityTokenInvalidSignatureException() });
+
+        var (nextCalled, context) = await Run(BuildContext("jwtToken=forged"));
+
+        Assert.False(nextCalled);
+        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
+        _jwt.Verify(j => j.ReadJsonWebToken(It.IsAny<string>()), Times.Never);
+        _auth.Verify(a => a.RefreshToken(It.IsAny<ulong>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("user", false)]
+    [InlineData("admin", true)]
+    public async Task ValidJwt_AdminEndpoint_EnforcesRole(string role, bool allowed)
+    {
+        _jwt.Setup(j => j.ValidateToken("validtok"))
+            .Returns(new JwtValidationResult { IsValid = true, DiscordId = 456, Role = role });
+
+        var (nextCalled, context) = await Run(BuildContext("jwtToken=validtok", new AuthorizeRoleAttribute("admin")));
+
+        Assert.Equal(allowed, nextCalled);
+        Assert.Equal(allowed ? StatusCodes.Status200OK : StatusCodes.Status403Forbidden, context.Response.StatusCode);
     }
 }
