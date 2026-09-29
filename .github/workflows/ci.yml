@@ -98,6 +98,26 @@ jobs:
           name: inspectcode-sarif
           path: inspectcode.sarif
 
+  # NuGet 已知漏洞（含間接相依）：補 Dependabot 看不到間接相依的盲點（無 packages.lock.json 時
+  # GitHub 相依圖只有直接參照，例：Testcontainers 帶進的 SSH.NET）。dotnet list 永遠 exit 0，由腳本判斷。
+  # 不看 changes 過濾：漏洞資料庫會更新，沒改程式碼也可能冒出新漏洞。
+  nuget-vulnerable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-
+      - run: dotnet restore
+      - run: >
+          dotnet list MapleStoryRaidScheduler.sln package --vulnerable --include-transitive --format json
+          | python3 .github/scripts/nuget-vulnerable-gate.py
+
   # 整個 solution 編得過（含 Presentation，測試專案未必涵蓋）
   build:
     needs: changes
