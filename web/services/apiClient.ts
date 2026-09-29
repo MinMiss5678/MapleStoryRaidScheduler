@@ -8,7 +8,8 @@
 async function handleResponse<T>(res: Response): Promise<T> {
     if (res.status === 401) {
         if (typeof window !== 'undefined') {
-            window.location.href = '/login';
+            // 登入入口是首頁（未登入顯示「用 Discord 登入」）；沒有 /login 頁面
+            window.location.href = '/';
         }
         throw new ApiError(401, '未登入或登入已過期');
     }
