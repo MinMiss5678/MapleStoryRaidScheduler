@@ -1,0 +1,48 @@
+name: CodeQL
+
+# 資安靜態分析（SAST）：追外部輸入流進危險位置（SQL injection、路徑穿越、XSS…）。
+# 選它不選 Qodana 污點分析：實測 6 個 SQL injection 案例，CodeQL default 6/6、Qodana 3/6
+# （Qodana 不把 [FromBody]/[FromQuery] 當輸入來源，MSRS 真實寫法全漏）。public repo 免費。
+# 結果進 GitHub Security 分頁；PR 上只對「新增」的警示標註。
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * 1"   # 每週一：規則庫更新後重掃，抓到既有程式碼的新弱點
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # 上傳 SARIF 到 code scanning
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build-mode: manual     # 實際編譯 → 型別與資料流最完整
+          - language: javascript-typescript
+            build-mode: none       # web/（Next.js）不需編譯
+    steps:
+      - uses: actions/checkout@v4
+      - if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # 不指定 queries = 預設查詢組（準確優先）；security-extended 實測多出的只有誤判
+      - if: matrix.build-mode == 'manual'
+        run: dotnet build MapleStoryRaidScheduler.sln
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
