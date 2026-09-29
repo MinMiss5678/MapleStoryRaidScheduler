@@ -1,0 +1,32 @@
+# 錄影用 override（疊在 compose.yaml 上）：backend 轉 Development(開 test-login)、前端 dev target(proxy 放行
+# test-login)、對 host 開埠，並加 restart 政策讓服務在 docker/WSL 抖動後自動拉回。
+#
+# ★安全：務必「明列服務」啟動，絕不 up 全部——cloudflared 會用 prod tunnel token 把線上網域流量導到本機。
+# ★常駐：用前景 `docker compose ... up`（不加 -d）常駐一個背景 process，讓 WSL 不閒置關閉、stack 全程撐住。
+#   起法：docker compose -f compose.yaml -f compose.demo.yaml up database migrate redis seq backend frontend bot
+#
+# 前提：prod bot 已 scale 到 0（同一顆 Discord token，不能兩邊同時連 gateway）。
+services:
+  # mirrored 網路下 seq 的 5341 攝取埠會撞 Windows 監聽；demo 不需對外發布 seq（log 走 compose 內網），移除發布。
+  seq:
+    ports: !reset []
+
+  backend:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development   # ← test-login 只在非 Production 有效
+    ports:
+      - "5230:5230"
+    restart: unless-stopped
+
+  bot:
+    restart: unless-stopped                  # OutboxDispatcher 首打 DB 若早於 database 就緒，重試/重啟即可自癒
+
+  frontend:
+    build:
+      target: dev
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
