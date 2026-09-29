@@ -1,0 +1,26 @@
+#!/bin/sh
+# 機密掃描：只掃這次 staged 的變更，擋住寫死的 token/密碼/私鑰進 commit。
+# repo 是 public → push 上去就等於公開，CI 抓到已經太晚，所以在 commit 前攔。
+# 啟用：git config core.hooksPath .githooks（每個 clone 各做一次）
+# 誤判：該行加註解 gitleaks:allow，或把指紋加進 .gitleaksignore
+
+GITLEAKS=$(command -v gitleaks 2>/dev/null)
+# winget 裝完要重開 shell/IDE 才吃到 PATH → 補查 winget 預設安裝位置
+if [ -z "$GITLEAKS" ] && [ -n "$LOCALAPPDATA" ]; then
+    for f in "$LOCALAPPDATA"/Microsoft/WinGet/Packages/Gitleaks.Gitleaks_*/gitleaks.exe; do
+        [ -x "$f" ] && GITLEAKS=$f && break
+    done
+fi
+
+if [ -z "$GITLEAKS" ]; then
+    echo "⚠️  找不到 gitleaks，略過機密掃描（CI 仍會掃）。安裝：winget install Gitleaks.Gitleaks" >&2
+    exit 0
+fi
+
+"$GITLEAKS" git --pre-commit --staged --redact --no-banner --verbose || {
+    echo "" >&2
+    echo "❌ gitleaks 在 staged 變更中發現疑似機密，commit 已中止。" >&2
+    echo "   真機密：移出檔案、改走 secrets/ 或環境變數；若已外流要作廢重發。" >&2
+    echo "   誤判：該行加 gitleaks:allow 註解，或把指紋加進 .gitleaksignore。" >&2
+    exit 1
+}
