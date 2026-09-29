@@ -68,6 +68,36 @@ jobs:
       - run: dotnet restore
       - run: dotnet format --no-restore --verify-no-changes
 
+  # ReSharper 全方案品質檢查（jb inspectcode，免費）：擋死碼 / 易出 bug 寫法 / 結構問題。
+  # 這幾類 Roslyn 做不到（沒人用的 public 型別、變數遮蔽等需全方案分析）。
+  # inspectcode 永遠 exit 0 → 由 .github/scripts/inspectcode-gate.py 依規則清單判斷成敗，
+  # 並把 PR 新增行上的問題數寫進 job summary（觀察每個 PR 的品質）。
+  inspectcode:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 摘要要 git diff base...HEAD
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-
+      - run: dotnet tool restore
+      - run: dotnet restore
+      - run: dotnet jb inspectcode MapleStoryRaidScheduler.sln --swea --severity=SUGGESTION -f=Sarif -o=inspectcode.sarif
+      - run: python3 .github/scripts/inspectcode-gate.py inspectcode.sarif "${{ github.base_ref && format('origin/{0}', github.base_ref) || '' }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inspectcode-sarif
+          path: inspectcode.sarif
+
   # 整個 solution 編得過（含 Presentation，測試專案未必涵蓋）
   build:
     needs: changes

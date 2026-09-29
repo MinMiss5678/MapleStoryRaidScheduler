@@ -56,8 +56,8 @@ public class CharacterServiceTests
         var result = await _characterService.GetWithDiscordNameAsync(discordId);
 
         // Assert
-        Assert.Single(result);
-        Assert.Equal("c1", result.First().Id);
+        var character = Assert.Single(result);
+        Assert.Equal("c1", character.Id);
     }
 
     [Fact]
@@ -73,8 +73,8 @@ public class CharacterServiceTests
         var result = await _characterService.GetWithDiscordNameAsync(discordId, bossId);
 
         // Assert
-        Assert.Single(result);
-        Assert.Equal("cX", result.First().Id);
+        var character = Assert.Single(result);
+        Assert.Equal("cX", character.Id);
     }
 
     [Fact]
