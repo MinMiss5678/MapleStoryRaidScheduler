@@ -37,6 +37,18 @@ jobs:
             code:
               - '!(docs/**|plans/**|**/*.md)'
 
+  # 機密掃描（gitleaks）：本機 pre-commit hook（.githooks/）的後備防線，防 --no-verify 或沒裝 hook 的 commit。
+  # 不看 changes 過濾：文件/plan 一樣可能夾帶 token。掃全歷史（~500 commit 只要幾秒），已確認的誤判列在 .gitleaksignore。
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 全歷史：刪掉的機密仍在歷史裡，只看最新版會漏
+      - run: >
+          docker run --rm -v "$PWD":/repo zricethezav/gitleaks:v8.30.1
+          git /repo --redact --no-banner --verbose
+
   # Roslyn 靜態格式檢查（dotnet format）：未依 .editorconfig 格式化就擋 PR。
   # 本機修法：dotnet format（不帶 --verify-no-changes 即自動改）。
   format:

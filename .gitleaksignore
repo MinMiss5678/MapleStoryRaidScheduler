@@ -1,0 +1,17 @@
+# gitleaks 已確認的誤判（2026-09-29 全歷史掃描逐筆核對）。格式：<commit>:<檔案>:<規則>:<行號>
+# 新增前先確認真的不是機密；真的外洩要「作廢重發該機密」，不是加進這裡。
+
+# Discord ClientId / GuildId：公開識別碼（OAuth 網址本來就帶 ClientId），ClientSecret 走 /run/secrets/ 檔案
+bf3419dc211452e3745b0a56f351030e8b297b7e:compose.yaml:discord-client-id:155
+7741c07461a486ce87a6eefe83b8a9897d9e7526:compose.yaml:discord-client-id:93
+6b33bfdbb367bc199451f3be2ca03bd1d62f5fd5:compose.yaml:discord-client-id:93
+6b6a02436d215ec8fb67b118186d012d07341539:compose.yaml:discord-client-id:62
+
+# Microsoft Graph offline_access 的 scope ID：微軟公開、固定的權限 GUID
+a2827fb4b0952880d64c51b064d55e349e459f67:k8s/setup-microsoft-mail-oauth.sh:generic-api-key:21
+
+# 單元測試寫死的假 JWT 金鑰
+deefdc40459e0bcb66790eb3a02ead3918ef8180:Test/JwtServiceTests.cs:generic-api-key:13
+
+# 第三方 skill 文件的範例字串（.claude/ 已移出版控）
+6b6a02436d215ec8fb67b118186d012d07341539:.claude/skills/payment-integration/references/polar/best-practices.md:generic-api-key:16

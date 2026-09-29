@@ -1,0 +1,2 @@
+# git hook 是 sh 腳本：Windows autocrlf 轉成 CRLF 會讓每行尾端多出 CR 而執行失敗
+.githooks/* text eol=lf
