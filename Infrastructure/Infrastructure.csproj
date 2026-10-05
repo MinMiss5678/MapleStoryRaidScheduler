@@ -22,16 +22,16 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="DSharpPlus" Version="5.0.0-nightly-02542" />
-      <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.4" />
-      <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.4" />
-      <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.14.0" />
+      <PackageReference Include="DSharpPlus" Version="5.0.0-nightly-02603" />
+      <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.20" />
+      <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.12" />
+      <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.23.0" />
       <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-      <PackageReference Include="Npgsql" Version="9.0.3" />
-      <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+      <PackageReference Include="Npgsql" Version="9.0.5" />
+      <PackageReference Include="StackExchange.Redis" Version="2.13.17" />
       <!-- EF Core：僅 design-time 使用，不進 runtime output -->
       <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
-      <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.4">
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.20">
         <PrivateAssets>all</PrivateAssets>
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       </PackageReference>
