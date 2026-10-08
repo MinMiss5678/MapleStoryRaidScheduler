@@ -13,27 +13,27 @@
 ```mermaid
 %%{init: {"themeVariables": {"fontFamily": "Microsoft JhengHei, Arial, sans-serif"}}}%%
 graph TD
-    User["玩家 (Player)"] -->|"#160;HTTPS / TLS 終結#160;"| Cloudflare["Cloudflare Edge"]
-    Cloudflare -->|"#160;Tunnel + X-Forwarded-*#160;"| Cloudflared["cloudflared"]
+    User["玩家 (Player)"] -->|"　HTTPS / TLS 終結　"| Cloudflare["Cloudflare Edge"]
+    Cloudflare -->|"　Tunnel + X-Forwarded-*　"| Cloudflared["cloudflared"]
 
     subgraph K3s["K3s 叢集（AWS Lightsail）"]
-        Cloudflared -->|"#160;HTTP#160;"| Frontend["Next.js 前端"]
-        Frontend -->|"#160;REST API#160;"| Backend["Web API 行程<br/>(ASP.NET Core：Middleware → Application → Domain / Infrastructure)"]
+        Cloudflared -->|"　HTTP　"| Frontend["Next.js 前端"]
+        Frontend -->|"　REST API　"| Backend["Web API 行程<br/>(ASP.NET Core：Middleware → Application → Domain / Infrastructure)"]
         Bot["Bot 行程<br/>(DSharpPlus：Outbox Dispatcher、互動處理、背景作業)"]
 
         Backend --> DB[("PostgreSQL 18")]
         Backend --> Redis[("Redis<br/>(冪等去重 / 限流 / session 快取)")]
-        Bot -->|"#160;輪詢 Outbox#160;"| DB
-        Bot -->|"#160;成員異動 → 撤銷 session#160;"| Redis
+        Bot -->|"　輪詢 Outbox　"| DB
+        Bot -->|"　成員異動 → 撤銷 session　"| Redis
         Backend --> Seq["Seq（結構化日誌）"]
         Bot --> Seq
     end
 
-    Bot -->|"#160;DM 通知（附按鈕）#160;"| Discord["Discord"]
-    User -->|"#160;查看通知、按按鈕#160;"| Discord
-    User -->|"#160;OAuth2 登入#160;"| DiscordOAuth["Discord OAuth2"]
-    DiscordOAuth -->|"#160;授權 code 導回 /callback#160;"| Frontend
-    Backend -.->|"#160;錯誤事件（僅 prod）#160;"| Sentry["Sentry（第三方）"]
+    Bot -->|"　DM 通知（附按鈕）　"| Discord["Discord"]
+    User -->|"　查看通知、按按鈕　"| Discord
+    User -->|"　OAuth2 登入　"| DiscordOAuth["Discord OAuth2"]
+    DiscordOAuth -->|"　授權 code 導回 /callback　"| Frontend
+    Backend -.->|"　錯誤事件（僅 prod）　"| Sentry["Sentry（第三方）"]
 ```
 
 - **Web API 與 Bot 不直接呼叫**：狀態改動與「要送的通知」在 Web API 同一交易寫入 PostgreSQL（Transactional Outbox），Bot 輪詢已提交的 outbox 列再發 DM（見 §7）。
