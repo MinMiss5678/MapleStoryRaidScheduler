@@ -6,34 +6,39 @@
 
 ## 系統架構總覽
 
-### 高階架構圖
+### 高階架構圖（執行視角：有哪些行程、怎麼溝通）
+
+> 這張只畫**執行時**的元件與連線。程式碼的分層與依賴方向見下一節——Web API 與 Bot 是**兩個獨立行程**，但共用同一套 Application / Domain / Infrastructure 程式碼（兩個執行檔都引用 Infrastructure）。
 
 ```mermaid
+%%{init: {"themeVariables": {"fontFamily": "Microsoft JhengHei, Arial, sans-serif"}}}%%
 graph TD
-    User["玩家 (Player)"] -->|HTTPS / TLS 終結| Cloudflare["Cloudflare Edge"]
-    Cloudflare -->|Tunnel HTTP + X-Forwarded-*| Cloudflared["cloudflared"]
+    User["玩家 (Player)"] -->|"&nbsp;HTTPS / TLS 終結&nbsp;"| Cloudflare["Cloudflare Edge"]
+    Cloudflare -->|"&nbsp;Tunnel + X-Forwarded-*&nbsp;"| Cloudflared["cloudflared"]
 
-    subgraph "Docker 容器環境"
-        Cloudflared -->|HTTP| Frontend["Next.js 15 前端"]
-        Frontend -->|REST API| Backend["ASP.NET Core Web API"]
-        Backend --> Middleware["Middleware 管線\n(ExceptionHandler / Idempotency / Auth / RateLimiter / UnitOfWork)"]
-        Middleware --> Application["Application Layer\n(DTOs, Interfaces, CQRS-Lite)"]
-        Application --> Domain["Domain Layer\n(Entities, Repository Interfaces)"]
-        Infrastructure["Infrastructure Layer\n(Dapper, Discord, Background Jobs)"] --> Domain
+    subgraph K3s["K3s 叢集（AWS Lightsail）"]
+        Cloudflared -->|"&nbsp;HTTP&nbsp;"| Frontend["Next.js 前端"]
+        Frontend -->|"&nbsp;REST API&nbsp;"| Backend["Web API 行程<br/>(ASP.NET Core：Middleware → Application → Domain / Infrastructure)"]
+        Bot["Bot 行程<br/>(DSharpPlus：Outbox Dispatcher、互動處理、背景作業)"]
 
-        Infrastructure --> DB[("PostgreSQL 18")]
-        Infrastructure --> Redis[("Redis\n(跨 pod 共享：重複提交去重 / 限流計數 / session 快取)")]
-        Infrastructure --> DiscordBot["Discord Bot (DSharpPlus)"]
-        Infrastructure --> Seq["Seq (結構化日誌)"]
+        Backend --> DB[("PostgreSQL 18")]
+        Backend --> Redis[("Redis<br/>(冪等去重 / 限流 / session 快取)")]
+        Bot -->|"&nbsp;輪詢 Outbox&nbsp;"| DB
+        Bot -->|"&nbsp;成員異動 → 撤銷 session&nbsp;"| Redis
+        Backend --> Seq["Seq（結構化日誌）"]
+        Bot --> Seq
     end
 
-    DiscordBot -->|Bot 通知| DiscordChannel["Discord 頻道"]
-    User -->|查看通知| DiscordChannel
-    User -->|OAuth2 登入| DiscordOAuth["Discord OAuth2"]
-    DiscordOAuth -->|授權 code| Backend
-
-    Infrastructure -.->|"錯誤事件（選填・僅 prod）"| Sentry["Sentry\n錯誤追蹤（第三方）"]
+    Bot -->|"&nbsp;DM 通知（附按鈕）&nbsp;"| Discord["Discord"]
+    User -->|"&nbsp;查看通知、按按鈕&nbsp;"| Discord
+    User -->|"&nbsp;OAuth2 登入&nbsp;"| DiscordOAuth["Discord OAuth2"]
+    DiscordOAuth -->|"&nbsp;授權 code 導回 /callback&nbsp;"| Frontend
+    Backend -.->|"&nbsp;錯誤事件（僅 prod）&nbsp;"| Sentry["Sentry（第三方）"]
 ```
+
+- **Web API 與 Bot 不直接呼叫**：狀態改動與「要送的通知」在 Web API 同一交易寫入 PostgreSQL（Transactional Outbox），Bot 輪詢已提交的 outbox 列再發 DM（見 §7）。
+- **Redis 是共享但可失效的**：Web API 用它做冪等、限流、session 快取；Bot 收到 Discord 成員異動時刪 session 快取讓撤銷立即生效。Redis 不可用時退回查 DB 或 fail-open（真正的保證在 DB）。
+- 部署細節（Deployment、Service、Secret 掛載、migrate Job）見後段的部署架構圖。
 
 ### 分層架構與依賴方向
 
@@ -268,7 +273,9 @@ sequenceDiagram
 
 - **多 pod 分工**：`SELECT ... FOR UPDATE SKIP LOCKED` → 多個 dispatcher 各撈不相交批、互不重投、免選 leader。
 - **at-least-once + 冪等**：投遞成功、標 processed 前崩 → 重送。DM handler 非天生冪等（重送＝多一則一樣的 DM），實務靠「crash 窗口小 + 重複一則傷害低」可接受；要嚴格去重可在 handler 記已送過的 event id。
-- partial index（`WHERE "ProcessedAt" IS NULL`）撈取快；重試上限後放棄、記 `LastError`。
+- **失敗重試**（見 `plans/2026-09-22-outbox-retry-backoff.md`）：失敗列寫 `NextRetryAt` 做**指數退避**（5 秒起、封頂 10 分鐘、±20% jitter，以 DB `now()` 為基準），到期前不會被撈；暫時性錯誤（Discord 5xx、429 內部重試用完、網路、逾時）不計次數、退避到**有效期限**（`DeliverBefore`：有按鈕的通知＝隊伍時間，其餘建立後 24h，一律不超過 24h）；過期不送、記 `expired` 並發 Error（觸發警示信）；無法分類的錯誤（程式錯誤）維持 5 次上限。
+- **送出前失效檢查**：邀請／申請／轉讓通知在送出前確認仍待處理（邀請已撤、隊已滿等）→ 不送、記 `skipped: 原因`，避免延遲送達留下死按鈕。
+- 撈取索引：partial index `("NextRetryAt" NULLS FIRST, "Id") WHERE "ProcessedAt" IS NULL`。
 - **保留列清理**：`OutboxDispatcher` 只標 `ProcessedAt`、從不刪列，`OutboxMessage` 會無限成長。`OutboxRetentionJob`（同樣跑 bot、自開專屬連線）每 24 小時清一次「已處理超過 30 天」的列；未處理列不管多舊都不動（還沒投遞完，刪了就真的遺失事件）。
 
 > outbox 把「要送什麼」持久化進交易 → 解掉 AfterCommit 的 crash-loss 與跨行程限制。定位為 readiness（現況 replicas=1、副作用可補），但順帶修掉跨行程 gap。
@@ -845,8 +852,9 @@ CI 走 **GitHub Actions**（`.github/workflows/ci.yml`；部署一律手動 SSH�
 ```mermaid
 flowchart LR
     dev["feature 分支"] -->|開 PR| gate["changes job 判斷改動範圍"]
-    gate -->|純文件 docs/plans/*.md| skip["其餘 7 個必要 job 標 skipped\n（if 條件，非 paths-ignore）"]
-    gate -->|動到程式碼| ci["format → build → unit/integration-test\n→ frontend-test(lint+test+build) → coverage → e2e"]
+    gate -->|純文件 docs/plans/*.md| skip["程式碼相關 job 標 skipped<br/>（if 條件，非 paths-ignore）"]
+    gate -->|動到程式碼| ci["format → build → unit/integration-test<br/>→ frontend-test(lint+test+build) → coverage → e2e<br/>＋ inspectcode 品質門檻"]
+    dev -->|每次都跑| always["secrets（gitleaks）<br/>nuget-vulnerable（含間接相依）<br/>CodeQL（另一個 workflow）"]
     skip --> checks{"required status checks\n（含 enforce_admins，admin 也不能繞過）"}
     ci -->|全綠| checks
     checks -->|通過| merge["rebase merge 進 main"]
@@ -859,5 +867,6 @@ flowchart LR
 ```
 
 > **PR 閘**：`changes` job 用 `dorny/paths-filter` 判斷這次改動是否只碰文件；純文件時其餘 job 用 `if:` 條件跳過（標 skipped），不是在 `on:` 用 `paths-ignore`——後者會讓 workflow 整個不觸發，required status checks 永遠等不到回報、PR 會卡死。GitHub 把 skipped 視為通過，required checks 照樣滿足。
-> **`main` 分支保護**：required status checks（上述 7 個 job）+ 禁止 force push/刪除 + **`enforce_admins` 開啟**（admin 帳號也一樣得走 PR，不能直接推）。
+> **品質與資安關卡**：`inspectcode`（ReSharper 全方案檢查，依規則清單擋死碼、變數遮蔽、多次列舉等）、`secrets`（gitleaks 全歷史機密掃描）、`nuget-vulnerable`（`dotnet list package --vulnerable --include-transitive`，補 Dependabot 看不到間接相依的盲點）、CodeQL（C# + JS/TS 資安分析）。`secrets`、`nuget-vulnerable` 不套 changes 過濾（漏洞資料庫會更新）。相依更新另由 Dependabot 每週開 PR（NuGet／npm／Docker 不自動開 major）。
+> **`main` 分支保護**：required status checks（format、build、unit-test、integration-test、frontend-test、coverage、e2e 這 7 個）+ 禁止 force push/刪除 + **`enforce_admins` 開啟**（admin 帳號也一樣得走 PR，不能直接推）。
 > **CI 跟部署是兩條獨立流程**：push 進 `main` 只會重跑一次 `ci.yml`（post-merge 守門）；**部署一律本機手動 SSH**（`deploy.ps1` / `rollout.ps1` 經 tunnel 連 k3s）。映像以 git SHA 版本化 → 可追溯、可真 rollback（`kubectl rollout undo` 或指定 SHA）。
