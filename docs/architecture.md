@@ -13,7 +13,7 @@
 ```mermaid
 %%{init: {"themeVariables": {"fontFamily": "Microsoft JhengHei, Arial, sans-serif"}}}%%
 graph TD
-    User["玩家 (Player)"] -->|"　HTTPS / TLS 終結　"| Cloudflare["Cloudflare Edge"]
+    User["玩家 (Player)"] -->|"　HTTPS / TLS termination　"| Cloudflare["Cloudflare Edge"]
     Cloudflare -->|"　Tunnel + X-Forwarded-*　"| Cloudflared["cloudflared"]
 
     subgraph K3s["K3s 叢集（AWS Lightsail）"]
