@@ -66,6 +66,13 @@
 - **Stryker 擱置**：`Domain/stryker-config.json`、`Infrastructure/stryker-config.json` 可能壞，但**不在 CI**（0 次提及）、非關鍵路徑 → 標 TODO，下次要跑變異測試再修
 - `CLAUDE.md` 的指令區塊要更新
 
+### `.claude/tdd.json` 分類（PR 5）
+`classify()` 對三類都沒列到的路徑回 `unclassified` → 直接擋下，所以必須全覆蓋。2026/11/04 追加：
+- **`scripts/**/*.sh` 列 `impl`、`scripts/tests/**` 列 `test`** —— 否則改入口腳本會被當成未分類擋下；
+  列成 impl 也讓下次改腳本時必須先有 bats 紅燈（`scripts/e2e-local.sh` 當初就是沒先寫測試，事後才補）
+- ⚠️ hook 的解析器只認 xUnit v3 / Rust 輸出，**不認 bats 的 TAP 輸出**（`ok 1 …` / `not ok 2 …`）
+  → bats 跑出的紅燈不會被 hook 認定為「有效紅燈」。啟用時要決定：擴充 hook 解析 TAP，或改 shell 腳本時以 `tdd-exempt` 登記並以 bats 自律
+
 ---
 
 ## 二、★ 關鍵發現：現有架構與標準流程不相容
