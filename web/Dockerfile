@@ -1,5 +1,5 @@
 ﻿# 階段 1：安裝依賴
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package*.json ./
@@ -14,14 +14,14 @@ EXPOSE 3000
 CMD ["npm", "run", "dev"]
 
 # 階段 2：構建應用程式
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
 # 階段 3：運行環境
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
