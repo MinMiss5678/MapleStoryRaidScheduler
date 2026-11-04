@@ -23,3 +23,6 @@ stryker-output*/
 
 # 本機專屬 override（WSL mirrored 模式 port 避讓），CI 不載入
 compose.e2e.local.yaml
+
+# 本機 E2E 入口（scripts/e2e-local.sh）的 log
+.e2e-local/
