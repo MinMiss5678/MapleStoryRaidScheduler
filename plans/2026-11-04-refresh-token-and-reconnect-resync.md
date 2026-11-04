@@ -333,7 +333,8 @@ access token 過期
 | **3** | xUnit v3 遷移 — `Test/` ＋ 覆蓋率驗證 | 本計畫 §〇 | ❌ | 0.5-1 天 |
 | **4** | xUnit v3 遷移 — `Test.Integration/` ＋ CI | 本計畫 §〇 | ❌ | 0.5-1 天 |
 | **5** | `.claude/tdd.json` 啟用 | — | — | 0.1 天 |
-| **6** | **階段 0：認證與授權分離** | split-authentication-authorization | ✅ 起 | 0.5 天 |
+| **5b** | **管理員重新登入迴圈 ＋ session 快取汙染**（2026/11/04 追加，case 表已核可） | session-multi-device-relogin | ✅ | 0.5 天 |
+| **6** | **階段 0：認證與授權分離** | split-authentication-authorization | ✅ | 0.5 天 |
 | **7** | **階段 0.5：`JwtService` 真實驗簽行為** | jwt-refresh-redesign §四 A 組 | ✅ | 0.5 天 |
 | **8** | 階段 3a：`RefreshToken` 表 ＋ 儲存層（A 組） | 本計畫 | ✅ | 1-2 天 |
 | **9** | 階段 3b：`/api/Auth/refresh` ＋ `AuthService` 改讀資料庫（B 組） | 本計畫 | ✅ | 1-2 天 |
@@ -343,7 +344,7 @@ access token 過期
 | 13 | 授權矩陣其餘組別 G3/G4/G5/G6/G7/G9（.NET 整合測試） | authorization-matrix | ✅ | 2-3 天 |
 
 > **總計約 11-16 天**（PR 1-12）。
-> **PR 6 起每個 PR 都有自己的審核閘**：hook 啟用後「case 表是唯一審核點」→ 先給 case 表核可，才轉錄測試、才實作。
+> **PR 5b 起每個 PR 都在 hook 治理下、有自己的審核閘**：「case 表是唯一審核點」→ 先給 case 表核可，才轉錄測試、才實作（5b 的 case 表已於 2026/11/04 核可）。
 
 ---
 
