@@ -16,7 +16,9 @@
 BEGIN;
 
 -- 清交易資料（CASCADE 連帶清 standing/override/lfg/charbossclear/requirement 等子表）
-TRUNCATE "TeamSlotCharacter","TeamSlot","Character","Player","Boss"
+-- Session 一併清：session 快取以 discordId 為 key，殘留的舊 session 會讓重跑時固定身分的測試偽陽性 401
+-- （Redis 端的快取由 scripts/e2e-local.sh 另外 FLUSHALL；CI 每次都是全新容器，不受影響）
+TRUNCATE "TeamSlotCharacter","TeamSlot","Character","Player","Boss","Session"
     RESTART IDENTITY CASCADE;
 
 DO $$
