@@ -1,8 +1,22 @@
 # 相依套件更新（SCA）：有已知漏洞或新版本時自動開 PR，走一般 CI（含 E2E）驗證後再合併。
 # 每週一次、minor/patch 合成一個 PR，避免 PR 洪水。
-# NuGet / npm / Docker 不自動開 major PR：.NET 9→10、Next 15→16、TypeScript 5→7 這類是破壞性升級，
-# 要當獨立專案規劃（首次啟用時一口氣開了十多個 major PR）。GitHub Actions 的 major 保留（CI 自己驗得到）。
-# 資安更新（security updates）不受 schedule 限制，發現漏洞就立即開 PR。
+# NuGet / npm / Docker 的「版本更新」不自動開 major PR：.NET 9→10、Next 15→16、TypeScript 5→7 這類是
+# 破壞性升級，要當獨立專案規劃（首次啟用時一口氣開了十多個 major PR）。GitHub Actions 的 major 保留（CI 自己驗得到）。
+#
+# 資安更新（security updates）的兩個例外，下面的 ignore 擋不到：
+#   1. 不受 schedule 限制，發現漏洞就立即開 PR。
+#   2. `update-types` 只作用在版本更新、不作用在資安更新（GitHub 文件原文：「update-types only affects
+#      version updates, not security updates」）→ 資安 PR 照樣可能是 major。
+#
+# ⚠️ 間接依賴的漏洞要跨 major 才修得掉時，dependabot 會直接挑「最新版」，不是最小修補版本：
+#    它把挑版本交給 npm（等同 `npm audit fix --force`），而 npm-pick-manifest 只試三段——原範圍 →
+#    同 major → `*`（優先 latest），中間不會試較小的 major；相容性也是用 dependabot 自己機器的 Node 判斷。
+#    實例：#201 為了 tinypool 的漏洞把 vitest 2.1.9 直接升到 5.1.0（要求 Node 22+，當時專案是 Node 20）。
+#    → 這類 PR 當成「有漏洞」的通知，版本自己挑：
+#      ① `npm ls <有漏洞的套件>` 找出是哪個直接依賴帶進來的
+#      ② 找「不再依賴漏洞版本、且支援專案 Node 版本」的最小版本（`npm view <套件>@<版本> engines dependencies`）
+#      ③ 找出必須同版本一起升的套件（例如 vitest 與 @vitest/*），一起升
+#      ④ 用專案的 Node 版本跑 `npm ci`（不可加 --force），再跑測試
 version: 2
 updates:
   - package-ecosystem: nuget
