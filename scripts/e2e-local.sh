@@ -20,23 +20,19 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------- Windows → WSL
+# 參數以 argv 原樣傳遞，**不拼成 shell 字串**：
+#   - --cd 收 Windows 絕對路徑，由 wsl.exe 自己換算成 /mnt/...（wsl --help）
+#   - -e 直接執行命令、不經預設 Linux 殼層 → 參數不會被重新解析
+#   曾用 printf %q 拼成 `bash -lc "…"`：Git Bash 未設 locale 時 %q 會把中文切成不合法的 UTF-8，
+#   跨過 wsl.exe 後變亂碼（--grep 中文找不到測試）。直接傳 argv 就沒有這類問題。
+# MSYS_NO_PATHCONV：Git Bash 呼叫 Windows 程式時，會把「看起來像 Unix 路徑」的參數改寫
+#   （/ 開頭、= 後面、冒號分隔清單；例：--grep /api/Boss → C:/Program Files/Git/api/Boss）。
+#   Git for Windows 只檢查這個變數「存不存在」，值是多少都會關掉改寫。
 if ! command -v docker >/dev/null 2>&1 && command -v wsl.exe >/dev/null 2>&1; then
-  root="$(git rev-parse --show-toplevel)"
-  if [[ "$root" =~ ^([A-Za-z]):(.*)$ ]]; then          # C:/Users/...
-    root_wsl="/mnt/$(tr '[:upper:]' '[:lower:]' <<<"${BASH_REMATCH[1]}")${BASH_REMATCH[2]}"
-  elif [[ "$root" =~ ^/([a-zA-Z])/(.*)$ ]]; then       # /c/Users/...
-    root_wsl="/mnt/$(tr '[:upper:]' '[:lower:]' <<<"${BASH_REMATCH[1]}")/${BASH_REMATCH[2]}"
-  else
-    echo "無法換算 repo 路徑到 WSL：$root" >&2
-    exit 1
-  fi
-  args=""
-  for a in "$@"; do args+=" $(printf '%q' "$a")"; done
   user_opt=()
   [ -n "${E2E_WSL_USER:-}" ] && user_opt=(-u "$E2E_WSL_USER")
-  # MSYS_NO_PATHCONV：避免 Git Bash 把 /mnt/c/... 改寫成 Windows 路徑
   MSYS_NO_PATHCONV=1 exec wsl.exe -d "${E2E_WSL_DISTRO:-Ubuntu}" ${user_opt[@]+"${user_opt[@]}"} \
-    -e bash -lc "cd $(printf '%q' "$root_wsl") && bash scripts/e2e-local.sh$args"
+    --cd "$(git rev-parse --show-toplevel)" -e bash -l scripts/e2e-local.sh "$@"
 fi
 
 # ---------------------------------------------------------------- 以下在有 docker 的環境執行
