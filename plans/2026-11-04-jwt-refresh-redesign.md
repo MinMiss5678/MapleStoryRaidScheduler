@@ -14,7 +14,7 @@
 > 理由與續期架構無關：現有測試 `InvalidSignature_DoesNotRefresh` **mock 掉 `ValidateToken`**，直接「規定」簽章錯誤會回 signature 例外，而**真實實作到底回什麼例外從未被測試證明**（與 session 冒用漏洞同一形態的 mock drift）。
 > 階段 3 的 refresh 端點要用「過期但驗簽有效」自證，**那個前提必須被測試釘住，不能靠假設**。
 
-本檔保留作為設計記錄（含 §二 mock drift 的分析與 §七 面試講法），**不單獨執行**。
+本檔保留作為設計記錄（含 §二 mock drift 的分析），**不單獨執行**。
 
 > 關聯：`2026-11-04-refresh-token-and-reconnect-resync.md`（取代者）、`2026-11-04-split-authentication-authorization.md`（階段 0，根因修法）、`2026-11-04-authorization-matrix.md`（護欄）
 
@@ -41,7 +41,6 @@ if (!validateTokenResult.IsValid && validateTokenResult.Exception is SecurityTok
 | `AuthService.RefreshToken` | role 來自 **Discord guild 即時查詢 + `ResolveRoleAsync`**，不是沿用舊 token → 有撤銷語意（退出公會 → 續期失敗） |
 
 > **所以這個 plan 不是修漏洞，是消除一個隱式假設。** 優先度：中。
-> ⚠️ 面試不要講成「我有個漏洞」——要講成「**我發現安全性建立在一個沒被測試證明的假設上**」。
 
 ---
 
@@ -226,19 +225,3 @@ ValidateToken(token)
 它們測的是「**端到端對外行為**」，跟本 plan 的 A 組（`JwtService` 單元真實行為）互補：
 - A 組：真實的驗簽**實作**是否如預期
 - G8：**整條管線**串起來後，攻擊者拿不到任何東西
-
----
-
-## 七、面試可講的點
-
-> 我在自己的認證中介層發現一件事：JWT 過期要續期時，程式會從**過期的 token** 讀出使用者 ID 去換新 token。
->
-> 乍看危險，但其實安全——因為函式庫是**先驗簽章、再驗有效期**，所以「拿到過期錯誤」本身就隱含「簽章是對的」。
->
-> **問題是這個保證是隱式的**：程式碼沒有任何一行宣告「我驗過簽章」，它是從**例外型別**推論出來的。而且更糟的是——我們有一個測試叫 `InvalidSignature_DoesNotRefresh`，但它 **mock 掉了驗證器**，直接規定「簽章錯誤會回 signature 例外」。**真實的實作到底回什麼例外，從來沒有測試證明過。**
->
-> 這跟我之前抓到的 session 漏洞是**同一個形態**：mock 說的跟現實是否一致，沒有人驗證。
->
-> 所以我的做法是：① 先補「真實驗簽」的測試，釘住「簽章錯誤 ＋ 已過期 → 不會回 expired 例外」這個前提；② 再把隱式保證改成顯式——續期前用「忽略有效期但仍驗簽」重驗一次，讓使用者 ID 來自可信來源；③ 順手刪掉那個「不驗簽就讀 claim」的方法，免得下一個人在別處誤用。
->
-> 這樣安全性就只依賴「簽章是我們發的」這個明確事實，**不再依賴第三方函式庫的驗證順序**——而那個順序不是公開契約，升版可能改。

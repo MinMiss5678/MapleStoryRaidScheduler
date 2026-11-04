@@ -303,7 +303,7 @@ if (string.IsNullOrEmpty(_options.WebhookSecret) || secret != _options.WebhookSe
 | 4 | 依賴函式庫的驗證順序（不是公開契約，升版可能改） | ⭐ 風險低 |
 | 5 | `JwtService:74` 與 `:89` 的 `Convert.ToUInt64(…?.Value)` — 缺 claim 時回 **0** 而非拋例外。目前不可利用（我們發的 token 一定有 `discordId`，且 `RefreshToken(0)` 查不到 player → 落到 401），純粹脆弱寫法 | ⭐ |
 
-> ⚠️ **這不是可被利用的漏洞**（簽章確實先驗）。面試要講成「**安全性建立在一個沒被測試證明的假設上**」，不要講成「我有個漏洞」。
+> ⚠️ **這不是可被利用的漏洞**（簽章確實先驗）。問題在於安全性建立在一個**沒被測試證明的假設**上。
 
 ### 建議修法（最小且正確）
 續期前**用「忽略 lifetime 但仍驗簽 + 驗 issuer/audience」的參數重驗一次**，讓 `DiscordId` 來自**可信來源**，而不是靠例外型別推斷：
@@ -370,14 +370,3 @@ ValidateIgnoringLifetime(token)   // ValidateLifetime = false，其餘全開
 - 併發/競態（已有 `TeamSlotEditLockIntegrationTests` 等覆蓋）
 - XSS / SQLi（Dapper 參數化 ＋ CodeQL 已覆蓋）
 - security header / cookie flag — 建議另用 `zaproxy/action-baseline`，與本 plan 互補
-
----
-
-## 六、面試可講的點
-
-> 我的系統授權層出過三次問題——session 冒用、refresh 路徑繞過、JWT 續期跳過角色檢查。
-> 三次都在同一區域，所以我判斷這是結構問題：兩套認證 × 多種角色 × 多條路徑，組合會爆炸，而只有 4 個端點有宣告式的角色檢查，其餘全靠 service 自律。
->
-> 所以我沒有去架一次性的滲透測試，而是把**授權矩陣做成 E2E 測試進 CI**：身分 × 端點，每格斷言該 200 還是 403，三個已修漏洞各留一條回歸。
->
-> 兩個設計細節：① 矩陣**不走前端 proxy**——proxy 有白名單，403 可能來自路由而非授權，會造成假通過；② 越權案例**除了狀態碼還斷言「他人資料未被改動」**——狀態碼對但資料被改了，才是真事故。
