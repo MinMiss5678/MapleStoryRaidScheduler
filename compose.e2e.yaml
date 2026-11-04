@@ -92,6 +92,9 @@ services:
     environment:
       PLAYWRIGHT_BASE_URL: http://localhost:3000
       PLAYWRIGHT_NO_WEBSERVER: "1"
+      # 授權矩陣直打後端（繞過 Next proxy，否則 403 可能來自白名單而非授權 → 假通過）。
+      # 本機預設 http://localhost:5230（published port）；容器內走 compose DNS。
+      E2E_BACKEND_URL: http://e2e-backend:5230
       CI: "1"
     command:
       - sh
