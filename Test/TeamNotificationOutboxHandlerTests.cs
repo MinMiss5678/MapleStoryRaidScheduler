@@ -19,7 +19,7 @@ public class TeamNotificationOutboxHandlerTests
         var discord = new Mock<IDiscordService>();
         var payload = JsonSerializer.Serialize(new TeamNotificationEvent { TargetDiscordId = 555, Message = "你被邀請" });
 
-        await Handler(discord).HandleAsync(payload, default);
+        await Handler(discord).HandleAsync(payload, TestContext.Current.CancellationToken);
 
         discord.Verify(d => d.SendDirectMessageAsync(555UL, "你被邀請"), Times.Once);
     }
@@ -33,7 +33,7 @@ public class TeamNotificationOutboxHandlerTests
             .ThrowsAsync(new Exception("network"));
         var payload = JsonSerializer.Serialize(new TeamNotificationEvent { TargetDiscordId = 1, Message = "x" });
 
-        await Assert.ThrowsAsync<Exception>(() => Handler(discord).HandleAsync(payload, default));
+        await Assert.ThrowsAsync<Exception>(() => Handler(discord).HandleAsync(payload, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class TeamNotificationOutboxHandlerTests
             EditMessageId = 42
         });
 
-        await Handler(discord).HandleAsync(payload, default);
+        await Handler(discord).HandleAsync(payload, TestContext.Current.CancellationToken);
 
         discord.Verify(d => d.EditDirectMessageAsync(555UL, 42UL, "此邀請已失效（隊伍已滿）。"), Times.Once);
         discord.Verify(d => d.SendDirectMessageAsync(It.IsAny<ulong>(), It.IsAny<string>()), Times.Never);
@@ -68,7 +68,7 @@ public class TeamNotificationOutboxHandlerTests
             EditMessageId = null
         });
 
-        await Handler(discord).HandleAsync(payload, default);
+        await Handler(discord).HandleAsync(payload, TestContext.Current.CancellationToken);
 
         discord.Verify(d => d.EditDirectMessageAsync(It.IsAny<ulong>(), It.IsAny<ulong>(), It.IsAny<string>()), Times.Never);
     }

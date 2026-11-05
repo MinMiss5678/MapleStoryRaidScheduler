@@ -4,6 +4,15 @@
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <OutputType>Exe</OutputType>
+        <!-- ⚠️ 過渡設定，PR 4 移除。
+             xUnit v3 預設把專案標成 Microsoft.Testing.Platform（MTP）應用程式；.NET 10 SDK 的 dotnet test 預設仍走 VSTest
+             （MTP 要在 global.json 另行開啟），遇到 MTP 專案會直接報錯。
+             CI 覆蓋率（coverlet.collector）與本機 dotnet test 目前都走 VSTest，且 Test.Integration 仍是 xUnit v2 → 先關掉。
+             PR 4：Test.Integration 遷 v3 ＋ global.json 開啟 MTP ＋ 覆蓋率改 Microsoft.Testing.Extensions.CodeCoverage，
+             完成後刪掉這行與 xunit.runner.visualstudio / Microsoft.NET.Test.Sdk / coverlet.collector。
+             dotnet run（加 project 參數指向 Test）是 xUnit v3 原生 In-Process Runner（TDD hook 解析的輸出格式），不受此設定影響。 -->
+        <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
     </PropertyGroup>
 
     <ItemGroup>
@@ -27,8 +36,8 @@
       <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.22" />
       <PackageReference Include="Moq" Version="4.21.0" />
       <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-      <PackageReference Include="xunit" Version="2.9.3" />
-      <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+      <PackageReference Include="xunit.v3" Version="4.0.2" />
+      <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
     </ItemGroup>
 
 </Project>
