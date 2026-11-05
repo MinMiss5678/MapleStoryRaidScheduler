@@ -102,6 +102,9 @@ def check_group(root: Path, group: dict) -> bool:
 
 
 def main() -> int:
+    # 輸出編碼由腳本自己決定，不依賴呼叫端環境：Windows 上輸出導向管線／檔案時（Git Bash、> file），
+    # Python 用系統地區編碼（台灣是 cp950），印 ✓ 或中文會 UnicodeEncodeError。讀檔端同理已指定 utf-8-sig。
+    sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="檢查成組的版本是否在各檔案中一致")
     parser.add_argument("--root", help="repo 根目錄（預設：本腳本所在 repo）")
     parser.add_argument("--config", help="設定檔（預設：<root>/scripts/version-sync.json）")
