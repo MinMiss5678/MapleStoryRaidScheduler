@@ -20,9 +20,16 @@ dotnet build
 # Run all tests
 dotnet test
 
-# Run a single test class
+# Unit tests (Test/, xUnit v3) via the native in-process runner — this output format
+# ("Total: N, Errors: N, Failed: N, …") is what the TDD hook parses
+dotnet run --project Test
+dotnet run --project Test -- -class "*TeamLeaderServiceTests"   # single class (wildcards OK)
+
+# Run a single test class via VSTest
 dotnet test --filter "FullyQualifiedName~TeamLeaderServiceTests"
 ```
+
+`Test/` is on xUnit v3 but keeps `IsTestingPlatformApplication=false`, so `dotnet test` (and CI's coverlet `--collect:"XPlat Code Coverage"`) still go through VSTest; without it the .NET 10 SDK rejects `dotnet test`. `Test.Integration/` is still xUnit v2 (migration = PR 4).
 
 ### Frontend
 
