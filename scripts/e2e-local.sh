@@ -68,6 +68,11 @@ wait_http() { # $1=url $2=名稱
   return 1
 }
 
+step "0/4 版本一致性檢查（Playwright npm↔image 等）"
+# 版本對不上時（例如 dependabot 只升了 npm 的 @playwright/test、沒升 image），E2E 會整套全倒、
+# 錯誤訊息看不出原因 → 起 stack 前先擋，省下 build 的幾分鐘。
+python3 scripts/check-version-sync.py
+
 step "1/4 起 stack（--build --wait）"
 dc up -d --build --wait e2e-frontend
 wait_http http://localhost:5230/health/ready backend
