@@ -205,6 +205,18 @@ run_check() {
   [[ "$output" == *"找不到檔案"* ]]
 }
 
+# ---------------------------------------------------------------- V9 輸出端編碼
+
+@test "V9 輸出端編碼不是 UTF-8（Windows 導向管線時是 cp950）→ 仍正常輸出，不得 UnicodeEncodeError" {
+  write_config
+  write_consistent_files
+
+  PYTHONIOENCODING=cp950 run_check
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Playwright"*"1.64.1"* ]]
+  not_in_output "UnicodeEncodeError"
+}
+
 # ---------------------------------------------------------------- V8 從其他目錄執行
 
 @test "V8 不帶 --root、從 repo 以外的目錄執行 → 以腳本所在 repo 為根目錄" {
