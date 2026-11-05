@@ -88,6 +88,9 @@ jobs:
       - run: shellcheck scripts/*.sh
       - run: shellcheck -s bash scripts/tests/*.bats
       - run: bats scripts/tests
+      # 成組的版本（Playwright npm↔image、Node、PostgreSQL、Redis）必須一致；設定在 scripts/version-sync.json。
+      # dependabot 不會跨生態系一起升，單邊升級的 PR 在這裡就會被擋下，不用等 E2E 才炸。
+      - run: python3 scripts/check-version-sync.py
 
   # ReSharper 全方案品質檢查（jb inspectcode，免費）：擋死碼 / 易出 bug 寫法 / 結構問題。
   # 這幾類 Roslyn 做不到（沒人用的 public 型別、變數遮蔽等需全方案分析）。

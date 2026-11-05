@@ -47,11 +47,12 @@ setup() {
 
   # 假指令的預設行為：一切正常
   export FAKE_HTTP_BACKEND=200 FAKE_HTTP_FRONTEND=200
-  export FAKE_COUNTS="2 7" FAKE_SEED_RC=0 FAKE_PW_RC=0
+  export FAKE_COUNTS="2 7" FAKE_SEED_RC=0 FAKE_PW_RC=0 FAKE_VERSION_RC=0
   export FAKE_PW_OUT=$'Running 3 tests using 1 worker\n  3 passed (1.0s)'
 
   make_stub git 'echo "$WORK"'
   make_stub sleep ':'
+  make_stub python3 'echo "python3 $*" >> "$CALLS"; [ "$FAKE_VERSION_RC" = 0 ] || echo "✗ Playwright：版本不一致"; exit "$FAKE_VERSION_RC"'
   make_stub curl 'case "$*" in *5230*) printf %s "$FAKE_HTTP_BACKEND" ;; *) printf %s "$FAKE_HTTP_FRONTEND" ;; esac'
   make_stub docker '
 echo "docker $*" >> "$CALLS"
@@ -113,6 +114,16 @@ esac'
   [ "$status" -eq 17 ]
   [[ "$output" == *"沒有跑到測試"* ]]
   [[ "$output" == *"build broke here"* ]]
+}
+
+@test "S12 版本一致性檢查失敗 → 中止，不起 stack（版本對不上時 E2E 只會全倒、看不出原因）" {
+  FAKE_VERSION_RC=1 run bash "$SCRIPT"
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"版本不一致"* ]]
+  grep -q "python3 scripts/check-version-sync.py" "$CALLS"
+  not_in_file " up " "$CALLS"
+  not_in_file " run " "$CALLS"
 }
 
 # ---------------------------------------------------------------- 參數

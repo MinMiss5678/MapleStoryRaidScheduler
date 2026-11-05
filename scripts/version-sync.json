@@ -1,0 +1,120 @@
+{
+  "groups": [
+    {
+      "name": "Playwright",
+      "compare": "exact",
+      "sources": [
+        {
+          "path": "web/package-lock.json",
+          "json": [
+            "packages",
+            "node_modules/@playwright/test",
+            "version"
+          ]
+        },
+        {
+          "path": "web/package-lock.json",
+          "json": [
+            "packages",
+            "node_modules/playwright",
+            "version"
+          ]
+        },
+        {
+          "path": "web/package-lock.json",
+          "json": [
+            "packages",
+            "node_modules/playwright-core",
+            "version"
+          ]
+        },
+        {
+          "path": "web/Dockerfile.e2e",
+          "regex": "playwright:v([0-9][0-9.]*)"
+        }
+      ]
+    },
+    {
+      "name": "Node",
+      "compare": "major",
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "regex": "node-version:\\s*['\"]?([0-9][0-9.]*)"
+        },
+        {
+          "path": "web/Dockerfile",
+          "regex": "^FROM node:([0-9][0-9.]*)"
+        },
+        {
+          "path": "web/package-lock.json",
+          "json": [
+            "packages",
+            "node_modules/@types/node",
+            "version"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PostgreSQL",
+      "compare": "major",
+      "sources": [
+        {
+          "path": "compose.yaml",
+          "regex": "image:\\s*postgres:([0-9][0-9.]*)"
+        },
+        {
+          "path": "compose.e2e.yaml",
+          "regex": "image:\\s*postgres:([0-9][0-9.]*)"
+        },
+        {
+          "path": "compose.conntest.yaml",
+          "regex": "image:\\s*postgres:([0-9][0-9.]*)"
+        },
+        {
+          "path": "compose.locktest.yaml",
+          "regex": "image:\\s*postgres:([0-9][0-9.]*)"
+        },
+        {
+          "path": "k8s/database.yaml",
+          "regex": "image:\\s*postgres:([0-9][0-9.]*)"
+        },
+        {
+          "path": "Test.Integration/PostgresFixture.cs",
+          "regex": "\"postgres:([0-9][0-9.]*)"
+        }
+      ]
+    },
+    {
+      "name": "Redis",
+      "compare": "major",
+      "sources": [
+        {
+          "path": "compose.yaml",
+          "regex": "image:\\s*redis:([0-9][0-9.]*)"
+        },
+        {
+          "path": "compose.e2e.yaml",
+          "regex": "image:\\s*redis:([0-9][0-9.]*)"
+        },
+        {
+          "path": "compose.conntest.yaml",
+          "regex": "image:\\s*redis:([0-9][0-9.]*)"
+        },
+        {
+          "path": "compose.locktest.yaml",
+          "regex": "image:\\s*redis:([0-9][0-9.]*)"
+        },
+        {
+          "path": "k8s/redis.yaml",
+          "regex": "image:\\s*redis:([0-9][0-9.]*)"
+        },
+        {
+          "path": "Test.Integration/RedisFixture.cs",
+          "regex": "\"redis:([0-9][0-9.]*)"
+        }
+      ]
+    }
+  ]
+}
