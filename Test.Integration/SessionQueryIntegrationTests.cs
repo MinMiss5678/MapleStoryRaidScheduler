@@ -27,7 +27,7 @@ public class SessionQueryIntegrationTests
         var expiry = DateTimeOffset.UtcNow.AddDays(30);
         await using (var c = new NpgsqlConnection(cs))
         {
-            await c.OpenAsync();
+            await c.OpenAsync(TestContext.Current.CancellationToken);
             await c.ExecuteAsync(
                 """INSERT INTO "Session"("SessionId","DiscordId","SessionExpiry") VALUES (@sid,@did,@exp);""",
                 new { sid = "sid-abc", did = 555L, exp = expiry });

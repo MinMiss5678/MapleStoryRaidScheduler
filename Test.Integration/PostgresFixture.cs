@@ -22,7 +22,7 @@ public class PostgresFixture : IAsyncLifetime
 
     public string ConnectionString => _container.GetConnectionString();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         // 自訂 TimeOnly handler（PlayerAvailability 的 time 欄位會用到）
         SqlMapper.AddTypeHandler(new TimeOnlyTypeHandler());
@@ -31,7 +31,7 @@ public class PostgresFixture : IAsyncLifetime
         await ApplyMigrationsAsync();
     }
 
-    public async Task DisposeAsync() => await _container.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _container.DisposeAsync();
 
     /// <summary>建立指向測試容器的 DbContext（Dapper 會自動開連線）。</summary>
     public DbContext CreateDbContext() => new(new NpgsqlConnection(ConnectionString));

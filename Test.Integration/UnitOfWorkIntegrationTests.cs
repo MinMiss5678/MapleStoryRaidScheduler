@@ -28,7 +28,7 @@ public class UnitOfWorkIntegrationTests
         var bossId = await Seed.BossAsync(cs);
 
         await using var conn = new NpgsqlConnection(cs);
-        await conn.OpenAsync();
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
         var ctx = new DbContext(conn);
         var uow = new UnitOfWork(ctx);
         var repo = new TeamSlotRepository(ctx);
@@ -56,7 +56,7 @@ public class UnitOfWorkIntegrationTests
         var bossId = await Seed.BossAsync(cs);
 
         await using var conn = new NpgsqlConnection(cs);
-        await conn.OpenAsync();
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
         var ctx = new DbContext(conn);
         var uow = new UnitOfWork(ctx);
         var repo = new TeamSlotRepository(ctx);

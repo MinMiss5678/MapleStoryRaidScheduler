@@ -68,7 +68,7 @@ public class TeamSlotCharacterOptimisticLockIntegrationTests
 
         // 資料應停在第一次更新後的狀態（Bishop/1 那次過時寫入沒有生效）
         await using var conn = new NpgsqlConnection(cs);
-        await conn.OpenAsync();
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
         var job = await conn.ExecuteScalarAsync<string>(
             """SELECT "Job" FROM "TeamSlotCharacter" WHERE "Id" = @id""", new { id = characterRowId });
         Assert.Equal("Warrior", job);
@@ -91,7 +91,7 @@ public class TeamSlotCharacterOptimisticLockIntegrationTests
 
         await using (var conn = new NpgsqlConnection(cs))
         {
-            await conn.OpenAsync();
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
             await conn.ExecuteAsync("""DELETE FROM "TeamSlotCharacter" WHERE "Id" = @id""", new { id = characterRowId });
         }
 

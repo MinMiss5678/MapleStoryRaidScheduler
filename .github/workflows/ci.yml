@@ -13,7 +13,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DOTNET_VERSION: "9.0.x"
+  # SDK 10：global.json 以 test.runner 開啟 Microsoft.Testing.Platform 版 dotnet test，只有 .NET 10 SDK 認得。
+  # 專案仍是 net9.0（SDK 10 可建置 net9.0）；正式 image 的 Dockerfile 仍用 SDK 9 建置。
+  DOTNET_VERSION: "10.0.x"
   # NuGet 套件裝進 workspace 內 → actions/cache 撈得到（比照原 GitLab NUGET_PACKAGES）
   NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
 
@@ -175,7 +177,8 @@ jobs:
           path: ${{ env.NUGET_PACKAGES }}
           key: nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: nuget-
-      - run: dotnet test Test/Test.csproj -c Release --collect:"XPlat Code Coverage" --results-directory ./coverage-unit
+      # Microsoft.Testing.Platform 版 dotnet test ＋ Microsoft.Testing.Extensions.CodeCoverage（輸出 cobertura，下游 reportgenerator 不變）
+      - run: dotnet test --project Test/Test.csproj -c Release --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml --results-directory ./coverage-unit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -199,7 +202,8 @@ jobs:
           path: ${{ env.NUGET_PACKAGES }}
           key: nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: nuget-
-      - run: dotnet test Test.Integration/Test.Integration.csproj -c Release --collect:"XPlat Code Coverage" --results-directory ./coverage-integration
+      # Microsoft.Testing.Platform 版 dotnet test ＋ Microsoft.Testing.Extensions.CodeCoverage（輸出 cobertura，下游 reportgenerator 不變）
+      - run: dotnet test --project Test.Integration/Test.Integration.csproj -c Release --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml --results-directory ./coverage-integration
       - uses: actions/upload-artifact@v4
         if: always()
         with:

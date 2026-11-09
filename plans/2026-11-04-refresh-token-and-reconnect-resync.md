@@ -63,7 +63,9 @@
   → **輸出格式相同，`reportgenerator` 段（`:231-240`）完全不動**
 - **PR 3 的過渡設定（PR 4 要收掉）**：本機是 .NET 10 SDK，其 `dotnet test` 預設仍走 VSTest（MTP 要在 `global.json` 以 `"test": { "runner": "Microsoft.Testing.Platform" }` 開啟），而 xUnit v3 預設把專案標成 MTP 應用程式 → `dotnet test` 直接報錯。PR 3 在 `Test/Test.csproj` 設 `IsTestingPlatformApplication=false`，保留 `xunit.runner.visualstudio`／`Microsoft.NET.Test.Sdk`／`coverlet.collector`，讓 CI 覆蓋率照舊。
   PR 4：加 `global.json` 開啟 MTP、兩個測試專案都改 MTP ＋ `Microsoft.Testing.Extensions.CodeCoverage`，**刪掉該設定與上述三個 VSTest 套件**（對照 ChipHunter：只裝 `xunit.v3`、一律 `dotnet run`）
+  ✅ 2026/11/05 已完成。連帶：CI 的 `DOTNET_VERSION` 改為 10.0.x（`global.json` 的 `test.runner` 只有 SDK 10 認得；專案仍為 net9.0、Dockerfile 仍用 SDK 9 建置）。覆蓋率引擎由 coverlet 換成 Microsoft Code Coverage，**數字不可與舊值直接比較**（行數計法不同：可計行 4270 → 3971）
 - **順便決定**：CI 的 `dotnet test` 沒帶 `--settings Test/coverlet.runsettings` → 該檔的排除清單在 CI 從未生效；改覆蓋率工具時一併決定要不要套用
+  ✅ 2026/11/06 決定：**不排除、刪除該檔**。CI 合併 unit＋integration 報告，排除 Repositories／Query 會藏掉整合測試的覆蓋；清單還排除了 `AuthService`／`SessionService` 等認證程式碼，不該隱藏
 - **Stryker 擱置**：`Domain/stryker-config.json`、`Infrastructure/stryker-config.json` 可能壞，但**不在 CI**（0 次提及）、非關鍵路徑 → 標 TODO，下次要跑變異測試再修
 - `CLAUDE.md` 的指令區塊要更新
 

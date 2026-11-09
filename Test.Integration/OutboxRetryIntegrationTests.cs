@@ -21,8 +21,8 @@ public class OutboxRetryIntegrationTests : IAsyncLifetime
     private readonly PostgresFixture _fx;
     public OutboxRetryIntegrationTests(PostgresFixture fx) => _fx = fx;
 
-    public Task InitializeAsync() => _fx.ResetAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public async ValueTask InitializeAsync() => await _fx.ResetAsync();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static Exception Transient() =>
         (Exception)RuntimeHelpers.GetUninitializedObject(typeof(ServerErrorException));

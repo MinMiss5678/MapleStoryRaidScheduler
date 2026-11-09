@@ -21,8 +21,8 @@ public class OutboxIntegrationTests : IAsyncLifetime
     private readonly PostgresFixture _fx;
     public OutboxIntegrationTests(PostgresFixture fx) => _fx = fx;
 
-    public Task InitializeAsync() => _fx.ResetAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public async ValueTask InitializeAsync() => await _fx.ResetAsync();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private async Task<long> CountAsync(string where)
     {
@@ -94,19 +94,19 @@ public class OutboxIntegrationTests : IAsyncLifetime
 
         // pod A：開交易撈住該列（持有列鎖、不 commit）
         await using var connA = new NpgsqlConnection(_fx.ConnectionString);
-        await connA.OpenAsync();
-        await using var txA = await connA.BeginTransactionAsync();
+        await connA.OpenAsync(TestContext.Current.CancellationToken);
+        await using var txA = await connA.BeginTransactionAsync(TestContext.Current.CancellationToken);
         var idsA = (await connA.QueryAsync<long>(claim, transaction: txA)).ToList();
         Assert.Single(idsA);
 
         // pod B：同時撈 → 該列被 A 鎖 → SKIP LOCKED 跳過 → 撈到 0（不會兩個 pod 同時處理）
         await using var connB = new NpgsqlConnection(_fx.ConnectionString);
-        await connB.OpenAsync();
-        await using var txB = await connB.BeginTransactionAsync();
+        await connB.OpenAsync(TestContext.Current.CancellationToken);
+        await using var txB = await connB.BeginTransactionAsync(TestContext.Current.CancellationToken);
         var idsB = (await connB.QueryAsync<long>(claim, transaction: txB)).ToList();
         Assert.Empty(idsB);
 
-        await txA.RollbackAsync();
+        await txA.RollbackAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>
@@ -126,14 +126,14 @@ public class OutboxIntegrationTests : IAsyncLifetime
         // 「崩潰前」的這次嘗試：claim 該列、呼叫 handler、但不 commit（模擬 commit 前中斷）
         await using (var conn = new NpgsqlConnection(_fx.ConnectionString))
         {
-            await conn.OpenAsync();
-            await using var tx = await conn.BeginTransactionAsync();
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
+            await using var tx = await conn.BeginTransactionAsync(TestContext.Current.CancellationToken);
             var id = await conn.QuerySingleAsync<long>(
                 """SELECT "Id" FROM "OutboxMessage" WHERE "ProcessedAt" IS NULL FOR UPDATE SKIP LOCKED LIMIT 1""",
                 transaction: tx);
             await handler.HandleAsync("{}", CancellationToken.None);
             await conn.ExecuteAsync("""UPDATE "OutboxMessage" SET "ProcessedAt" = now() WHERE "Id" = @id""", new { id }, tx);
-            await tx.RollbackAsync(); // 模擬崩潰：commit 前中斷，標記從沒真的寫入
+            await tx.RollbackAsync(TestContext.Current.CancellationToken); // 模擬崩潰：commit 前中斷，標記從沒真的寫入
         }
         Assert.Equal(1, handler.Count);                                   // 崩潰前 handler 已經執行過一次（副作用已發生）
         Assert.Equal(1, await CountAsync("""WHERE "ProcessedAt" IS NULL""")); // 但 DB 上這列仍是「未處理」
