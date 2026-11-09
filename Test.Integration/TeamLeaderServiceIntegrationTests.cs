@@ -90,7 +90,7 @@ public class TeamLeaderServiceIntegrationTests
 
         // TeamSlot 新欄實際寫入（read 路徑尚未映射這些欄，故直接查 DB 驗；period-less：已無 PeriodId）
         await using var conn = new NpgsqlConnection(cs);
-        await conn.OpenAsync();
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
         var row = await conn.QuerySingleAsync<(string Source, long? LeaderDiscordId, string? Description)>(
             """SELECT "Source", "LeaderDiscordId", "Description" FROM "TeamSlot" WHERE "Id" = @id;""",
             new { id = teamSlotId });
@@ -171,7 +171,7 @@ public class TeamLeaderServiceIntegrationTests
         // 該日整天不行 override → 蓋掉常設 → 撈不到（override 綁團當天 TPE 日期）
         await using (var conn = new NpgsqlConnection(cs))
         {
-            await conn.OpenAsync();
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
             await conn.ExecuteAsync(
                 """INSERT INTO "PlayerAvailabilityOverride"("DiscordId","Date","StartTime","EndTime","IsAvailable") VALUES (101, @d, TIME '00:00', TIME '00:00', false);""",
                 new { d = slot.ToOffset(TimeSpan.FromHours(8)).Date });
@@ -192,7 +192,7 @@ public class TeamLeaderServiceIntegrationTests
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
         await using (var conn = new NpgsqlConnection(cs))
         {
-            await conn.OpenAsync();
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
             await conn.ExecuteAsync(
                 """INSERT INTO "LfgIntent"("DiscordId","CharacterId","BossId","ExpiresAt") VALUES (101, 'archer', @bossId, now() + interval '1 hour');""",
                 new { bossId });
@@ -430,7 +430,7 @@ public class TeamLeaderServiceIntegrationTests
 
         // 邀請的同交易內寫了一則 TeamNotification outbox，收件人＝被邀玩家 101（原子；bot 之後撈去發 DM）
         await using var conn = new NpgsqlConnection(cs);
-        await conn.OpenAsync();
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
         var row = await conn.QuerySingleAsync<(string Type, string Payload)>(
             """SELECT "Type", "Payload"::text FROM "OutboxMessage" ORDER BY "Id" DESC LIMIT 1;""");
         Assert.Equal("TeamNotification", row.Type);

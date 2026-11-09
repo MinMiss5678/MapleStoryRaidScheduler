@@ -146,7 +146,7 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
             $"預期 A 出現 429。{Diagnose(aStatuses, aBody)}");
 
         // 使用者 B（不同 discordId）自己的視窗仍空 → 第一次就不該被限
-        var respB = await client.SendAsync(AuthedGet(CreateJwt(2002)));
+        var respB = await client.SendAsync(AuthedGet(CreateJwt(2002)), TestContext.Current.CancellationToken);
         Assert.NotEqual(HttpStatusCode.TooManyRequests, respB.StatusCode);
     }
 }

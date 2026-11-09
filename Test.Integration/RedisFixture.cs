@@ -17,9 +17,9 @@ public class RedisFixture : IAsyncLifetime
 
     public string ConnectionString => _container.GetConnectionString();
 
-    public async Task InitializeAsync() => await _container.StartAsync();
+    public async ValueTask InitializeAsync() => await _container.StartAsync();
 
-    public async Task DisposeAsync() => await _container.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _container.DisposeAsync();
 
     /// <summary>建立一條指向測試容器的連線（呼叫端負責 Dispose）。多條連線可模擬多 pod。</summary>
     public IConnectionMultiplexer Connect() => ConnectionMultiplexer.Connect(ConnectionString);

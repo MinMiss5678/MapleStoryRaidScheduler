@@ -21,8 +21,8 @@ public class TeamNotificationStalenessIntegrationTests : IAsyncLifetime
     private readonly PostgresFixture _fx;
     public TeamNotificationStalenessIntegrationTests(PostgresFixture fx) => _fx = fx;
 
-    public Task InitializeAsync() => _fx.ResetAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public async ValueTask InitializeAsync() => await _fx.ResetAsync();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private readonly FakeDiscord _discord = new();
     private readonly HashSet<long> _seededPlayers = new();

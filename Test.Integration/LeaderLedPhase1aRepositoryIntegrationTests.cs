@@ -62,7 +62,7 @@ public class LeaderLedPhase1aRepositoryIntegrationTests
         var bossId2 = await Seed.BossAsync(cs);
         await using (var conn = new Npgsql.NpgsqlConnection(cs))
         {
-            await conn.OpenAsync();
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
             // 兩筆需在 (CharacterId,BossId) 不同組，否則撞唯一索引 uq_lfgintent_char_boss → 掛兩隻不同王。
             await Dapper.SqlMapper.ExecuteAsync(conn, $"""INSERT INTO "LfgIntent"("DiscordId","CharacterId","BossId","ExpiresAt") VALUES (999,'c999',{bossId}, now() - interval '1 hour'), (999,'c999',{bossId2}, now() + interval '1 hour');""");
         }
@@ -73,7 +73,7 @@ public class LeaderLedPhase1aRepositoryIntegrationTests
 
         Assert.Equal(1, deleted); // 只刪過期那筆
         await using var conn2 = new Npgsql.NpgsqlConnection(cs);
-        await conn2.OpenAsync();
+        await conn2.OpenAsync(TestContext.Current.CancellationToken);
         var remaining = await Dapper.SqlMapper.QuerySingleAsync<int>(conn2, """SELECT COUNT(*)::int FROM "LfgIntent";""");
         Assert.Equal(1, remaining); // 未過期那筆留著
     }

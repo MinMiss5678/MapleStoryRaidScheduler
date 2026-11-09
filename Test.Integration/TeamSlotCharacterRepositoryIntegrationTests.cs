@@ -55,7 +55,7 @@ public class TeamSlotCharacterRepositoryIntegrationTests
 
         await using (var c = new NpgsqlConnection(_fx.ConnectionString))
         {
-            await c.OpenAsync();
+            await c.OpenAsync(TestContext.Current.CancellationToken);
             // 一個已回寫 DM message id、一個未回寫（null）
             await c.ExecuteAsync(
                 """INSERT INTO "TeamSlotCharacter"("TeamSlotId","DiscordId","Job","Status","DmMessageId") VALUES (@t,701,'英雄','Invited',999888)""",
@@ -74,7 +74,7 @@ public class TeamSlotCharacterRepositoryIntegrationTests
 
         // 皆轉 Rejected（不再是 Invited）
         await using var conn = new NpgsqlConnection(_fx.ConnectionString);
-        await conn.OpenAsync();
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
         var stillInvited = await conn.ExecuteScalarAsync<int>(
             """SELECT COUNT(*) FROM "TeamSlotCharacter" WHERE "TeamSlotId" = @t AND "Status" = 'Invited'""", new { t = teamId });
         Assert.Equal(0, stillInvited);
@@ -95,7 +95,7 @@ public class TeamSlotCharacterRepositoryIntegrationTests
 
         await using (var c = new NpgsqlConnection(_fx.ConnectionString))
         {
-            await c.OpenAsync();
+            await c.OpenAsync(TestContext.Current.CancellationToken);
             await c.ExecuteAsync("""INSERT INTO "TeamSlotCharacter"("TeamSlotId","DiscordId","Job","Status","SlotDateTime") VALUES (@t,501,'英雄','Confirmed',@s)""", new { t = teamId, s = inRange });
             await c.ExecuteAsync("""INSERT INTO "TeamSlotCharacter"("TeamSlotId","DiscordId","Job","Status","SlotDateTime") VALUES (@t,502,'英雄','Confirmed',@s)""", new { t = teamId, s = outRange });     // 範圍外
             await c.ExecuteAsync("""INSERT INTO "TeamSlotCharacter"("TeamSlotId","DiscordId","Job","Status","SlotDateTime") VALUES (@t,503,'英雄','Invited',@s)""", new { t = teamId, s = inRange });        // 非 Confirmed

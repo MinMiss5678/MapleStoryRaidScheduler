@@ -36,7 +36,7 @@ public class TeamSlotEditLockIntegrationTests
         const int teamSlotId = 1;
 
         await using var conn1 = new NpgsqlConnection(_fx.ConnectionString);
-        await conn1.OpenAsync();
+        await conn1.OpenAsync(TestContext.Current.CancellationToken);
         var ctx1 = new DbContext(conn1);
         await ctx1.BeginAsync();
         await new TeamSlotEditLock(ctx1).AcquireTeamSlotEditLockAsync(teamSlotId);
@@ -56,7 +56,7 @@ public class TeamSlotEditLockIntegrationTests
         await _fx.ResetAsync();
 
         await using var conn1 = new NpgsqlConnection(_fx.ConnectionString);
-        await conn1.OpenAsync();
+        await conn1.OpenAsync(TestContext.Current.CancellationToken);
         var ctx1 = new DbContext(conn1);
         await ctx1.BeginAsync();
         await new TeamSlotEditLock(ctx1).AcquireTeamSlotEditLockAsync(1);
@@ -80,14 +80,14 @@ public class TeamSlotEditLockIntegrationTests
 
         // A：持鎖不放（模擬持鎖方異常卡住，例如慢查詢或連線異常沒正常 commit/rollback）
         await using var connA = new NpgsqlConnection(_fx.ConnectionString);
-        await connA.OpenAsync();
+        await connA.OpenAsync(TestContext.Current.CancellationToken);
         var ctxA = new DbContext(connA);
         await ctxA.BeginAsync();
         await new TeamSlotEditLock(ctxA).AcquireTeamSlotEditLockAsync(teamSlotId);
 
         // B：短逾時去搶同一把鎖 → 應該在遠低於「無限等待」的時間內丟例外
         await using var connB = new NpgsqlConnection(_fx.ConnectionString);
-        await connB.OpenAsync();
+        await connB.OpenAsync(TestContext.Current.CancellationToken);
         var ctxB = new DbContext(connB);
         await ctxB.BeginAsync();
 

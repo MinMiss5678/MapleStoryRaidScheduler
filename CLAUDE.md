@@ -17,19 +17,21 @@ dotnet run
 # Build the solution
 dotnet build
 
-# Run all tests
+# Run all tests (Microsoft.Testing.Platform mode, enabled by global.json — needs .NET 10 SDK)
 dotnet test
+dotnet test --project Test --filter-class "*TeamLeaderServiceTests"   # single class
 
-# Unit tests (Test/, xUnit v3) via the native in-process runner — this output format
-# ("Total: N, Errors: N, Failed: N, …") is what the TDD hook parses
+# Native xUnit v3 in-process runner — this output format ("Total: N, Errors: N, Failed: N, …")
+# is what the TDD hook parses; use this form when working test-first
 dotnet run --project Test
-dotnet run --project Test -- -class "*TeamLeaderServiceTests"   # single class (wildcards OK)
+dotnet run --project Test -- -class "*TeamLeaderServiceTests"          # single class (wildcards OK)
+dotnet run --project Test.Integration                                   # needs Docker (Testcontainers)
 
-# Run a single test class via VSTest
-dotnet test --filter "FullyQualifiedName~TeamLeaderServiceTests"
+# Coverage (same as CI): Microsoft.Testing.Extensions.CodeCoverage → cobertura
+dotnet test --project Test --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml
 ```
 
-`Test/` is on xUnit v3 but keeps `IsTestingPlatformApplication=false`, so `dotnet test` (and CI's coverlet `--collect:"XPlat Code Coverage"`) still go through VSTest; without it the .NET 10 SDK rejects `dotnet test`. `Test.Integration/` is still xUnit v2 (migration = PR 4).
+Both test projects are xUnit v3 executables (`OutputType=Exe`) on Microsoft.Testing.Platform; there is no VSTest (`Microsoft.NET.Test.Sdk` / `xunit.runner.visualstudio` / `coverlet.collector` are gone). Projects still target `net9.0`; CI uses SDK 10 because `global.json`'s `test.runner` is only understood by SDK 10. Running integration tests from Windows against WSL's Docker needs a socket forward (`DOCKER_HOST=tcp://127.0.0.1:2375`).
 
 ### Frontend
 

@@ -25,8 +25,8 @@ public class RedisRateLimiterIntegrationTests : IClassFixture<RedisFixture>
         var limiter = Limiter(redis, $"rl:{Guid.NewGuid()}", limit: 3);
 
         for (int i = 0; i < 3; i++)
-            Assert.True((await limiter.AcquireAsync(1)).IsAcquired);   // 前 3 次放行
-        Assert.False((await limiter.AcquireAsync(1)).IsAcquired);      // 第 4 次超限 → 擋
+            Assert.True((await limiter.AcquireAsync(1, TestContext.Current.CancellationToken)).IsAcquired);   // 前 3 次放行
+        Assert.False((await limiter.AcquireAsync(1, TestContext.Current.CancellationToken)).IsAcquired);      // 第 4 次超限 → 擋
     }
 
     [Fact]
@@ -38,8 +38,8 @@ public class RedisRateLimiterIntegrationTests : IClassFixture<RedisFixture>
         var a = Limiter(redisA, key, 2);
         var b = Limiter(redisB, key, 2);
 
-        Assert.True((await a.AcquireAsync(1)).IsAcquired);   // pod A：計數 1
-        Assert.True((await b.AcquireAsync(1)).IsAcquired);   // pod B：計數 2（跨 pod 共用）
-        Assert.False((await a.AcquireAsync(1)).IsAcquired);  // pod A：計數 3 → 超限（上限跨 pod 成立）
+        Assert.True((await a.AcquireAsync(1, TestContext.Current.CancellationToken)).IsAcquired);   // pod A：計數 1
+        Assert.True((await b.AcquireAsync(1, TestContext.Current.CancellationToken)).IsAcquired);   // pod B：計數 2（跨 pod 共用）
+        Assert.False((await a.AcquireAsync(1, TestContext.Current.CancellationToken)).IsAcquired);  // pod A：計數 3 → 超限（上限跨 pod 成立）
     }
 }

@@ -33,11 +33,11 @@ public class MigrationReversibilityIntegrationTests
 
             // 套所有 up（正向）
             foreach (var f in ups)
-                await ExecOnAsync(testCs, await File.ReadAllTextAsync(f));
+                await ExecOnAsync(testCs, await File.ReadAllTextAsync(f, TestContext.Current.CancellationToken));
 
             // 套所有 down（反向）——任一 down.sql 有錯就會在此拋例外、測試紅
             foreach (var f in downs)
-                await ExecOnAsync(testCs, await File.ReadAllTextAsync(f));
+                await ExecOnAsync(testCs, await File.ReadAllTextAsync(f, TestContext.Current.CancellationToken));
 
             // down 全跑完後，init.down 應已 drop 掉所有表 → public schema 歸零
             var remainingTables = await ScalarOnAsync(testCs, """

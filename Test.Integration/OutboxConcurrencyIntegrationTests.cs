@@ -26,8 +26,8 @@ public class OutboxConcurrencyIntegrationTests : IAsyncLifetime
     private readonly PostgresFixture _fx;
     public OutboxConcurrencyIntegrationTests(PostgresFixture fx) => _fx = fx;
 
-    public Task InitializeAsync() => _fx.ResetAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public async ValueTask InitializeAsync() => await _fx.ResetAsync();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     [Fact]
     public async Task M個dispatcher併發搶N列_每列恰處理一次_無重複無遺漏()
@@ -74,7 +74,7 @@ public class OutboxConcurrencyIntegrationTests : IAsyncLifetime
             .ToArray();
 
         // 讓 victim 先搶到並處理一些，再殺掉
-        await Task.Delay(40);
+        await Task.Delay(40, TestContext.Current.CancellationToken);
         victimCts.Cancel();
 
         await victim;                        // 吞掉取消、結束
