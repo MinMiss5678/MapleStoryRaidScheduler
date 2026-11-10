@@ -118,7 +118,7 @@ jobs:
       - run: dotnet restore
       - run: dotnet jb inspectcode MapleStoryRaidScheduler.sln --swea --severity=SUGGESTION -f=Sarif -o=inspectcode.sarif
       - run: python3 .github/scripts/inspectcode-gate.py inspectcode.sarif "${{ github.base_ref && format('origin/{0}', github.base_ref) || '' }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: inspectcode-sarif
@@ -179,7 +179,7 @@ jobs:
           restore-keys: nuget-
       # Microsoft.Testing.Platform 版 dotnet test ＋ Microsoft.Testing.Extensions.CodeCoverage（輸出 cobertura，下游 reportgenerator 不變）
       - run: dotnet test --project Test/Test.csproj -c Release --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml --results-directory ./coverage-unit
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-unit
@@ -204,7 +204,7 @@ jobs:
           restore-keys: nuget-
       # Microsoft.Testing.Platform 版 dotnet test ＋ Microsoft.Testing.Extensions.CodeCoverage（輸出 cobertura，下游 reportgenerator 不變）
       - run: dotnet test --project Test.Integration/Test.Integration.csproj -c Release --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml --results-directory ./coverage-integration
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-integration
@@ -266,7 +266,7 @@ jobs:
       - run: cat coverage-report/Summary.txt
       # 覆蓋率總結貼到 GitHub job summary（PR 頁可見）
       - run: cat coverage-report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage-report/
@@ -302,7 +302,7 @@ jobs:
       - name: 收尾
         if: always()
         run: docker compose -f compose.e2e.yaml --profile ci down -v || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
