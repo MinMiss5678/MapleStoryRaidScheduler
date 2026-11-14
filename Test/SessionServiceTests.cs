@@ -181,4 +181,79 @@ public class SessionServiceTests
 
         _sessionRepoMock.Verify(r => r.DeleteByDiscordAsync(222UL), Times.Once);
     }
+
+    // ===== 同一管理員多個 session ＋ 快取歸屬（plans/2026-11-04-session-multi-device-relogin.md §三 A 組）=====
+    // 快取以 discordId 為 key、只存一筆；資料庫允許同一人多筆 session（每登入一次一筆）。
+    // 快取命中但 sessionId 不符時，要回資料庫確認（第二台裝置的合法 session），且查到的 session 必須屬於 cookie 的 discordId。
+
+    private static Session SessionOf(string sessionId, ulong owner, bool expired = false) => new()
+    {
+        SessionId = sessionId,
+        DiscordId = owner,
+        SessionExpiry = expired ? DateTimeOffset.UtcNow.AddMinutes(-1) : DateTimeOffset.UtcNow.AddDays(30)
+    };
+
+    /// <summary>先用 sid-real 走一次資料庫，讓快取記住 discordId=789 → sid-real。</summary>
+    private async Task WarmCacheWithRealSessionAsync()
+    {
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-real")).ReturnsAsync(SessionOf("sid-real", 789UL));
+        Assert.NotNull(await _sessionService.GetAsync("sid-real", "789"));
+    }
+
+    [Fact]
+    public async Task A1_快取命中_sessionId不符_資料庫有同一人的有效session_回傳該session()
+    {
+        await WarmCacheWithRealSessionAsync();
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-second")).ReturnsAsync(SessionOf("sid-second", 789UL));
+
+        var result = await _sessionService.GetAsync("sid-second", "789");
+
+        Assert.NotNull(result);
+        Assert.Equal("sid-second", result.SessionId);
+        Assert.Equal(789UL, result.DiscordId);
+    }
+
+    [Fact]
+    public async Task A3_快取命中_sessionId不符_資料庫的session已過期_回Null()
+    {
+        await WarmCacheWithRealSessionAsync();
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-second"))
+            .ReturnsAsync(SessionOf("sid-second", 789UL, expired: true));
+
+        Assert.Null(await _sessionService.GetAsync("sid-second", "789"));
+    }
+
+    [Fact]
+    public async Task A4_快取命中_sessionId不符_資料庫的session屬於另一人_回Null()
+    {
+        await WarmCacheWithRealSessionAsync();
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-other")).ReturnsAsync(SessionOf("sid-other", 999UL));
+
+        Assert.Null(await _sessionService.GetAsync("sid-other", "789"));
+    }
+
+    [Fact]
+    public async Task A5_快取未命中_資料庫的session屬於另一人_回Null且不寫入快取()
+    {
+        // 攻擊情境：管理員 999 用自己的 sessionId，但 cookie 的 discordId 填 789 → 不得把自己的 session 寫進 789 的快取位置
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-other")).ReturnsAsync(SessionOf("sid-other", 999UL));
+
+        var result = await _sessionService.GetAsync("sid-other", "789");
+
+        Assert.Null(result);
+        Assert.Null(await _sessionCache.GetAsync("789"));
+    }
+
+    [Fact]
+    public async Task A7_快取命中_sessionId不符_資料庫確認有效後放行_但不覆寫快取()
+    {
+        await WarmCacheWithRealSessionAsync();
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-second")).ReturnsAsync(SessionOf("sid-second", 789UL));
+
+        Assert.NotNull(await _sessionService.GetAsync("sid-second", "789"));
+
+        var cached = await _sessionCache.GetAsync("789");
+        Assert.NotNull(cached);
+        Assert.Equal("sid-real", cached.SessionId); // 快取仍是原本那筆（A-2：不覆寫，避免兩台裝置交替時快取來回翻）
+    }
 }

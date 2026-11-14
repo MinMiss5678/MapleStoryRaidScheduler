@@ -24,27 +24,14 @@ import {
 /**
  * 專屬 discordId 區段，避免與其他 spec 的身分互相干擾（fullyParallel）。
  *
- * ⚠️ **必須每個 worker 用不同的 discordId**，否則 admin 的 session 測試會偽陽性失敗（401）。
+ * 身分 id **每次執行 ＋ 每個 worker 都唯一**：平行的 test 之間、本機重複執行之間，
+ * 都不共用 session 與 Redis 快取狀態，任何一條測試的結果都不受其他測試影響。
  *
- * 原因是 `SessionService` 的設計：Redis 快取**以 discordId 為 key**，所以同一個 Discord 使用者
- * 在快取有效期內**只能有一個活躍 session**。兩個 worker 都用同一個 discordId 登入時：
- *   worker 1 登入 → sessionId=S1；worker 2 登入 → sessionId=S2（DB 兩筆都在）
- *   worker 1 發請求 → 快取未命中 → 查 DB → 寫入 快取[discordId] = session(S1)
- *   worker 2 發請求 → 快取**命中** → `cached.SessionId(S1) != sessionId(S2)` → **401**
- *
- * 也就是 `c0e0311` 那道防護正確地擋掉了 worker 2 的合法 session。
- * 這是測試骨架要避開的衝突；它同時暴露一個產品行為：登入流程（`AuthAppService`）不會清
- * `cache[discordId]`，所以管理員在舊 session 仍在快取時**重新登入**（換瀏覽器、清 cookie），
- * 新 session 會被擋成 401，最長 `SessionPolicy.CacheFreshness`（15 分鐘）。
- *
- * ⚠️ 還有第二個坑：**本機重複執行**時固定 id 一樣會撞。
- * `db/seed-e2e.sql` 的 TRUNCATE 清單是 `TeamSlotCharacter / TeamSlot / Character / Player / Boss`
- * ——**沒有 `Session`**，而 Redis 也不會被 seed 清掉。
- * 所以同一個 discordId 的舊 session 會跨執行累積，且 `cache[discordId]` 可能還卡著舊的那筆
- * → 新登入的 sessionId 與快取裡的不符 → 401（即使只有一個 worker）。
- *
- * → id 要**每次執行 ＋ 每個 worker 都唯一**。CI 每次都是全新資料庫，不受影響；
- *   本機則靠這個 salt 讓每次執行都拿到乾淨的身分。
+ * 歷史：以前**必須**這樣做——`SessionService` 的快取以 discordId 為 key 只存一筆，
+ * 快取命中但 sessionId 不符就直接 401，同一管理員的第二個合法 session（另一個 worker、
+ * 換瀏覽器重新登入）會被擋，最長 15 分鐘（登入迴圈）。PR 5b 已修正：不符時改查資料庫、
+ * 核對 session 歸屬（G11 覆蓋），「同一 discordId 同時只能有一個活躍 session」不再成立。
+ * 唯一 id 保留，是為了測試彼此獨立，不再是為了避開那個 bug。
  */
 // 週期約 11.6 天，遠大於快取有效期 15 分鐘 → 不同執行之間不會撞到仍有效的舊快取
 const RUN_SALT = Date.now() % 1_000_000_000;
@@ -279,6 +266,43 @@ test.describe('G8 認證繞過回歸', () => {
   // G8.6 / G8.7（過期但簽章有效的 JWT → 續期後仍受角色檢查，守 60faf7b）需要
   // test-login 支援 ttlSeconds＝改實作 → 留到獨立循環。單元層已有
   // AuthenticationMiddlewareTests.ExpiredJwt_RefreshesAndEnforcesNewRole 覆蓋。
+});
+
+// --------------------------- G11 同一管理員多個 session ＋ 快取歸屬（plans/2026-11-04-session-multi-device-relogin.md B 組）
+
+test.describe('G11 多個 session 與快取歸屬', () => {
+  const sessionIdOf = (who: Identity, discordId: number) => who.cookies[`sessionId${discordId}`];
+
+  test('G11.1 / G11.2 同一管理員登入兩次：快取記住 S1 後，S2 與 S1 都能用（不再登入迴圈）', async () => {
+    const id = idFor(4);
+    const s1 = await loginDirect({ discordId: id, role: 'admin' });
+    const s2 = await loginDirect({ discordId: id, role: 'admin' });
+    expect(sessionIdOf(s1, id), '兩次登入應拿到不同的 sessionId').not.toBe(sessionIdOf(s2, id));
+
+    const warm = await api.get('/api/Me/Teams', { headers: { Cookie: s1.cookie } });
+    expect(warm.status(), '先用 S1 讓快取記住 S1').toBe(200);
+
+    const second = await api.get('/api/Me/Teams', { headers: { Cookie: s2.cookie } });
+    expect(second.status(), 'B1：第二台裝置的合法 session').toBe(200);
+
+    const backToFirst = await api.get('/api/Me/Teams', { headers: { Cookie: s1.cookie } });
+    expect(backToFirst.status(), 'B2：兩個 session 不互相踢掉').toBe(200);
+  });
+
+  test('G11.3 管理員 X 拿自己的 sessionId 冒充 Y 的 discordId → 401，且 Y 的快取沒被汙染', async () => {
+    const X = idFor(5);
+    const Y = idFor(6);
+    const x = await loginDirect({ discordId: X, role: 'admin' });
+    const y = await loginDirect({ discordId: Y, role: 'admin' });
+
+    // Y 的快取刻意保持冷的：汙染發生在「快取未命中 → 查資料庫 → 寫入 cookie 的 discordId 位置」這條路徑
+    const spoof = `discordId=${Y}; sessionId${Y}=${sessionIdOf(x, X)}`;
+    const res = await api.get('/api/Me/Teams', { headers: { Cookie: spoof } });
+    expect(res.status(), 'B3：session 不屬於 cookie 的 discordId').toBe(401);
+
+    const yAfter = await api.get('/api/Me/Teams', { headers: { Cookie: y.cookie } });
+    expect(yAfter.status(), 'B3：Y 接下來的請求不受影響').toBe(200);
+  });
 });
 
 // ------------------------------------------ G10 proxy 白名單（刻意經過 proxy）
