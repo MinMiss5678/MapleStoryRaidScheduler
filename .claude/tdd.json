@@ -57,7 +57,7 @@
     "format": "ctrf",
     "path": "TestResults/tdd.ctrf.json"
   },
-  "migration_command_regex": "(^|[;&|]\\s*)(bash\\s+)?(\\./)?db/create-migration\\.sh\\b",
+  "migration_command_regex": "(^|[;&|]\\s*)(bash\\s+|sh\\s+)?(\\./)?(db/)?create-migration\\.sh\\b",
   "migration_globs": [
     "db/migrations/**"
   ]
