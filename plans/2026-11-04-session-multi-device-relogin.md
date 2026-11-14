@@ -1,6 +1,6 @@
 # 管理員重新登入迴圈 ＋ session 快取汙染
 
-> 建立：2026/11/04｜狀態：**✅ 修法與 case 表已核可（2026/11/04）｜⏸ 等 TDD hook 啟用（PR 5）後才實作**
+> 建立：2026/11/04｜狀態：**✅ 已實作（2026/11/15，PR 5b，在 test-first 稽核下完成）**
 > 範圍：`Infrastructure/Services/SessionService.cs`、`Test/SessionServiceTests.cs`、`web/e2e/authorization-matrix.spec.ts`
 > 主序位置：**PR 5b**（`.claude/tdd.json` 啟用之後、階段 0 之前）——見 `2026-11-04-refresh-token-and-reconnect-resync.md` §七
 
@@ -105,8 +105,15 @@ Y 之後的請求全部 sessionId 不符 → 401（阻斷服務）。
 | 6 | `dotnet format` → 全部單元／整合測試 → `scripts/e2e-local.sh` 完整套件 | 全綠 |
 
 ### 驗收標準
-- [ ] A1、B1：第二台裝置的合法 session 可用（迴圈消失）
-- [ ] A2 與既有 G8.1/G8.2：偽造 sessionId 仍然 401（`c0e0311` 不退化）
-- [ ] A4、A5、B3：歸屬不符一律拒絕，且快取不被汙染
-- [ ] A7：不符路徑不寫快取
-- [ ] 牙齒驗證：拿掉修正 → 對應測試變紅
+- [x] A1、B1：第二台裝置的合法 session 可用（迴圈消失）
+- [x] A2 與既有 G8.1/G8.2：偽造 sessionId 仍然 401（`c0e0311` 不退化）
+- [x] A4、A5、B3：歸屬不符一律拒絕，且快取不被汙染
+- [x] A7：不符路徑不寫快取
+- [x] 牙齒驗證：拿掉修正 → 對應測試變紅
+
+### 實作紀錄（2026/11/15）
+- 紅燈：A1、A5、A7 紅（Rider MCP＋CTRF，hook 記為有效紅燈）；B1、B3 紅（`e2e-local.sh --grep G11`）。
+  ⚠️ §四 預期「A4 紅」不正確：舊程式「不符一律回 null」本來就讓 A4 綠，A4 是回歸防護（期望值 null 不變）。
+- 實作：`SessionService.GetAsync` 只在 sessionId 相符時走快取；不符或未命中 → 查資料庫 → 核對 `session.DiscordId` 等於 cookie 的 discordId → 檢查有效期；只有快取原本是空的才寫入。
+- 綠燈：單元 373（+5）、整合 75、E2E 53（+2：G11.1/G11.2、G11.3），G8.1／G8.2 維持綠。
+- 牙齒（以 `tdd-exempt` 登記）：還原「不符就回 null」→ G11 的 B1 紅；拿掉歸屬核對 → B3 紅；已還原，單元綠燈收尾。
