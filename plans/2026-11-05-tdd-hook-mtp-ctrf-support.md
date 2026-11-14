@@ -179,3 +179,60 @@ PR 4（`chore/xunit-v3-integration`，未 commit）目前的狀態是「`dotnet 
 | `extra` 是 xUnit 自訂欄位，其他框架（MSTest、NUnit）可能沒有 | M3：退回用 `name` |
 | 檔案修改時間的精度、時鐘問題 | 同一台機器、hook 自己記時間。⚠️ 實作時發現：NTFS 時間戳欄位雖是 100ns，但寫入時取的是**較粗的系統時鐘**，檔案修改時間可能比前一刻 `time.time()` 還早數毫秒——單元測試「pre 後立刻寫檔」因此 40 次中偶發 3 次失敗（已修測試資料：模擬執行 1 秒）。實際測試執行至少數秒，不受影響；判定維持嚴格的「晚於」不放寬 |
 | 開發者忘了加 CTRF 參數 | `test_command_regex` 要求參數存在，不符合就不算測試執行；擋下訊息（M16）說明原因 |
+
+---
+
+## 附錄：Bash 測試指令比對不看引號／heredoc 內的文字（2026/11/15，case Q1–Q8 已核可並實作）
+
+**問題**：PR 5 送出時，`git commit -m "…"` 的訊息裡提到測試指令，hook 對整串指令做正規式搜尋，把它當成「用 Bash 跑測試」擋下。只是**提到**測試指令就會誤擋（commit 訊息、PR 內文、`echo`、`grep`、heredoc）。誤擋會大聲說明、有替代路徑（`-F` 檔案），不會讓沒紅燈的實作偷渡，但會一再發生。
+
+**修法**：只在 **Bash** 的測試指令判斷前，先拿掉 heredoc 內容與引號內的字串（`tdd_core._without_quoted_text`）；IDE 終端機記錄測試執行的比對**不變**（Q7）。引號不成對時退回比對整串（寧可誤擋）。
+
+| # | 指令 | 期望 |
+|---|---|---|
+| Q1 | `git commit -m "…<測試指令>…"`（含 `&&`） | 放行 |
+| Q2 | `gh pr create --body "…"`、`echo "…"`、`grep "dotnet test …" file`、含 `\"` 跳脫的字串 | 放行 |
+| Q3 | heredoc 內容含測試指令 | 放行 |
+| Q4 | 直接執行測試指令 | Bash 擋下（不變） |
+| Q5 | `cd X && <測試指令>` | 擋下 |
+| Q6 | `<測試指令> \| tee log` | 擋下 |
+| Q7 | IDE 終端機的測試指令判斷（含引號包住的 exe 路徑） | 不變 |
+| Q8 | 既有 214 筆 hook 測試 | 全綠 |
+
+驗證：先紅（Q1–Q3 共 6 筆失敗）→ 實作 → 221 筆全綠；拿掉 heredoc 剝除 → Q3 變紅。實機：本 session 的 Bash `echo "<測試指令>"` 放行、直接執行同一指令仍被擋。
+
+### 後續：所有 Bash 指令判斷收進同一個函式（2026/11/15，case Q9–Q11 已核可並實作）
+
+第一版只在「Bash 跑測試」那一個呼叫點加了剝引號，產生 migration 的判斷（隔壁一行）仍比對整串——**同一條規則散在各呼叫點、靠記得補**。
+改為 `tdd_core.bash_runs(command, regex)`：Bash 指令文字的判斷一律經過它（先剝 heredoc／引號再比對），新增判斷時照用即可。IDE 終端機的判斷維持不變。
+
+| # | 指令（Bash） | 期望 |
+|---|---|---|
+| Q9 | commit 訊息、heredoc 提到 `bash db/create-migration.sh AddX` | 放行 |
+| Q10 | `bash db/create-migration.sh X`、`./db/create-migration.sh X`、`cd db && bash create-migration.sh X`、`cd C:/x && db/create-migration.sh X` | 擋下 |
+| Q11 | 既有 221 筆 | 全綠 |
+
+連帶修正 MSRS `tdd.json` 的 `migration_command_regex`：原本 `(^|[;&|]\s*)(bash\s+)?(\./)?db/create-migration\.sh\b` 抓不到 `cd db && bash create-migration.sh`（漏擋，原本僅靠 Stop 的未記錄變更檢查兜底），改為 `…(bash\s+|sh\s+)?(\./)?(db/)?create-migration\.sh\b`。
+驗證：Q9 先紅 → 實作 → 223 筆全綠；以 MSRS 實際的 `tdd.json` 驗 Q9／Q10 四種寫法結果正確。
+
+---
+
+## hook 問題的處理原則：先分層，再決定要不要補（2026/11/15 定案）
+
+hook 對「這條 Bash 指令會做什麼」的判斷是**讀指令文字**，shell 的寫法（變數、`bash -c`、腳本內再呼叫、別名…）不可能窮舉——每遇到一種就補一條 case 會補不完。但稽核的保證不靠這一層：
+
+| 層 | 判斷依據 | 會被 shell 寫法騙過嗎 |
+|---|---|---|
+| **保證層**（看結果） | ① 紅／綠只來自 **IDE MCP 執行 ＋ 本次產生的 CTRF 報告**；② Stop 時以 **git 實際變更**比對 ledger 編輯紀錄（`tdd_hook._findings`） | 不會 |
+| **提早提醒層**（看文字） | Bash 指令文字符合測試／migration 規則 → 先擋、提醒改用 IDE | 會 |
+
+處理規則：
+
+| 情況 | 處理 |
+|---|---|
+| 保證層的漏洞（報告判錯、git 比對漏抓） | **一定補**：case 表 → 先紅後綠。會默默放錯，是真風險 |
+| 提早提醒層**漏擋** | 不補——保證層兜底 |
+| 提早提醒層**誤擋**，偶發 | 不補——換寫法繞過（例：`git commit -F 檔案`） |
+| 提早提醒層**誤擋**，會反覆發生 | 才補，而且收在共用處修（如 `bash_runs`），不逐一呼叫點補 |
+
+回顧：Q1–Q8（commit 訊息提到測試指令，MSRS 文件常寫到 → 反覆發生）值得補；收成 `bash_runs` 值得；`cd db && bash create-migration.sh` 的漏擋依此原則本可不補（改動小、已完成，保留）。
