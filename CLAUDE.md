@@ -102,6 +102,15 @@ Clean Architecture with DDD — dependency flows inward: Presentation → Applic
 
 ## Testing
 
+### Test-first audit (`.claude/tdd.json`, global hook `~/.claude/hooks/tdd/`)
+
+- **Backend code is edited only through Rider MCP** (`create_new_file` / `apply_patch`); built-in Edit/Write on audited files is blocked. Tests that count toward the audit run **only through Rider MCP `execute_terminal_command`** with a CTRF report:
+  `dotnet test --project Test --report-xunit-ctrf --report-xunit-ctrf-filename tdd.ctrf.json --results-directory TestResults`
+  (add `--filter-class *XxxTests` — no quotes, the command is not run through a shell; use `--project Test.Integration` for integration tests). The hook reads `TestResults/tdd.ctrf.json` and rejects a report older than the run.
+- Don't pass a small `maxLinesCount`: red/green come from the CTRF report, but compile errors (`error CS…`) are detected from the console output — if they're truncated away, a compile failure is recorded as "invalid". Keep the build warning-free (`dotnet build` currently reports 0 warnings) so errors aren't buried.
+- Classification: `Test/**`, `Test.Integration/**`, `scripts/tests/**`, `db/seed-e2e.sql` = test; `**/*.cs`, `db/migrations/**`, `scripts/*.sh|*.py`, `appsettings*.json` = impl; `web/**` and config/docs/deploy files = ignore. Generating a migration (`db/create-migration.sh`) counts as an impl change.
+- Not audited by the hook (it can't parse their output): **bats** — when changing `scripts/*.sh|*.py`, register `tdd-exempt "<reason>"` and keep red→green with `bats scripts/tests` yourself; **frontend** (`web/**`, Vitest) is ignored for now — see `plans/2026-11-14-tdd-hook-vitest-support.md`.
+
 - Backend tests: `Test/` — one file per service (e.g., `TeamLeaderServiceTests.cs`). Uses Moq to mock repositories and service dependencies.
 - Frontend tests: `web/__tests__/` — Vitest + React Testing Library.
 - Shell script tests: `scripts/tests/*.bats` — bats-core with external commands (docker/curl/git/sleep) replaced by stubs on `PATH`, so no Docker needed. They cover only the guards that fail *silently* (readiness wait, seed verification, exit-code propagation, `--build`); the Git Bash → WSL hand-off is deliberately not stubbed (it fails loudly, and stubs can't reproduce Git Bash behaviour) — verify it by a real run from Git Bash when changing it; CI job `shell` also runs shellcheck. Run locally inside WSL: `bats scripts/tests` (bats-core v1.11.1 / shellcheck v0.10.0, same pins as CI). In bats, never assert absence with `! grep …` — `set -e` ignores negated commands, so it only works on the last line (SC2314); use the `not_in_file` helper. Stubs encode assumptions about real tool output, so a real run of `scripts/e2e-local.sh` remains the integration check.

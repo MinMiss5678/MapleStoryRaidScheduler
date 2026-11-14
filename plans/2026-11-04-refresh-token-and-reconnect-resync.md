@@ -75,6 +75,12 @@
   列成 impl 也讓下次改腳本時必須先有 bats 紅燈（`scripts/e2e-local.sh` 當初就是沒先寫測試，事後才補）
 - ⚠️ hook 的解析器只認 xUnit v3 / Rust 輸出，**不認 bats 的 TAP 輸出**（`ok 1 …` / `not ok 2 …`）
   → bats 跑出的紅燈不會被 hook 認定為「有效紅燈」。啟用時要決定：擴充 hook 解析 TAP，或改 shell 腳本時以 `tdd-exempt` 登記並以 bats 自律
+- ✅ 2026/11/14 定案並啟用（PR 5）：
+  - `tdd.json` 進版控（`.claude/` 仍整個忽略，`tdd.json` 以 `git add -f` 追蹤）
+  - 測試走 CTRF：`dotnet test --project Test … --report-xunit-ctrf …`，報告 `TestResults/tdd.ctrf.json`（`plans/2026-11-05-tdd-hook-mtp-ctrf-support.md`）
+  - scripts：`.sh`／`.py` 為 impl、`scripts/tests/**` 為 test，改腳本以 `tdd-exempt` 登記＋bats 自律
+  - `db/seed-e2e.sql` 為 test；`db/migrations/**` 為 impl，`db/create-migration.sh` 視同產生 migration
+  - 前端 `web/**` 先 ignore（hook 看不懂 Vitest）；邏輯層納入稽核另見 `plans/2026-11-14-tdd-hook-vitest-support.md`
 
 ---
 

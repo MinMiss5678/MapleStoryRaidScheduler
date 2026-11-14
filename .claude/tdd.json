@@ -1,0 +1,64 @@
+{
+  "test_globs": [
+    "Test/**",
+    "Test.Integration/**",
+    "scripts/tests/**",
+    "db/seed-e2e.sql"
+  ],
+  "impl_globs": [
+    "**/*.cs",
+    "db/migrations/**",
+    "scripts/*.sh",
+    "scripts/*.py",
+    "Presentation.WebApi/appsettings.json",
+    "Presentation.WebApi/appsettings.Development.json",
+    "Presentation/appsettings.json"
+  ],
+  "ignore_globs": [
+    "**/bin/**",
+    "**/obj/**",
+    "TestResults/**",
+    "**/TestResults/**",
+    "web/**",
+    "docs/**",
+    "plans/**",
+    "**/*.md",
+    ".claude/**",
+    ".github/**",
+    ".githooks/**",
+    ".idea/**",
+    "k8s/**",
+    "k6/**",
+    "compose*.yaml",
+    "**/*.csproj",
+    "*.sln",
+    "Directory.Build.props",
+    "global.json",
+    "dotnet-tools.json",
+    "**/Dockerfile*",
+    "**/.dockerignore",
+    "**/stryker-config.json",
+    "**/Properties/launchSettings.json",
+    "db/create-migration.sh",
+    "db/seed-demo-lotus.sql",
+    "db/seed-load-confirm.sql",
+    "scripts/version-sync.json",
+    "loadtest-multiround.sh",
+    "mapleRequest.http",
+    ".editorconfig",
+    ".gitignore",
+    ".gitattributes",
+    ".gitleaksignore",
+    ".mcp.json",
+    "LICENSE"
+  ],
+  "test_command_regex": "dotnet\\s+test\\s+--project\\s+(\\./)?Test(\\.Integration)?\\b.*--report-xunit-ctrf\\b",
+  "test_report": {
+    "format": "ctrf",
+    "path": "TestResults/tdd.ctrf.json"
+  },
+  "migration_command_regex": "(^|[;&|]\\s*)(bash\\s+)?(\\./)?db/create-migration\\.sh\\b",
+  "migration_globs": [
+    "db/migrations/**"
+  ]
+}

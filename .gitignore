@@ -4,6 +4,9 @@
 appsettings.json
 .junie
 .aiignore
+# .claude/ 多為本機工具檔，整個忽略。唯一例外 .claude/tdd.json（test-first 稽核規則，屬於專案規格）
+# 是用 git add -f 納入版控的——已追蹤的檔案不受 ignore 影響。
+# 不改用「.claude/* + !.claude/tdd.json」：那樣 git 會讀到 .claude/.gitignore 裡的 !.env.example，把它也放出來。
 .claude/
 TestResults/
 Test/TestResults*/
