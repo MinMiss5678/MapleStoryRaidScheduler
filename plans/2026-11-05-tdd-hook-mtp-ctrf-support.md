@@ -1,6 +1,11 @@
 # TDD hook 支援 Microsoft.Testing.Platform（以 CTRF 報告判定紅綠燈）
 
-> 狀態：**hook 已實作（2026/11/06）**，§六 步驟 1–4 完成；步驟 5（實機驗證）併入 MSRS PR 5（啟用 `tdd.json` 時做）。
+> 狀態：**完成**。hook 已實作（2026/11/06，§六 步驟 1–4）；步驟 5 實機驗證於 2026/11/14 隨 MSRS PR 5 完成：
+> 透過 Rider MCP 實跑，綠燈／紅燈（失敗名單 `Test.ZzTddVerifyTests.Red`，構成有效紅燈）／編譯失敗／0 筆測試／舊報告／
+> 無效後改實作被擋（訊息帶出原因）全部如 case 表。
+> ⚠️ 實機驗證抓到**單元測試測不到的接線缺口**：`~/.claude/settings.json` 的 PreToolUse matcher 只列了 `mcp__rustrover__execute_terminal_command`，
+> **漏了 `mcp__rider__execute_terminal_command`** → pre 從未對 Rider 的終端機指令執行（`RUN_START` 沒記，第一次實跑判成「舊報告」）。
+> 已補上（備份 `settings.json.bak-20261114`）。連帶影響：ChipHunter（用 Rider）的「產生 migration 前須有紅燈」pre 檢查**過去其實從未生效**，補上後才開始擋。
 > case 表 §五 已核可（2026/11/06）；PR 4 覆蓋率決定：不排除、刪 `coverlet.runsettings`。
 > 實作：`tdd_core.parse_ctrf`、`pre_impl_decision` 帶出無效原因；`tdd_hook` pre 記 `RUN_START`、post 依 `test_report` 讀報告。
 > 測試 190 → 214 筆全綠；拿掉「報告須晚於 RUN_START」→ M8 三筆變紅、拿掉 exit code 交叉檢查 → M10／M11 變紅。修改前備份：`~/.claude/hooks/tdd.bak-20261106/`（hook 目錄不在 git 版控）。
