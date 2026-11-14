@@ -29,8 +29,12 @@
       <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
       <PackageReference Include="Npgsql" Version="9.0.5" />
       <PackageReference Include="StackExchange.Redis" Version="2.13.23" />
-      <!-- EF Core：僅 design-time 使用，不進 runtime output -->
-      <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+      <!-- EF Core：僅 design-time 使用（Migrations/ 產生 SQL），不進 runtime output。
+           兩個套件都要 PrivateAssets=all：只標 Design 的話，Npgsql 的 EF 會以最低版本 9.0.1 流到 WebApi／Test，
+           和 Infrastructure 編譯時用的 9.0.22 衝突（每次建置約 100 行 MSB3277 警告），也讓 EF 跟著進了正式 image。 -->
+      <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4">
+        <PrivateAssets>all</PrivateAssets>
+      </PackageReference>
       <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.22">
         <PrivateAssets>all</PrivateAssets>
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
