@@ -8,6 +8,7 @@ using Application.Options;
 using Dapper;
 using Infrastructure.BackgroundJobs;
 using Infrastructure.Dapper;
+using Infrastructure.Redis;
 using Infrastructure.Services;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -166,8 +167,8 @@ builder.Services.AddMemoryCache();
 var redisConfiguration = builder.Configuration["Redis:ConfigurationFile"] is { } redisFile && File.Exists(redisFile)
     ? File.ReadAllText(redisFile).Trim()
     : builder.Configuration["Redis:Configuration"] ?? "localhost:6379";
-var redisOptions = ConfigurationOptions.Parse(redisConfiguration);
-redisOptions.AbortOnConnectFail = false;
+// 連線設定（FailFast、短逾時、AbortOnConnectFail=false）集中在 RedisConnectionOptions，整合測試共用同一份
+var redisOptions = RedisConnectionOptions.Build(redisConfiguration);
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
 builder.Services.AddSingleton<IIdempotencyStore, RedisIdempotencyStore>();
 // session 快取也走 Redis（跨 pod 共享）→ 登出／強制下線的撤銷一次刪除即在所有 pod 生效（取代 per-pod IMemoryCache）
