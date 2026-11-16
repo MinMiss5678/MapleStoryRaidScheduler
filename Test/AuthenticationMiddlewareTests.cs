@@ -13,8 +13,10 @@ namespace Test;
 
 /// <summary>
 /// AuthenticationMiddleware 單元測試：釘住核心安全分支——
-/// AllowAnonymous 放行、無憑證 401、session 查無 403、角色不符 403、有效 session/JWT 帶身分放行，
-/// 以及 JWT 過期刷新、刷新結果驗證和 JWT 角色授權。
+/// AllowAnonymous 放行、無憑證 401、session 查無 401、有效 session/JWT 帶身分放行，
+/// 以及 JWT 過期刷新、刷新結果驗證。
+/// 認證只負責建立身分（只回 401）；角色授權在下游的 RoleAuthorizationMiddleware（只回 403）。
+/// C 組（職責邊界）把「認證不做授權、授權在下游一定執行」寫成可執行斷言，防止 0ed4125 → f0f32fb → 60faf7b 的復發。
 /// mock 四個服務，不碰 DB。
 /// 只驗編排（給定 mock 結果走哪條分支、行為對不對）；真 JWT 過期辨識由 JwtServiceTests 驗證。
 /// </summary>
@@ -49,8 +51,30 @@ public class AuthenticationMiddlewareTests
     private async Task<(bool NextCalled, DefaultHttpContext Context)> Run(DefaultHttpContext context)
     {
         var nextCalled = false;
-        await Build().InvokeAsync(context, _ => { nextCalled = true; return Task.CompletedTask; });
+        await Build().InvokeAsync(context, _ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
         return (nextCalled, context);
+    }
+
+    // 依實際管線順序串接：認證 → 授權 → 端點。回傳 (端點是否被執行, 授權是否被執行, context)
+    private async Task<(bool EndpointCalled, bool AuthorizationRan, DefaultHttpContext Context)> RunPipeline(
+        DefaultHttpContext context)
+    {
+        var endpointCalled = false;
+        var authorizationRan = false;
+        await Build().InvokeAsync(context, async ctx =>
+        {
+            authorizationRan = true;
+            await new RoleAuthorizationMiddleware().InvokeAsync(ctx, _ =>
+            {
+                endpointCalled = true;
+                return Task.CompletedTask;
+            });
+        });
+        return (endpointCalled, authorizationRan, context);
     }
 
     [Fact]
@@ -110,7 +134,7 @@ public class AuthenticationMiddlewareTests
     }
 
     [Fact]
-    public async Task 角色不符_回_403_不放行()
+    public async Task C2_有效session_角色不符_只跑認證_放行_認證不再做授權()
     {
         _session.Setup(s => s.GetAsync("abc", "123"))
             .ReturnsAsync(new Session { SessionId = "abc", DiscordId = 123 });
@@ -121,15 +145,15 @@ public class AuthenticationMiddlewareTests
         var (nextCalled, context) = await Run(
             BuildContext("discordId=123; sessionId123=abc", new AuthorizeRoleAttribute("admin")));
 
-        Assert.False(nextCalled);
-        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+        Assert.True(nextCalled);
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
     }
 
     [Theory]
     [InlineData("user", "admin", false)]
     [InlineData("admin", "admin", true)]
     [InlineData("user", "user", true)]
-    public async Task ExpiredJwt_RefreshesAndEnforcesNewRole(string role, string requiredRole, bool allowed)
+    public async Task C4_ExpiredJwt_完整管線_續期後仍受角色檢查(string role, string requiredRole, bool allowed)
     {
         _jwt.Setup(j => j.ValidateToken("expiredtok"))
             .Returns(new JwtValidationResult { IsValid = false, Exception = new SecurityTokenExpiredException() });
@@ -139,9 +163,11 @@ public class AuthenticationMiddlewareTests
         _jwt.Setup(j => j.ValidateToken("newtok"))
             .Returns(new JwtValidationResult { IsValid = true, DiscordId = 789, Role = role });
 
-        var (nextCalled, context) = await Run(BuildContext("jwtToken=expiredtok", new AuthorizeRoleAttribute(requiredRole)));
+        // 60faf7b 的回歸：一般使用者帶過期 JWT 打 admin 端點，續期後必須仍被授權擋下
+        var (endpointCalled, _, context) =
+            await RunPipeline(BuildContext("jwtToken=expiredtok", new AuthorizeRoleAttribute(requiredRole)));
 
-        Assert.Equal(allowed, nextCalled);
+        Assert.Equal(allowed, endpointCalled);
         Assert.Equal(allowed ? StatusCodes.Status200OK : StatusCodes.Status403Forbidden, context.Response.StatusCode);
         Assert.Contains("jwtToken=newtok", context.Response.Headers["Set-Cookie"].ToString());
         _auth.Verify(a => a.RefreshToken(789), Times.Once);
@@ -192,14 +218,84 @@ public class AuthenticationMiddlewareTests
     [Theory]
     [InlineData("user", false)]
     [InlineData("admin", true)]
-    public async Task ValidJwt_AdminEndpoint_EnforcesRole(string role, bool allowed)
+    public async Task C3_ValidJwt_AdminEndpoint_完整管線_由下游授權擋下(string role, bool allowed)
     {
         _jwt.Setup(j => j.ValidateToken("validtok"))
             .Returns(new JwtValidationResult { IsValid = true, DiscordId = 456, Role = role });
 
+        var (endpointCalled, _, context) =
+            await RunPipeline(BuildContext("jwtToken=validtok", new AuthorizeRoleAttribute("admin")));
+
+        Assert.Equal(allowed, endpointCalled);
+        Assert.Equal(allowed ? StatusCodes.Status200OK : StatusCodes.Status403Forbidden, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task C2_有效JWT_角色不符_只跑認證_放行()
+    {
+        _jwt.Setup(j => j.ValidateToken("validtok"))
+            .Returns(new JwtValidationResult { IsValid = true, DiscordId = 456, Role = "user" });
+
         var (nextCalled, context) = await Run(BuildContext("jwtToken=validtok", new AuthorizeRoleAttribute("admin")));
 
-        Assert.Equal(allowed, nextCalled);
-        Assert.Equal(allowed ? StatusCodes.Status200OK : StatusCodes.Status403Forbidden, context.Response.StatusCode);
+        Assert.True(nextCalled);
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+    }
+
+    // C1：「任何輸入」無法窮舉 → 以 B 組的各種輸入，加上「要求 admin、帶 user 身分」，逐一只跑認證，斷言皆非 403
+    [Theory]
+    [InlineData("none")]
+    [InlineData("empty-session")]
+    [InlineData("session-not-found")]
+    [InlineData("session-user")]
+    [InlineData("jwt-user")]
+    [InlineData("jwt-bad-signature")]
+    [InlineData("jwt-expired-refreshed-user")]
+    [InlineData("jwt-expired-refresh-failed")]
+    public async Task C1_認證middleware_任何輸入_絕不回403(string scenario)
+    {
+        _session.Setup(s => s.GetAsync("abc", "123"))
+            .ReturnsAsync(scenario == "session-not-found" ? null : new Session { SessionId = "abc", DiscordId = 123 });
+        _player.Setup(p => p.GetAsync(123UL))
+            .ReturnsAsync(new Player { DiscordId = 123, DiscordName = "n", Role = "user" });
+        _jwt.Setup(j => j.ValidateToken("validtok"))
+            .Returns(new JwtValidationResult { IsValid = true, DiscordId = 456, Role = "user" });
+        _jwt.Setup(j => j.ValidateToken("forged"))
+            .Returns(new JwtValidationResult { Exception = new SecurityTokenInvalidSignatureException() });
+        _jwt.Setup(j => j.ValidateToken("expiredtok"))
+            .Returns(new JwtValidationResult { Exception = new SecurityTokenExpiredException() });
+        _jwt.Setup(j => j.ReadJsonWebToken("expiredtok")).Returns(new JwtTokenClaims { DiscordId = 789 });
+        _auth.Setup(a => a.RefreshToken(789)).ReturnsAsync(scenario == "jwt-expired-refresh-failed" ? null : "newtok");
+        _jwt.Setup(j => j.ValidateToken("newtok"))
+            .Returns(new JwtValidationResult { IsValid = true, DiscordId = 789, Role = "user" });
+
+        var cookie = scenario switch
+        {
+            "none" => null,
+            "empty-session" => "discordId=123; sessionId123=",
+            "session-not-found" or "session-user" => "discordId=123; sessionId123=abc",
+            "jwt-user" => "jwtToken=validtok",
+            "jwt-bad-signature" => "jwtToken=forged",
+            _ => "jwtToken=expiredtok",
+        };
+
+        var (_, context) = await Run(BuildContext(cookie, new AuthorizeRoleAttribute("admin")));
+
+        Assert.NotEqual(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task C5_認證成功後呼叫next_下游授權一定執行()
+    {
+        // 結構保證：認證端在成功路徑上 await next() 呼叫的就是授權 middleware，無法跳過
+        _jwt.Setup(j => j.ValidateToken("validtok"))
+            .Returns(new JwtValidationResult { IsValid = true, DiscordId = 456, Role = "user" });
+
+        var (endpointCalled, authorizationRan, context) =
+            await RunPipeline(BuildContext("jwtToken=validtok", new AuthorizeRoleAttribute("admin")));
+
+        Assert.True(authorizationRan);
+        Assert.False(endpointCalled);
+        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
     }
 }
