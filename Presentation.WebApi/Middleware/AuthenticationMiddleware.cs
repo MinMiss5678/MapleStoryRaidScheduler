@@ -2,10 +2,13 @@
 using Application.Interface;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
-using Presentation.WebApi.Attributes;
 
 namespace Presentation.WebApi.Middleware;
 
+/// <summary>
+/// 認證（只回 401）：讀 cookie → 驗 session／JWT → 建立 context.User。
+/// 不做角色授權——授權在下游的 <see cref="RoleAuthorizationMiddleware"/>，所以任何成功路徑的 <c>await next()</c> 都會經過授權。
+/// </summary>
 public class AuthenticationMiddleware : IMiddleware
 {
     private readonly ISessionService _sessionService;
@@ -13,7 +16,8 @@ public class AuthenticationMiddleware : IMiddleware
     private readonly IJwtService _jwtService;
     private readonly IAuthService _authService;
 
-    public AuthenticationMiddleware(ISessionService sessionService, IPlayerService playerService, IJwtService jwtService,
+    public AuthenticationMiddleware(ISessionService sessionService, IPlayerService playerService,
+        IJwtService jwtService,
         IAuthService authService)
     {
         _sessionService = sessionService;
@@ -33,7 +37,6 @@ public class AuthenticationMiddleware : IMiddleware
             return;
         }
 
-        var roleAttribute = endpoint?.Metadata.GetMetadata<AuthorizeRoleAttribute>();
         var identity = new ClaimsIdentity();
 
         context.Request.Cookies.TryGetValue("discordId", out var discordId);
@@ -99,7 +102,7 @@ public class AuthenticationMiddleware : IMiddleware
                 }
             }
 
-            // 刷新後使用新 token 的身分與角色，統一走下方的端點授權檢查。
+            // 刷新後使用新 token 的身分與角色；角色授權由下游 RoleAuthorizationMiddleware 執行。
             if (validateTokenResult.IsValid)
             {
                 // Role 從 JWT claim 讀取，不查 DB（真無狀態）
@@ -114,13 +117,6 @@ public class AuthenticationMiddleware : IMiddleware
         if (!identity.Claims.Any())
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return;
-        }
-
-        if (roleAttribute != null && roleAttribute.Roles.Length > 0
-            && !roleAttribute.Roles.Contains(identity.FindFirst(ClaimTypes.Role)?.Value))
-        {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return;
         }
 

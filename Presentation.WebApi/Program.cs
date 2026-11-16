@@ -73,6 +73,7 @@ builder.Host.UseSerilog((ctx, services, config) =>
                             Encoding.UTF8.GetBytes(discordIdHashKey), Encoding.UTF8.GetBytes(discordId.ToString()!)));
                         sentryEvent.SetTag("discord_id_hash", hash);
                     }
+
                     // 不管有沒有雜湊成功（例如密鑰沒設），Extra 裡的明碼都要清掉——
                     // SetTag 只是「多加」一個 tag，原本的 Extra["DiscordId"] 明碼不會自動消失。
                     sentryEvent.SetExtra("DiscordId", "[Filtered]");
@@ -119,7 +120,8 @@ static string? ScrubSensitive(string? message, string? discordIdHashKey)
     message = Regex.Replace(message, @"\beyJ[\w-]+\.[\w-]+\.[\w-]+\b", "[Filtered JWT]");
     // JSON 格式的 token 欄位（OAuth 回應解析失敗時，例外訊息可能夾帶原始內容片段）——
     // Discord/MS 的 token 不是 JWT 格式，上面那條正則抓不到，這裡照 key 名稱單獨擋。
-    message = Regex.Replace(message, "(?i)\"(access_token|refresh_token|token|bot_token|api_key)\"\\s*:\\s*\"[^\"]*\"", "\"$1\":\"[Filtered]\"");
+    message = Regex.Replace(message, "(?i)\"(access_token|refresh_token|token|bot_token|api_key)\"\\s*:\\s*\"[^\"]*\"",
+        "\"$1\":\"[Filtered]\"");
     // IPv4 位址（例如限流觸發時記錄的真實 client IP）
     message = Regex.Replace(message, @"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[Filtered IP]");
     // Discord snowflake ID（17-19 位數字，例如 discordId=836636705498595340）——
@@ -322,6 +324,9 @@ app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseMiddleware<IdempotencyMiddleware>();
 app.UseMiddleware<AuthenticationMiddleware>();
+// 授權必須緊接在認證之後：認證任何成功路徑的 next() 都會經過這裡（結構上無法跳過）；
+// 並在限流之前——被 403 擋下的請求不消耗限流額度。
+app.UseMiddleware<RoleAuthorizationMiddleware>();
 // 限流放 Auth 之後（才有 discordId 可分區）、UoW 之前（被擋的請求不白開 DB 交易）
 app.UseRateLimiter();
 app.UseMiddleware<UnitOfWorkMiddleware>();

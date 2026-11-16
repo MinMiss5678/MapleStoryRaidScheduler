@@ -68,12 +68,13 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
                         var discordId = httpContext.User.FindFirst("discordId")?.Value;
                         if (string.IsNullOrEmpty(discordId))
                             return RateLimitPartition.GetNoLimiter("anonymous");
-                        return RateLimitPartition.GetFixedWindowLimiter(discordId, _ => new FixedWindowRateLimiterOptions
-                        {
-                            PermitLimit = TestPermitLimit, // 小上限 → 發遠超請求即穩定觸發 429
-                            Window = TimeSpan.FromSeconds(10),
-                            QueueLimit = 0
-                        });
+                        return RateLimitPartition.GetFixedWindowLimiter(discordId, _ =>
+                            new FixedWindowRateLimiterOptions
+                            {
+                                PermitLimit = TestPermitLimit, // 小上限 → 發遠超請求即穩定觸發 429
+                                Window = TimeSpan.FromSeconds(10),
+                                QueueLimit = 0
+                            });
                     });
                 });
 
@@ -84,8 +85,17 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
                     o.Issuer = "test";
                     o.Audience = "test";
                 });
+
+                // 寫入請求會經過冪等 middleware；測試環境沒有 Redis，Redis 版每次要等連線逾時才 fail-open，
+                // 請求一慢就會跨過限流視窗、測不到 429（D1 的牙齒驗證抓到）→ 換成永遠放行的假 store。
+                services.AddSingleton<IIdempotencyStore, AlwaysAllowIdempotencyStore>();
             });
         }
+    }
+
+    private sealed class AlwaysAllowIdempotencyStore : IIdempotencyStore
+    {
+        public Task<bool> TryMarkAsync(string key, TimeSpan ttl) => Task.FromResult(true);
     }
 
     private string CreateJwt(ulong discordId)
@@ -104,7 +114,8 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
 
     // 上限 5/10s，一口氣發 60 次遠超上限。即使跨一個視窗邊界（<10s 最多 1 次邊界 → 至多放行 2×5=10），
     // 60 次也必定出現至少一個 429。不依賴「第幾次」。同時擷取首個回應 body 便於失敗時診斷。
-    private async Task<(List<HttpStatusCode> statuses, string firstBody)> BurstAsync(HttpClient client, string token, int n)
+    private async Task<(List<HttpStatusCode> statuses, string firstBody)> BurstAsync(HttpClient client, string token,
+        int n)
     {
         var statuses = new List<HttpStatusCode>(n);
         var firstBody = "";
@@ -114,6 +125,7 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
             statuses.Add(resp.StatusCode);
             if (i == 0) firstBody = await resp.Content.ReadAsStringAsync();
         }
+
         return (statuses, firstBody);
     }
 
@@ -148,5 +160,29 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
         // 使用者 B（不同 discordId）自己的視窗仍空 → 第一次就不該被限
         var respB = await client.SendAsync(AuthedGet(CreateJwt(2002)), TestContext.Current.CancellationToken);
         Assert.NotEqual(HttpStatusCode.TooManyRequests, respB.StatusCode);
+    }
+
+    // D1（plans/2026-11-04-split-authentication-authorization.md）：管線順序 認證 → 授權 → 限流。
+    // 一般使用者連打 admin-only 端點：每一次都必須是 403（授權有註冊、而且在真實管線中生效），
+    // 而且不得出現 429（授權在限流之前，被 403 擋下的請求不消耗額度）；之後同一人打一般端點仍不被限流。
+    [Fact]
+    public async Task D1_一般使用者打admin端點_一律403_且不消耗限流額度()
+    {
+        var client = CreateClient();
+        var token = CreateJwt(3001);
+
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < TestPermitLimit * 4; i++)
+        {
+            var req = new HttpRequestMessage(HttpMethod.Delete, "/api/Boss/1");
+            req.Headers.Add("Cookie", $"jwtToken={token}");
+            req.Headers.Add("X-Idempotency-Key", Guid.NewGuid().ToString());
+            statuses.Add((await client.SendAsync(req, TestContext.Current.CancellationToken)).StatusCode);
+        }
+
+        Assert.All(statuses, s => Assert.Equal(HttpStatusCode.Forbidden, s));
+
+        var after = await client.SendAsync(AuthedGet(token), TestContext.Current.CancellationToken);
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, after.StatusCode);
     }
 }

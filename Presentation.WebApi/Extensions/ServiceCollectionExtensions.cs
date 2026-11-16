@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddInfrastructureServices(this IServiceCollection services)
     {
         services.AddScoped<AuthenticationMiddleware>();
+        services.AddScoped<RoleAuthorizationMiddleware>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<DbContext>();
         // outbox 寫入端：把組隊通知事件寫進當前請求交易（與資料原子）。API 只寫、bot 才派發。

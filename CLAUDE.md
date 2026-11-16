@@ -74,7 +74,8 @@ Clean Architecture with DDD — dependency flows inward: Presentation → Applic
 ### Request Lifecycle
 
 1. `UnitOfWorkMiddleware` opens a DB transaction before the controller runs, commits on success, rolls back on exception.
-2. `AuthenticationMiddleware` validates JWT (regular users) or SessionId (admins) before protected endpoints.
+2. `AuthenticationMiddleware` validates JWT (regular users) or SessionId (admins) and sets `context.User` — **authentication only, returns 401 only**.
+   `RoleAuthorizationMiddleware` runs right after it (before the rate limiter) and checks `[AuthorizeRole]` — **authorization only, returns 403**. Keep them separate: an early `await next()` in the authentication middleware can no longer skip authorization (see `plans/2026-11-04-split-authentication-authorization.md`). `[AuthorizeRole]` needs at least one role and can't be stacked on one target; class + method attributes must both pass.
 3. Controllers call **Application service interfaces**; implementations live in `Infrastructure/Services/`.
 4. **Repository interfaces** are in `Domain/Repositories/`; Dapper implementations inject `DbContext` (the UoW connection wrapper).
 

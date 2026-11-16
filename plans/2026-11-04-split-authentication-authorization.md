@@ -1,6 +1,6 @@
 # 認證與授權分離（階段 0）
 
-> 建立：2026/11/04｜狀態：**⏳ case 表待核可**｜預估 **0.5 天**
+> 建立：2026/11/04｜狀態：**✅ 已實作（2026/11/16，PR 6，在 test-first 稽核下完成）**
 > 範圍：`Presentation.WebApi/Middleware/AuthenticationMiddleware.cs`、新增 `RoleAuthorizationMiddleware`、`Program.cs` 管線註冊
 > 關聯：`2026-11-04-refresh-token-and-reconnect-resync.md`（階段 3，**本計畫是它的前置**）、`2026-11-04-authorization-matrix.md`（護欄）
 
@@ -116,10 +116,15 @@ ExceptionHandler → Idempotency → AuthenticationMiddleware（只認證） →
 
 ---
 
-## 四、★ Case 表（⏳ 待核可）
+## 四、★ Case 表（✅ 已核可）
 
 > 期望值是「安全上正確的行為」，不是目前實作的行為。
 > 測試位置：`Test/AuthenticationMiddlewareTests.cs`（改寫）＋ `Test/RoleAuthorizationMiddlewareTests.cs`（新增）
+
+> **2026/11/16 補充（✅ 已核可）**
+> - C3／C4：單元測試中把兩個 middleware **依實際順序串接**執行；真實管線由 E2E G2.5／G8.4／G8.5 覆蓋。
+> - D1：整合測試（沿用 `RateLimiterIntegrationTests` 的 Factory）以行為證明——**被 403 擋下的請求不消耗限流額度**。現況 403 已在 RateLimiter 之前回，此條可能一開始就綠，定位是防註冊順序被改錯的回歸防護。
+> - C1：「任何輸入」無法窮舉 → 以 B 組全部輸入＋「要求 admin、帶 user 身分」逐一跑認證 middleware，斷言皆非 403。
 
 ### A 組 — `RoleAuthorizationMiddleware`（新）
 
@@ -133,8 +138,9 @@ ExceptionHandler → Idempotency → AuthenticationMiddleware（只認證） →
 | A6 | 端點標 `AllowAnonymous`、無身分 | **放行**（不得 401／403） |
 | A7 | 端點標 `AllowAnonymous` 且同時有 `AuthorizeRoleAttribute` | **放行**（`AllowAnonymous` 優先，與現況一致） |
 | A8 | **`context.User` 沒有任何身分**、端點要求 `admin` | **401**（防禦性 fail-closed，不得放行）⭐ |
-| A9 | `AuthorizeRoleAttribute` 的 `Roles` 為空陣列 | **放行**（與現況 `Roles.Length > 0` 判斷一致） |
+| ~~A9~~ | ~~`Roles` 為空陣列 → 放行~~ | **刪除**（2026/11/16 決定 B）：空陣列在結構上禁止（建構子至少要一個角色，見 D3），這種寫法建不出來 |
 | A10 | 端點要求多個角色之一、role claim 符合其中一個 | **放行** |
+| A11 | 類別要求 `admin`、方法要求 `admin` 或 `leader`；角色是 `leader` | **403**：類別與方法兩層都要通過（AND，與 ASP.NET `[Authorize]` 一致），方法只能收緊不能放寬。實作以 `GetOrderedMetadata` 取全部標記逐一檢查 |
 
 ### B 組 — `AuthenticationMiddleware`（改寫後）
 
@@ -169,12 +175,14 @@ ExceptionHandler → Idempotency → AuthenticationMiddleware（只認證） →
 |---|---|---|
 | D1 | `Program.cs` 的 middleware 順序 | 認證 **在** 授權之前、授權 **在** `UseRateLimiter()` 之前 |
 | D2 | `RoleAuthorizationMiddleware` 的 DI 註冊 | 已在 `ServiceCollectionExtensions` 註冊（`IMiddleware` 需要）|
+| D3 | `AuthorizeRoleAttribute` 至少要帶一個角色 | 建構子改為 `(string role, params string[] more)`，`[AuthorizeRole()]` **編譯不過**；測試以反射確認建構子至少需要一個參數 |
+| D4 | `AuthorizeRoleAttribute` 不可疊用（同一目標） | `AllowMultiple = false`（疊用編譯不過）；測試以反射確認。原因：`GetMetadata<T>()` 只取一個，疊用時另一個**默默被忽略** |
 
 ### E 組 — 端到端回歸（既有 E2E，不新增）
 
 | # | 案例 | 期望 |
 |---|---|---|
-| E1 | `web/e2e/auth.spec.ts` 等 11 支 | 全綠（行為不得改變） |
+| E1 | 全部 E2E（2026/11/16 為 53 筆） | 全綠（行為不得改變） |
 | E2 | 授權矩陣 **G1/G2/G8**（PR 2 先建立） | 全綠 ⭐ 這就是本階段的護欄 |
 
 ---
@@ -196,14 +204,24 @@ ExceptionHandler → Idempotency → AuthenticationMiddleware（只認證） →
 | 7 | `dotnet format` → 全測試 → **本機 Docker 跑 E2E**（動到認證管線） | 全綠 |
 
 ### 驗收標準
-- [ ] **C1**：`AuthenticationMiddleware` 絕不回 403 —— 職責邊界有測試守住
-- [ ] **C4**：帶過期 JWT 的一般使用者打 admin 端點 → 403（`60faf7b` 回歸）
-- [ ] **C5**：認證端呼叫 `next()` 後，授權仍執行 —— 結構保證有測試
-- [ ] 既有 11 支 E2E 全綠（**行為零變化**）
-- [ ] 授權矩陣 G1/G2/G8 全綠
-- [ ] 每條新測試都確認「拿掉實作會紅」
+- [x] **C1**：`AuthenticationMiddleware` 絕不回 403 —— 職責邊界有測試守住
+- [x] **C4**：帶過期 JWT 的一般使用者打 admin 端點 → 403（`60faf7b` 回歸）
+- [x] **C5**：認證端呼叫 `next()` 後，授權仍執行 —— 結構保證有測試
+- [x] 既有 E2E 全綠（**行為零變化**）
+- [x] 授權矩陣 G1/G2/G8 全綠
+- [x] 每條新測試都確認「拿掉實作會紅」
 
 ### 不在範圍
 - 遷移到框架的 `[Authorize]` ＋ policy（設計決定 ④）
 - 移除內聯續期（階段 3）
 - 資源層級的所有權授權（IDOR）——那在 service 層，見授權矩陣 G3/G6
+
+### 實作紀錄（2026/11/16）
+- **A 組＋D3／D4**：`RoleAuthorizationMiddlewareTests` 12 筆 → 先編譯失敗 → `NotImplementedException` 樁 → 12 筆紅 → 實作轉綠。
+  `AuthorizeRoleAttribute` 改為 `(string role, params string[] moreRoles)`、`AllowMultiple = false`；授權以 `GetOrderedMetadata` 讀全部標記，逐一檢查（A11：類別與方法 AND）。
+- **B／C 組**：既有 3 筆斷言認證端回 403 的測試改寫成 C2（只跑認證 → 放行）、C3／C4（認證＋授權串接 → 403），新增 C1（8 種輸入皆非 403）、C5。
+  紅 6 筆（C1×3、C2×2、C5）→ 從 `AuthenticationMiddleware` 刪除讀 attribute 與 403 判斷、`Program.cs` 註冊授權（認證之後、限流之前）＋ DI → 轉綠。
+- **D1**：整合測試「一般使用者連打 admin 端點 20 次 → 全部 403、無 429，之後同一人打一般端點不被限流」。
+  牙齒：授權移到限流之後 → 出現 429（紅）；完全不註冊授權 → 500（使用者打穿到 controller，紅）。已還原。
+  ⚠️ 第一次牙齒驗證**沒有變紅**：寫入請求經過冪等 middleware，測試環境沒有 Redis，每次要等連線逾時才 fail-open，請求跨過 10 秒限流視窗 → 測不到 429。以 `tdd-testfix` 登記，測試 Factory 改用永遠放行的假冪等 store（期望值不變），重做牙齒才變紅。
+- 結果：單元 395、整合 76、E2E 53 passed；建置 0 警告。
