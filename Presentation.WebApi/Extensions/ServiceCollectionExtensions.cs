@@ -7,11 +7,21 @@ using Infrastructure.Services;
 using Application.Queries;
 using Infrastructure.Query;
 using Presentation.WebApi.Middleware;
+using Presentation.WebApi.Http;
 
 namespace Presentation.WebApi.Extensions;
 
 public static class ServiceCollectionExtensions
 {
+    /// <summary>所有經 IHttpClientFactory 建立（含注入）的 HttpClient 都掛上「交易中不准發對外 HTTP」的檢查。</summary>
+    public static IServiceCollection AddNoHttpCallInTransactionGuard(this IServiceCollection services)
+    {
+        services.AddHttpContextAccessor();
+        services.AddTransient<NoHttpCallInTransactionHandler>();
+        services.ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler<NoHttpCallInTransactionHandler>());
+        return services;
+    }
+
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
         services.AddScoped<IAuthAppService, AuthAppService>();
