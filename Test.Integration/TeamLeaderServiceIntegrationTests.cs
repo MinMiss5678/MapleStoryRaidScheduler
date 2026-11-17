@@ -22,6 +22,32 @@ public class TeamLeaderServiceIntegrationTests
 
     private TeamLeaderService CreateService() => ServiceWith(_fx.CreateDbContext());
 
+    // 寫入一律包在交易內、成功才 commit，忠實模擬正式環境的 UoW（outbox／advisory lock 都要求在交易內，見 D1／D2）。
+    // 失敗時 rollback 後把例外原樣往外拋，讓 Assert.ThrowsAsync 照常斷言。
+    private async Task InTxAsync(Func<TeamLeaderService, Task> action) =>
+        await InTxAsync(async s =>
+        {
+            await action(s);
+            return 0;
+        });
+
+    private async Task<T> InTxAsync<T>(Func<TeamLeaderService, Task<T>> action)
+    {
+        var db = _fx.CreateDbContext();
+        await db.BeginAsync();
+        try
+        {
+            var result = await action(ServiceWith(db));
+            await db.CommitAsync();
+            return result;
+        }
+        catch
+        {
+            await db.RollbackAsync();
+            throw;
+        }
+    }
+
     private static TeamLeaderService ServiceWith(Infrastructure.Dapper.DbContext db) => new(
         new BossRepository(db),
         new TeamSlotRepository(db),
@@ -35,7 +61,8 @@ public class TeamLeaderServiceIntegrationTests
         new SystemConfigService(db),
         new LfgIntentRepository(db),
         new PlayerRepository(db),
-        Microsoft.Extensions.Options.Options.Create(new Application.Options.AppOptions { AppUrl = "https://test.local" }));
+        Microsoft.Extensions.Options.Options.Create(
+            new Application.Options.AppOptions { AppUrl = "https://test.local" }));
 
     // 併發 accept 忠實模擬 UoW middleware：各自 Begin/Commit → advisory lock（交易級）才真的序列化。
     // 回傳是否定案成功；被擋（隊伍已滿 / 邀請已撤 / 版本衝突）回 false。
@@ -66,7 +93,7 @@ public class TeamLeaderServiceIntegrationTests
 
         // period-less（4d）：CreateTeam 只驗排程時間不得過去 → 用未來時間
         var slot = DateTimeOffset.UtcNow.AddDays(3);
-        var teamSlotId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamSlotId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
@@ -84,7 +111,7 @@ public class TeamLeaderServiceIntegrationTests
                     ]
                 }
             ]
-        });
+        }));
 
         Assert.True(teamSlotId > 0);
 
@@ -117,15 +144,24 @@ public class TeamLeaderServiceIntegrationTests
         const int wed = 3;
         var slot = NextWeekdayUtc(wed, 12);
         await Seed.PlayerAsync(cs, 999, "隊長");
-        var teamSlotId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamSlotId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [ new CreateTeamRequirementDto { Count = 1, MinClearCount = 1,
-                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 },
-                         new CreateTeamRequirementJobDto { Job = "槍神", MinAttackPower = 1000 } ] } ]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                {
+                    Count = 1, MinClearCount = 1,
+                    Jobs =
+                    [
+                        new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 },
+                        new CreateTeamRequirementJobDto { Job = "槍神", MinAttackPower = 1000 }
+                    ]
+                }
+            ]
+        }));
 
         // 週三 = ISO weekday 3；時段 19:00-22:00 涵蓋 20:00
         // A：箭神 950、週三可、通關 2 → ✅ 唯一該中的
@@ -157,14 +193,20 @@ public class TeamLeaderServiceIntegrationTests
         var bossId = await Seed.BossAsync(cs, requireMembers: 6);
         var slot = NextWeekdayUtc(3, 12); // 未來某週三 20:00 TPE
         await Seed.PlayerAsync(cs, 999, "隊長");
-        var teamSlotId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamSlotId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [new CreateTeamRequirementDto { Count = 1, MinClearCount = 0,
-                Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 0 }] }]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                {
+                    Count = 1, MinClearCount = 0,
+                    Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 0 }]
+                }
+            ]
+        }));
         // 常設週三 19–22 可 → 本會命中
         await SeedCandidate(cs, bossId, 101, "archer", "箭神", 950, weekday: 3, clears: 0);
 
@@ -199,15 +241,21 @@ public class TeamLeaderServiceIntegrationTests
         }
 
         // 即時團：Kind=Instant → 繞過 period（沒 seed period 也能開）
-        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             Kind = "Instant",
             SlotDateTime = DateTimeOffset.UtcNow,
-            Requirements = [new CreateTeamRequirementDto { Count = 1, MinClearCount = 0,
-                Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 0 }] }]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                {
+                    Count = 1, MinClearCount = 0,
+                    Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 0 }]
+                }
+            ]
+        }));
 
         var candidates = (await CreateService().GetCandidatesAsync(teamId)).ToList();
 
@@ -226,19 +274,25 @@ public class TeamLeaderServiceIntegrationTests
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
         var slot = DateTimeOffset.UtcNow.AddDays(3);
-        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [ new CreateTeamRequirementDto { Count = 1,
-                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                {
+                    Count = 1,
+                    Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }]
+                }
+            ]
+        }));
 
-        await CreateService().InviteMemberAsync(teamId, "archer", leaderDiscordId: 999);
+        await InTxAsync(s => s.InviteMemberAsync(teamId, "archer", leaderDiscordId: 999));
         var memberId = await GetMemberIdAsync(cs, teamId, "archer");
 
-        await CreateService().AcceptInviteAsync(memberId, currentDiscordId: 101);
+        await InTxAsync(s => s.AcceptInviteAsync(memberId, currentDiscordId: 101));
 
         Assert.Equal(1, await new TeamSlotCharacterRepository(_fx.CreateDbContext()).CountConfirmedAsync(teamId));
         Assert.Equal("Confirmed", await StatusOfAsync(cs, memberId));
@@ -256,25 +310,33 @@ public class TeamLeaderServiceIntegrationTests
 
         // 兩隊同一時段（跨隊重疊）
         var slot = DateTimeOffset.UtcNow.AddDays(3);
+
         CreateTeamCommand Cmd() => new()
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [ new CreateTeamRequirementDto { Count = 1,
-                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                {
+                    Count = 1,
+                    Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }]
+                }
+            ]
         };
-        var teamA = await CreateService().CreateTeamAsync(Cmd());
-        var teamB = await CreateService().CreateTeamAsync(Cmd());
 
-        await CreateService().InviteMemberAsync(teamA, "archer", 999);
-        await CreateService().InviteMemberAsync(teamB, "archer", 999);
+        var teamA = await InTxAsync(s => s.CreateTeamAsync(Cmd()));
+        var teamB = await InTxAsync(s => s.CreateTeamAsync(Cmd()));
+
+        await InTxAsync(s => s.InviteMemberAsync(teamA, "archer", 999));
+        await InTxAsync(s => s.InviteMemberAsync(teamB, "archer", 999));
         var mA = await GetMemberIdAsync(cs, teamA, "archer");
         var mB = await GetMemberIdAsync(cs, teamB, "archer");
 
-        await CreateService().AcceptInviteAsync(mA, 101);   // A → Confirmed
+        await InTxAsync(s => s.AcceptInviteAsync(mA, 101)); // A → Confirmed
         // 接受 B（同玩家同時段）→ uq_tsc_confirmed_overlap 觸發 23505（middleware 會轉 409）
-        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => CreateService().AcceptInviteAsync(mB, 101));
+        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => InTxAsync(s => s.AcceptInviteAsync(mB, 101)));
         Assert.Equal("23505", ex.SqlState);
     }
 
@@ -291,14 +353,20 @@ public class TeamLeaderServiceIntegrationTests
         var bossId = await Seed.BossAsync(cs, requireMembers: capacity);
         await Seed.PlayerAsync(cs, 999, "隊長");
         var slot = DateTimeOffset.UtcNow.AddDays(3);
-        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [ new CreateTeamRequirementDto { Count = capacity,
-                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                {
+                    Count = capacity,
+                    Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }]
+                }
+            ]
+        }));
 
         // 6 個不同玩家/角色，全部被邀（Invited）
         var members = new List<(int memberId, ulong discordId)>();
@@ -308,7 +376,7 @@ public class TeamLeaderServiceIntegrationTests
             var charId = $"c{i}";
             await Seed.PlayerAsync(cs, did, $"P{did}");
             await Seed.CharacterAsync(cs, charId, did, "C", "箭神", 950);
-            await CreateService().InviteMemberAsync(teamId, charId, leaderDiscordId: 999);
+            await InTxAsync(s => s.InviteMemberAsync(teamId, charId, leaderDiscordId: 999));
             members.Add((await GetMemberIdAsync(cs, teamId, charId), (ulong)did));
         }
 
@@ -317,7 +385,8 @@ public class TeamLeaderServiceIntegrationTests
 
         // 恰好 capacity 個成功；DB 最終 Confirmed 數 = capacity，無超編
         Assert.Equal(capacity, results.Count(ok => ok));
-        Assert.Equal(capacity, await new TeamSlotCharacterRepository(_fx.CreateDbContext()).CountConfirmedAsync(teamId));
+        Assert.Equal(capacity,
+            await new TeamSlotCharacterRepository(_fx.CreateDbContext()).CountConfirmedAsync(teamId));
     }
 
     [Fact]
@@ -331,18 +400,24 @@ public class TeamLeaderServiceIntegrationTests
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
         var slot = DateTimeOffset.UtcNow.AddDays(3);
-        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [ new CreateTeamRequirementDto { Count = 1,
-                Jobs = [ new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 } ] } ]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                {
+                    Count = 1,
+                    Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }]
+                }
+            ]
+        }));
 
-        await CreateService().InviteMemberAsync(teamId, "archer", 999);
-        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(
-            () => CreateService().InviteMemberAsync(teamId, "archer", 999));
+        await InTxAsync(s => s.InviteMemberAsync(teamId, "archer", 999));
+        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() =>
+            InTxAsync(s => s.InviteMemberAsync(teamId, "archer", 999)));
         Assert.Equal("23505", ex.SqlState);
     }
 
@@ -357,21 +432,25 @@ public class TeamLeaderServiceIntegrationTests
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
         var slot = DateTimeOffset.UtcNow.AddDays(3);
-        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [new CreateTeamRequirementDto { Count = 1, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                    { Count = 1, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }
+            ]
+        }));
 
         // 玩家申請（用本人角色）→ Applied
-        await CreateService().ApplyAsync(teamId, "archer", applicantDiscordId: 101);
+        await InTxAsync(s => s.ApplyAsync(teamId, "archer", applicantDiscordId: 101));
         var memberId = await GetMemberIdAsync(cs, teamId, "archer");
         Assert.Equal("Applied", await StatusOfAsync(cs, memberId));
 
         // 隊長核准 → Confirmed
-        await CreateService().ApproveAsync(memberId, leaderDiscordId: 999);
+        await InTxAsync(s => s.ApproveAsync(memberId, leaderDiscordId: 999));
         Assert.Equal("Confirmed", await StatusOfAsync(cs, memberId));
         Assert.Equal(1, await new TeamSlotCharacterRepository(_fx.CreateDbContext()).CountConfirmedAsync(teamId));
     }
@@ -387,23 +466,27 @@ public class TeamLeaderServiceIntegrationTests
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
         var slot = DateTimeOffset.UtcNow.AddDays(3);
-        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [new CreateTeamRequirementDto { Count = 1, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                    { Count = 1, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }
+            ]
+        }));
 
-        await CreateService().ApplyAsync(teamId, "archer", 101);
+        await InTxAsync(s => s.ApplyAsync(teamId, "archer", 101));
         var memberId = await GetMemberIdAsync(cs, teamId, "archer");
 
         // 非隊長（別人）不能核准
-        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(
-            () => CreateService().ApproveAsync(memberId, leaderDiscordId: 888));
+        await Assert.ThrowsAsync<Application.Exceptions.ForbiddenException>(() =>
+            InTxAsync(s => s.ApproveAsync(memberId, leaderDiscordId: 888)));
 
         // 隊長拒絕 → Rejected
-        await CreateService().RejectAsync(memberId, leaderDiscordId: 999);
+        await InTxAsync(s => s.RejectAsync(memberId, leaderDiscordId: 999));
         Assert.Equal("Rejected", await StatusOfAsync(cs, memberId));
     }
 
@@ -418,15 +501,19 @@ public class TeamLeaderServiceIntegrationTests
         await Seed.CharacterAsync(cs, "archer", 101, "C", "箭神", 950);
 
         var slot = DateTimeOffset.UtcNow.AddDays(3);
-        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [new CreateTeamRequirementDto { Count = 1, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                    { Count = 1, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }
+            ]
+        }));
 
-        await CreateService().InviteMemberAsync(teamId, "archer", leaderDiscordId: 999);
+        await InTxAsync(s => s.InviteMemberAsync(teamId, "archer", leaderDiscordId: 999));
 
         // 邀請的同交易內寫了一則 TeamNotification outbox，收件人＝被邀玩家 101（原子；bot 之後撈去發 DM）
         await using var conn = new NpgsqlConnection(cs);
@@ -436,8 +523,8 @@ public class TeamLeaderServiceIntegrationTests
         Assert.Equal("TeamNotification", row.Type);
         // jsonb::text 會正規化（key 排序/空白）→ 反序列化回物件再斷言，較穩健
         var evt = System.Text.Json.JsonSerializer.Deserialize<Application.Events.TeamNotificationEvent>(row.Payload)!;
-        Assert.Equal(101UL, evt.TargetDiscordId);   // 收件人＝被邀玩家
-        Assert.Contains("西格諾斯", evt.Message);    // 訊息帶王名
+        Assert.Equal(101UL, evt.TargetDiscordId); // 收件人＝被邀玩家
+        Assert.Contains("西格諾斯", evt.Message); // 訊息帶王名
     }
 
     [Fact]
@@ -455,16 +542,23 @@ public class TeamLeaderServiceIntegrationTests
         await Seed.CharacterAsync(cs, "mage", 102, "C2", "主教", 800);
 
         var slot = now.AddDays(1);
-        var teamId = await CreateService().CreateTeamAsync(new CreateTeamCommand
+        var teamId = await InTxAsync(s => s.CreateTeamAsync(new CreateTeamCommand
         {
             LeaderDiscordId = 999,
             BossId = bossId,
             SlotDateTime = slot,
-            Requirements = [new CreateTeamRequirementDto { Count = 1, MinClearCount = 0, Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }] }]
-        });
+            Requirements =
+            [
+                new CreateTeamRequirementDto
+                {
+                    Count = 1, MinClearCount = 0,
+                    Jobs = [new CreateTeamRequirementJobDto { Job = "箭神", MinAttackPower = 900 }]
+                }
+            ]
+        }));
 
-        await CreateService().InviteMemberAsync(teamId, "archer", leaderDiscordId: 999);  // 101 被邀
-        await CreateService().ApplyAsync(teamId, "mage", applicantDiscordId: 102);          // 102 申請
+        await InTxAsync(s => s.InviteMemberAsync(teamId, "archer", leaderDiscordId: 999)); // 101 被邀
+        await InTxAsync(s => s.ApplyAsync(teamId, "mage", applicantDiscordId: 102)); // 102 申請
 
         var q = new TeamMembershipQuery(_fx.CreateDbContext());
 

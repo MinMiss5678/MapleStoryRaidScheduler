@@ -49,21 +49,34 @@ public class OutboxIntegrationTests : IAsyncLifetime
         Assert.Equal(1, await CountAsync("""WHERE "ProcessedAt" IS NULL"""));
     }
 
+    // D2：outbox 必須與業務資料同一筆交易原子提交；沒有交易時寫入會自動提交、與資料脫鉤 → 必須直接報錯、不留列
+    [Fact]
+    public async Task D2_沒有交易時寫入outbox_丟例外且不留列()
+    {
+        var noTx = _fx.CreateDbContext(); // 刻意不 BeginAsync
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new Outbox(noTx).EnqueueAsync("TestEvent", new { a = 1 }));
+        Assert.Contains("交易", ex.Message);
+        Assert.Equal(0, await CountAsync(""));
+    }
+
     [Fact]
     public async Task Dispatcher_投遞到handler_標processed_再跑不重投()
     {
         await EnqueueCommittedAsync("TestEvent");
 
         var handler = new RecordingHandler("TestEvent");
-        var dispatcher = new OutboxDispatcher(new NpgsqlConnectionFactory(_fx.ConnectionString), new[] { handler }, NullLogger<OutboxDispatcher>.Instance);
+        var dispatcher = new OutboxDispatcher(new NpgsqlConnectionFactory(_fx.ConnectionString), new[] { handler },
+            NullLogger<OutboxDispatcher>.Instance);
 
         var n1 = await dispatcher.ProcessBatchAsync(CancellationToken.None);
         Assert.Equal(1, n1);
         Assert.Equal(1, handler.Count);
-        Assert.Equal(0, await CountAsync("""WHERE "ProcessedAt" IS NULL"""));   // 已標 processed
+        Assert.Equal(0, await CountAsync("""WHERE "ProcessedAt" IS NULL""")); // 已標 processed
 
         var n2 = await dispatcher.ProcessBatchAsync(CancellationToken.None);
-        Assert.Equal(0, n2);                 // 沒有待處理 → 不重投
+        Assert.Equal(0, n2); // 沒有待處理 → 不重投
         Assert.Equal(1, handler.Count);
     }
 
@@ -88,9 +101,9 @@ public class OutboxIntegrationTests : IAsyncLifetime
         await EnqueueCommittedAsync("TestEvent");
 
         const string claim = """
-            SELECT "Id" FROM "OutboxMessage" WHERE "ProcessedAt" IS NULL
-            ORDER BY "Id" FOR UPDATE SKIP LOCKED LIMIT 10
-            """;
+                             SELECT "Id" FROM "OutboxMessage" WHERE "ProcessedAt" IS NULL
+                             ORDER BY "Id" FOR UPDATE SKIP LOCKED LIMIT 10
+                             """;
 
         // pod A：開交易撈住該列（持有列鎖、不 commit）
         await using var connA = new NpgsqlConnection(_fx.ConnectionString);
@@ -132,18 +145,21 @@ public class OutboxIntegrationTests : IAsyncLifetime
                 """SELECT "Id" FROM "OutboxMessage" WHERE "ProcessedAt" IS NULL FOR UPDATE SKIP LOCKED LIMIT 1""",
                 transaction: tx);
             await handler.HandleAsync("{}", CancellationToken.None);
-            await conn.ExecuteAsync("""UPDATE "OutboxMessage" SET "ProcessedAt" = now() WHERE "Id" = @id""", new { id }, tx);
+            await conn.ExecuteAsync("""UPDATE "OutboxMessage" SET "ProcessedAt" = now() WHERE "Id" = @id""", new { id },
+                tx);
             await tx.RollbackAsync(TestContext.Current.CancellationToken); // 模擬崩潰：commit 前中斷，標記從沒真的寫入
         }
-        Assert.Equal(1, handler.Count);                                   // 崩潰前 handler 已經執行過一次（副作用已發生）
+
+        Assert.Equal(1, handler.Count); // 崩潰前 handler 已經執行過一次（副作用已發生）
         Assert.Equal(1, await CountAsync("""WHERE "ProcessedAt" IS NULL""")); // 但 DB 上這列仍是「未處理」
 
         // 「重啟後」：真正的 dispatcher 重新跑一批 → 該列會被重新撈到、重送給 handler
-        var dispatcher = new OutboxDispatcher(new NpgsqlConnectionFactory(_fx.ConnectionString), new[] { handler }, NullLogger<OutboxDispatcher>.Instance);
+        var dispatcher = new OutboxDispatcher(new NpgsqlConnectionFactory(_fx.ConnectionString), new[] { handler },
+            NullLogger<OutboxDispatcher>.Instance);
         var processed = await dispatcher.ProcessBatchAsync(CancellationToken.None);
 
         Assert.Equal(1, processed);
-        Assert.Equal(2, handler.Count);                                    // 重送：handler 被呼叫第二次，不是被永久卡住
+        Assert.Equal(2, handler.Count); // 重送：handler 被呼叫第二次，不是被永久卡住
         Assert.Equal(0, await CountAsync("""WHERE "ProcessedAt" IS NULL""")); // 這次真的標 processed
     }
 
@@ -159,13 +175,14 @@ public class OutboxIntegrationTests : IAsyncLifetime
         var recentProcessedId = await InsertRowAsync(processedAt: DateTimeOffset.UtcNow.AddDays(-1));
         var unprocessedId = await InsertRowAsync(processedAt: null);
 
-        var job = new OutboxRetentionJob(new NpgsqlConnectionFactory(_fx.ConnectionString), NullLogger<OutboxRetentionJob>.Instance);
+        var job = new OutboxRetentionJob(new NpgsqlConnectionFactory(_fx.ConnectionString),
+            NullLogger<OutboxRetentionJob>.Instance);
         var deleted = await job.CleanupAsync(TimeSpan.FromDays(30), CancellationToken.None);
 
         Assert.Equal(1, deleted);
-        Assert.Equal(0, await CountAsync($"""WHERE "Id" = {oldProcessedId}"""));      // 超過保留期 → 被刪
-        Assert.Equal(1, await CountAsync($"""WHERE "Id" = {recentProcessedId}"""));   // 保留期內 → 留著
-        Assert.Equal(1, await CountAsync($"""WHERE "Id" = {unprocessedId}"""));       // 未處理（即使更舊）→ 絕不能刪
+        Assert.Equal(0, await CountAsync($"""WHERE "Id" = {oldProcessedId}""")); // 超過保留期 → 被刪
+        Assert.Equal(1, await CountAsync($"""WHERE "Id" = {recentProcessedId}""")); // 保留期內 → 留著
+        Assert.Equal(1, await CountAsync($"""WHERE "Id" = {unprocessedId}""")); // 未處理（即使更舊）→ 絕不能刪
     }
 
     private async Task<long> InsertRowAsync(DateTimeOffset? processedAt)
@@ -193,6 +210,7 @@ public class OutboxIntegrationTests : IAsyncLifetime
         public RecordingHandler(string type) => Type = type;
         public string Type { get; }
         public int Count { get; private set; }
+
         public Task HandleAsync(string payload, CancellationToken cancellationToken)
         {
             Count++;

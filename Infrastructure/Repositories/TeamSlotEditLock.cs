@@ -44,6 +44,12 @@ public class TeamSlotEditLock : ITeamSlotEditLock
 
     private async Task AcquireAsync(int classId, int objId)
     {
+        // 交易級鎖只在交易內有意義：沒有交易時那條 SQL 自動提交、鎖立刻釋放，SET LOCAL 也只發 WARNING——
+        // 防超收的互斥會默默失效。誰漏開交易，第一次呼叫就要報錯。
+        if (_dbContext.Transaction == null)
+            throw new InvalidOperationException(
+                "TeamSlot 編輯鎖（pg_advisory_xact_lock）必須在交易內取得：目前沒有進行中的交易，鎖會立刻釋放。");
+
         // SET LOCAL 只在當前交易內生效，交易結束（commit/rollback）自動還原，不會外洩到下一個請求。
         await _dbContext.ExecuteAsync($"SET LOCAL lock_timeout = '{_lockTimeout}'", new { });
 
