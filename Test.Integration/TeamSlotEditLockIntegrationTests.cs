@@ -50,6 +50,21 @@ public class TeamSlotEditLockIntegrationTests
         Assert.True(await TryLockFromOtherConnection(teamSlotId));
     }
 
+    // D1（plans/2026-11-16-auth-401-reason-and-commit-before-response.md §四）：交易級鎖在沒有交易時，
+    // 那條 SQL 自動提交、鎖立刻釋放，SET LOCAL 也只發 WARNING——防超收的保護默默失效 → 必須直接報錯。
+    [Fact]
+    public async Task D1_沒有交易時取鎖_丟例外_不得默默放行()
+    {
+        await _fx.ResetAsync();
+        await using var conn = new NpgsqlConnection(_fx.ConnectionString);
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
+        var ctx = new DbContext(conn); // 刻意不 BeginAsync
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new TeamSlotEditLock(ctx).AcquireTeamSlotEditLockAsync(1));
+        Assert.Contains("交易", ex.Message);
+    }
+
     [Fact]
     public async Task AcquireTeamSlotEditLock_DifferentTeamSlots_DoNotBlock()
     {
@@ -92,8 +107,8 @@ public class TeamSlotEditLockIntegrationTests
         await ctxB.BeginAsync();
 
         var sw = Stopwatch.StartNew();
-        await Assert.ThrowsAsync<AdvisoryLockTimeoutException>(
-            () => new TeamSlotEditLock(ctxB, "300ms").AcquireTeamSlotEditLockAsync(teamSlotId));
+        await Assert.ThrowsAsync<AdvisoryLockTimeoutException>(() =>
+            new TeamSlotEditLock(ctxB, "300ms").AcquireTeamSlotEditLockAsync(teamSlotId));
         sw.Stop();
 
         // 真的被短 timeout 擋下，不是巧合瞬間成功又被誤判；給寬鬆上限，不是精確計時斷言
