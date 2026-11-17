@@ -1,4 +1,5 @@
 ﻿using Application.Interface;
+using Presentation.WebApi.Attributes;
 
 namespace Presentation.WebApi.Middleware;
 
@@ -20,7 +21,8 @@ public class UnitOfWorkMiddleware
             return;
         }
 
-        if (context.Items.ContainsKey("SkipUow"))
+        // 自己管交易的端點（例：登入要先完成 Discord 呼叫，才開交易寫 DB）
+        if (context.GetEndpoint()?.Metadata.GetMetadata<NoAmbientTransactionAttribute>() != null)
         {
             await _next(context);
             return;

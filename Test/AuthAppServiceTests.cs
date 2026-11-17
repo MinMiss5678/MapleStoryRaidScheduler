@@ -17,6 +17,7 @@ public class AuthAppServiceTests
     private readonly Mock<IPlayerService> _playerServiceMock;
     private readonly Mock<IOptions<DiscordOptions>> _discordOptionsMock;
     private readonly Mock<IDiscordRoleMappingRepository> _roleMappingRepositoryMock;
+    private readonly Mock<IUnitOfWork> _uowMock = new();
     private readonly AuthAppService _authAppService;
     private readonly DiscordOptions _discordOptions = new();
 
@@ -36,7 +37,8 @@ public class AuthAppServiceTests
             _authServiceMock.Object,
             _discordOAuthClientMock.Object,
             _playerServiceMock.Object,
-            _roleMappingRepositoryMock.Object);
+            _roleMappingRepositoryMock.Object,
+            _uowMock.Object);
     }
 
     [Fact]
@@ -132,5 +134,82 @@ public class AuthAppServiceTests
         _playerServiceMock.Verify(x => x.CreateAsync(It.IsAny<Player>()), Times.Never);
         _authServiceMock.Verify(x => x.CreateSessionAsync(It.IsAny<ulong>()), Times.Never);
         _authServiceMock.Verify(x => x.CreateJwt(It.IsAny<DiscordUser>(), It.IsAny<string>()), Times.Never);
+    }
+
+    // ===== E 組：登入的 Discord 呼叫必須在交易之外（plans/2026-11-16-auth-401-reason-and-commit-before-response.md §四）=====
+    // 交易開著時等 Discord 回應，那條 DB 連線會一直被佔住；Discord 一慢，連線池就會被耗盡。
+
+    private List<string> RecordCallOrder(string role = "user")
+    {
+        var calls = new List<string>();
+        var user = new DiscordUser { Id = 555, Name = "player" };
+        _authServiceMock.Setup(x => x.ExchangeCodeAsync("code"))
+            .Callback(() => calls.Add("Discord:ExchangeCode")).ReturnsAsync(user);
+        _discordOAuthClientMock.Setup(x => x.GetGuildMemberAsync(555))
+            .Callback(() => calls.Add("Discord:GetGuildMember")).ReturnsAsync(new GuildMemberDto { Roles = ["1"] });
+        _roleMappingRepositoryMock.Setup(x => x.ResolveRoleAsync(It.IsAny<IEnumerable<ulong>>())).ReturnsAsync(role);
+        _playerServiceMock.Setup(x => x.CreateAsync(It.IsAny<Player>()))
+            .Callback(() => calls.Add("DB:CreatePlayer")).Returns(Task.CompletedTask);
+        _authServiceMock.Setup(x => x.CreateSessionAsync(555))
+            .Callback(() => calls.Add("DB:CreateSession")).ReturnsAsync("sid");
+        _authServiceMock.Setup(x => x.CreateJwt(It.IsAny<DiscordUser>(), It.IsAny<string>())).Returns("jwt");
+        _uowMock.Setup(x => x.BeginAsync()).Callback(() => calls.Add("Begin")).Returns(Task.CompletedTask);
+        _uowMock.Setup(x => x.CommitAsync()).Callback(() => calls.Add("Commit")).Returns(Task.CompletedTask);
+        _uowMock.Setup(x => x.RollbackAsync()).Callback(() => calls.Add("Rollback")).Returns(Task.CompletedTask);
+        return calls;
+    }
+
+    [Theory]
+    [InlineData("user",
+        new[] { "Discord:ExchangeCode", "Discord:GetGuildMember", "Begin", "DB:CreatePlayer", "Commit" })]
+    [InlineData("admin",
+        new[]
+        {
+            "Discord:ExchangeCode", "Discord:GetGuildMember", "Begin", "DB:CreatePlayer", "DB:CreateSession", "Commit"
+        })]
+    public async Task E1_登入成功_Discord呼叫都在開交易之前_寫DB在交易內_commit一次(string role, string[] expected)
+    {
+        var calls = RecordCallOrder(role);
+
+        var result = await _authAppService.LoginAsync("code");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, calls);
+    }
+
+    [Fact]
+    public async Task E2_Discord呼叫失敗_不開交易()
+    {
+        RecordCallOrder();
+        _discordOAuthClientMock.Setup(x => x.GetGuildMemberAsync(555))
+            .ThrowsAsync(new HttpRequestException("discord down"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => _authAppService.LoginAsync("code"));
+
+        _uowMock.Verify(x => x.BeginAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task E2_無法解析角色而登入失敗_不開交易()
+    {
+        RecordCallOrder(role: "");
+
+        var result = await _authAppService.LoginAsync("code");
+
+        Assert.False(result.IsSuccess);
+        _uowMock.Verify(x => x.BeginAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task E3_寫DB失敗_rollback_例外往外拋_不commit()
+    {
+        var calls = RecordCallOrder();
+        _playerServiceMock.Setup(x => x.CreateAsync(It.IsAny<Player>()))
+            .ThrowsAsync(new InvalidOperationException("db failed"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _authAppService.LoginAsync("code"));
+
+        Assert.Contains("Rollback", calls);
+        Assert.DoesNotContain("Commit", calls);
     }
 }
