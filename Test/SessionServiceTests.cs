@@ -4,6 +4,7 @@ using Domain.Entities;
 using Domain.Repositories;
 using Infrastructure.Services;
 using Moq;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Test;
@@ -13,6 +14,7 @@ public class SessionServiceTests
     private readonly Mock<ISessionRepository> _sessionRepoMock = new();
     private readonly Mock<ISessionQuery> _sessionQueryMock = new();
     private readonly FakeSessionCache _sessionCache = new();
+    private readonly CapturingLogger<SessionService> _logger = new();
     private readonly SessionService _sessionService;
 
     public SessionServiceTests()
@@ -21,7 +23,8 @@ public class SessionServiceTests
         _sessionService = new SessionService(
             _sessionRepoMock.Object,
             _sessionQueryMock.Object,
-            _sessionCache);
+            _sessionCache,
+            _logger);
     }
 
     // 以字典模擬 Redis 共享快取（Get/Set/Remove），讓「命中快取不再查 DB」等測試成立。
@@ -255,5 +258,60 @@ public class SessionServiceTests
         var cached = await _sessionCache.GetAsync("789");
         Assert.NotNull(cached);
         Assert.Equal("sid-real", cached.SessionId); // 快取仍是原本那筆（A-2：不覆寫，避免兩台裝置交替時快取來回翻）
+    }
+
+    // ===== session 無效的細分原因（plans/2026-11-16-auth-401-reason-and-commit-before-response.md §二 B 組）=====
+
+    [Fact]
+    public async Task B1_查無session_記錄原因()
+    {
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-missing")).ReturnsAsync((Session?)null);
+
+        Assert.Null(await _sessionService.GetAsync("sid-missing", "789"));
+
+        var log = Assert.Single(_logger.Entries);
+        Assert.Equal(LogLevel.Information, log.Level);
+        Assert.Contains("查無 session", log.Message);
+    }
+
+    [Fact]
+    public async Task B2_session歸屬不符_記Warning_含兩個discordId()
+    {
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-other")).ReturnsAsync(SessionOf("sid-other", 999UL));
+
+        Assert.Null(await _sessionService.GetAsync("sid-other", "789"));
+
+        var log = Assert.Single(_logger.Entries);
+        Assert.Equal(LogLevel.Warning, log.Level);
+        Assert.Contains("session 歸屬不符", log.Message);
+        Assert.Contains("789", log.Message);
+        Assert.Contains("999", log.Message);
+    }
+
+    [Fact]
+    public async Task B3_session已過期_記錄原因()
+    {
+        _sessionQueryMock.Setup(q => q.GetAsync("sid-exp")).ReturnsAsync(SessionOf("sid-exp", 789UL, expired: true));
+
+        Assert.Null(await _sessionService.GetAsync("sid-exp", "789"));
+
+        var log = Assert.Single(_logger.Entries);
+        Assert.Equal(LogLevel.Information, log.Level);
+        Assert.Contains("session 已過期", log.Message);
+    }
+
+    [Fact]
+    public async Task B4_無效原因的log_不含sessionId的值()
+    {
+        _sessionQueryMock.Setup(q => q.GetAsync("secret-a")).ReturnsAsync((Session?)null);
+        _sessionQueryMock.Setup(q => q.GetAsync("secret-b")).ReturnsAsync(SessionOf("secret-b", 999UL));
+        _sessionQueryMock.Setup(q => q.GetAsync("secret-c")).ReturnsAsync(SessionOf("secret-c", 789UL, expired: true));
+
+        await _sessionService.GetAsync("secret-a", "789");
+        await _sessionService.GetAsync("secret-b", "789");
+        await _sessionService.GetAsync("secret-c", "789");
+
+        Assert.Equal(3, _logger.Entries.Count);
+        Assert.DoesNotContain("secret-", _logger.AllText());
     }
 }
