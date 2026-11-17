@@ -2,6 +2,7 @@
 using Application.Interface;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Presentation.WebApi.Attributes;
 
 namespace Presentation.WebApi.Controller;
 
@@ -18,12 +19,12 @@ public class AuthController : ControllerBase
 
     public class CallbackRequest
     {
-        [Required]
-        public string Code { get; set; } = default!;
+        [Required] public string Code { get; set; } = default!;
     }
 
     [AllowAnonymous]
     [HttpPost("login")]
+    [NoAmbientTransaction] // 先呼叫 Discord（換 token、查身分組），再由 AuthAppService 自己開交易寫 DB
     public async Task<IActionResult> LoginAsync([FromBody] CallbackRequest request)
     {
         var result = await _authAppService.LoginAsync(request.Code);

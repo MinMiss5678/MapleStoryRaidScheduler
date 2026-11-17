@@ -1,6 +1,7 @@
 using Application.Interface;
 using Microsoft.AspNetCore.Http;
 using Moq;
+using Presentation.WebApi.Attributes;
 using Presentation.WebApi.Middleware;
 using Xunit;
 
@@ -29,7 +30,11 @@ public class UnitOfWorkMiddlewareTests
     public async Task 非寫入請求_不開交易_直接放行()
     {
         var nextCalled = false;
-        var middleware = BuildMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = BuildMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
 
         await middleware.Invoke(BuildContext("GET"), _uow.Object);
 
@@ -40,15 +45,38 @@ public class UnitOfWorkMiddlewareTests
     }
 
     [Fact]
-    public async Task 標記_SkipUow_的寫入請求_不開交易()
+    public async Task E4_端點標記NoAmbientTransaction的寫入請求_不開交易()
     {
         var middleware = BuildMiddleware(_ => Task.CompletedTask);
         var context = BuildContext("POST");
-        context.Items["SkipUow"] = true;
+        context.SetEndpoint(new Endpoint(_ => Task.CompletedTask,
+            new EndpointMetadataCollection(new NoAmbientTransactionAttribute()), "test"));
 
         await middleware.Invoke(context, _uow.Object);
 
         _uow.Verify(u => u.BeginAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task E4_沒有標記的寫入端點_照舊開交易()
+    {
+        var middleware = BuildMiddleware(_ => Task.CompletedTask);
+        var context = BuildContext("POST");
+        context.SetEndpoint(new Endpoint(_ => Task.CompletedTask, new EndpointMetadataCollection(), "test"));
+
+        await middleware.Invoke(context, _uow.Object);
+
+        _uow.Verify(u => u.BeginAsync(), Times.Once);
+    }
+
+    [Fact]
+    public void E4_登入端點_自己管交易_標記NoAmbientTransaction()
+    {
+        var login = typeof(Presentation.WebApi.Controller.AuthController).GetMethod("LoginAsync");
+
+        Assert.NotNull(login);
+        Assert.NotNull(
+            login.GetCustomAttributes(typeof(NoAmbientTransactionAttribute), inherit: true).SingleOrDefault());
     }
 
     [Fact]
@@ -86,8 +114,9 @@ public class UnitOfWorkMiddlewareTests
         var boom = new InvalidOperationException("boom");
         var middleware = BuildMiddleware(_ => throw boom);
 
-        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => middleware.Invoke(BuildContext("DELETE"), _uow.Object));
+        var thrown =
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                middleware.Invoke(BuildContext("DELETE"), _uow.Object));
 
         Assert.Same(boom, thrown);
         _uow.Verify(u => u.BeginAsync(), Times.Once);

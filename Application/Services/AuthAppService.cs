@@ -14,14 +14,16 @@ public class AuthAppService : IAuthAppService
     private readonly IDiscordOAuthClient _discordOAuthClient;
     private readonly IPlayerService _playerService;
     private readonly IDiscordRoleMappingRepository _roleMappingRepository;
+    private readonly IUnitOfWork _unitOfWork;
 
     public AuthAppService(IAuthService authService, IDiscordOAuthClient discordOAuthClient,
-        IPlayerService playerService, IDiscordRoleMappingRepository roleMappingRepository)
+        IPlayerService playerService, IDiscordRoleMappingRepository roleMappingRepository, IUnitOfWork unitOfWork)
     {
         _authService = authService;
         _discordOAuthClient = discordOAuthClient;
         _playerService = playerService;
         _roleMappingRepository = roleMappingRepository;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<LoginResult> LoginAsync(string code)
@@ -38,7 +40,7 @@ public class AuthAppService : IAuthAppService
             .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? user.Name;
         if (string.IsNullOrWhiteSpace(displayName) || displayName.Length > MaxDiscordNameLength)
             return new LoginResult { IsSuccess = false };
-        user.Name = displayName;   // 讓 JWT 與 Player.DiscordName 都用顯示名
+        user.Name = displayName; // 讓 JWT 與 Player.DiscordName 都用顯示名
 
         // 角色來源改為 DB 映射：
         // 1) 若玩家已存在，沿用 DB 中的 Player.Role
@@ -65,6 +67,24 @@ public class AuthAppService : IAuthAppService
             return new LoginResult { IsSuccess = false };
         }
 
+        // 交易只包「寫 DB」：上面三次 Discord 呼叫都在交易之外（登入端點標 [NoAmbientTransaction]，middleware 不自動開交易）。
+        // 交易開著等 Discord 回應，連線會一直被佔住；Discord 一慢，連線池就會被耗盡。
+        await _unitOfWork.BeginAsync();
+        try
+        {
+            var result = await PersistLoginAsync(user, role);
+            await _unitOfWork.CommitAsync();
+            return result;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackAsync();
+            throw;
+        }
+    }
+
+    private async Task<LoginResult> PersistLoginAsync(DiscordUser user, string role)
+    {
         await _playerService.CreateAsync(new Player()
         {
             DiscordId = user.Id,
