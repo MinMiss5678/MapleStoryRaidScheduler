@@ -25,6 +25,7 @@ namespace Test.Integration;
 /// 覆寫走 services 層 PostConfigure（保證最後執行、贏過 app 的 config 繫結），
 /// 不靠 ConfigureAppConfiguration 的來源優先序——那在 CI 會被 appsettings/env 蓋掉。
 /// </summary>
+[Collection("webapp-host")]
 public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationTests.Factory>
 {
     private const string TestSecret = "integration-test-secret-key-at-least-32-bytes-long!!";
@@ -96,6 +97,7 @@ public class RateLimiterIntegrationTests : IClassFixture<RateLimiterIntegrationT
     private sealed class AlwaysAllowIdempotencyStore : IIdempotencyStore
     {
         public Task<bool> TryMarkAsync(string key, TimeSpan ttl) => Task.FromResult(true);
+        public Task RemoveAsync(string key) => Task.CompletedTask;
     }
 
     private string CreateJwt(ulong discordId)

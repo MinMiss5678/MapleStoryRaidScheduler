@@ -25,6 +25,7 @@ namespace Test.Integration;
 /// 預設設定下指令會排隊等到 5 秒逾時才失敗，一個請求最壞要等十幾秒。
 /// 一律使用正式環境同一套連線設定（<see cref="RedisConnectionOptions.Build"/>）。
 /// </summary>
+[Collection("webapp-host")]
 public class RedisFailOpenIntegrationTests
 {
     private const string Unreachable = "127.0.0.1:1"; // 沒有服務的 port
@@ -65,6 +66,17 @@ public class RedisFailOpenIntegrationTests
         var (allowed, elapsed) = await Timed(() => store.TryMarkAsync($"k:{Guid.NewGuid()}", TimeSpan.FromMinutes(1)));
 
         Assert.True(allowed);
+        Assert.True(elapsed < PerOperationLimit, $"花了 {elapsed.TotalMilliseconds:F0} ms");
+    }
+
+    [Fact]
+    public async Task F5_冪等store撤銷_Redis不可用_不丟例外且1秒內回應()
+    {
+        await using var redis = ConnectUnreachable();
+        var store = new RedisIdempotencyStore(redis, NullLogger<RedisIdempotencyStore>.Instance);
+
+        var elapsed = await Timed(() => store.RemoveAsync($"k:{Guid.NewGuid()}"));
+
         Assert.True(elapsed < PerOperationLimit, $"花了 {elapsed.TotalMilliseconds:F0} ms");
     }
 
