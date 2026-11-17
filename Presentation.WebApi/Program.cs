@@ -174,6 +174,8 @@ builder.Services.AddSingleton<IIdempotencyStore, RedisIdempotencyStore>();
 // session 快取也走 Redis（跨 pod 共享）→ 登出／強制下線的撤銷一次刪除即在所有 pod 生效（取代 per-pod IMemoryCache）
 builder.Services.AddSingleton<ISessionCache, RedisSessionCache>();
 builder.Services.AddHttpClient();
+// 所有 HttpClient 掛上「交易中不准發對外 HTTP」（防交易範圍太大，見 NoHttpCallInTransactionHandler）
+builder.Services.AddNoHttpCallInTransactionGuard();
 
 // 登入後「按身分」限流：以驗證過的 discordId（session/JWT，client 偽造不了）當 partition key，
 // 換 IP 也繞不掉。未登入請求不在此限（登入前的暴力破解另案處理，需 IP/CAPTCHA/帳號鎖定）。
