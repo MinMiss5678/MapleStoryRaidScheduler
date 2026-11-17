@@ -3,6 +3,7 @@ using Application.Interface;
 using Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Moq;
 using Presentation.WebApi.Attributes;
@@ -26,6 +27,7 @@ public class AuthenticationMiddlewareTests
     private readonly Mock<IPlayerService> _player = new();
     private readonly Mock<IJwtService> _jwt = new();
     private readonly Mock<IAuthService> _auth = new();
+    private readonly CapturingLogger<AuthenticationMiddleware> _logger = new();
 
     public AuthenticationMiddlewareTests()
     {
@@ -34,7 +36,8 @@ public class AuthenticationMiddlewareTests
             .Returns(new JwtValidationResult { IsValid = false });
     }
 
-    private AuthenticationMiddleware Build() => new(_session.Object, _player.Object, _jwt.Object, _auth.Object);
+    private AuthenticationMiddleware Build() =>
+        new(_session.Object, _player.Object, _jwt.Object, _auth.Object, _logger);
 
     private static DefaultHttpContext BuildContext(string? cookieHeader = null, params object[] endpointMetadata)
     {
@@ -297,5 +300,115 @@ public class AuthenticationMiddlewareTests
         Assert.True(authorizationRan);
         Assert.False(endpointCalled);
         Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+    }
+
+    // ===== 401 原因記錄（plans/2026-11-16-auth-401-reason-and-commit-before-response.md §二 A 組）=====
+    // 只記原因與 discordId；sessionId、JWT 是可直接冒用的憑證，絕不進 log。
+
+    private CapturingLogger<AuthenticationMiddleware>.Entry Single401Log()
+    {
+        var entry = Assert.Single(_logger.Entries, e => e.Message.Contains("401"));
+        Assert.Equal(LogLevel.Information, entry.Level);
+        return entry;
+    }
+
+    [Fact]
+    public async Task A1_沒有憑證_記錄原因()
+    {
+        await Run(BuildContext());
+
+        Assert.Contains("沒有憑證", Single401Log().Message);
+    }
+
+    [Fact]
+    public async Task A2_sessionId_cookie為空字串_等同沒帶憑證()
+    {
+        // ASP.NET Core 解析 cookie 時，值為空的 cookie 不會出現在 Request.Cookies → 等同沒帶 sessionId（規格修正，2026/11/17）
+        await Run(BuildContext("discordId=123; sessionId123="));
+
+        var log = Single401Log();
+        Assert.Contains("沒有憑證", log.Message);
+        Assert.Contains("123", log.Message);
+    }
+
+    [Fact]
+    public async Task A3_session無效_記錄原因與discordId()
+    {
+        _session.Setup(s => s.GetAsync("abc", "123")).ReturnsAsync((Session?)null);
+
+        await Run(BuildContext("discordId=123; sessionId123=abc"));
+
+        var log = Single401Log();
+        Assert.Contains("session 無效", log.Message);
+        Assert.Contains("123", log.Message);
+    }
+
+    [Fact]
+    public async Task A4_JWT無效_非過期_記錄原因()
+    {
+        _jwt.Setup(j => j.ValidateToken("forged"))
+            .Returns(new JwtValidationResult { Exception = new SecurityTokenInvalidSignatureException() });
+
+        await Run(BuildContext("jwtToken=forged"));
+
+        Assert.Contains("JWT 無效", Single401Log().Message);
+    }
+
+    [Fact]
+    public async Task A5_JWT過期_續期失敗_記錄原因與discordId()
+    {
+        _jwt.Setup(j => j.ValidateToken("expiredtok"))
+            .Returns(new JwtValidationResult { Exception = new SecurityTokenExpiredException() });
+        _jwt.Setup(j => j.ReadJsonWebToken("expiredtok")).Returns(new JwtTokenClaims { DiscordId = 789 });
+        _auth.Setup(a => a.RefreshToken(789)).ReturnsAsync((string?)null);
+
+        await Run(BuildContext("jwtToken=expiredtok"));
+
+        var log = Single401Log();
+        Assert.Contains("續期失敗", log.Message);
+        Assert.Contains("789", log.Message);
+    }
+
+    [Fact]
+    public async Task A6_JWT過期_續期結果無效或帳號不符_記錄原因與discordId()
+    {
+        _jwt.Setup(j => j.ValidateToken("expiredtok"))
+            .Returns(new JwtValidationResult { Exception = new SecurityTokenExpiredException() });
+        _jwt.Setup(j => j.ReadJsonWebToken("expiredtok")).Returns(new JwtTokenClaims { DiscordId = 789 });
+        _auth.Setup(a => a.RefreshToken(789)).ReturnsAsync("newtok");
+        _jwt.Setup(j => j.ValidateToken("newtok"))
+            .Returns(new JwtValidationResult { IsValid = true, DiscordId = 999, Role = "user" });
+
+        await Run(BuildContext("jwtToken=expiredtok"));
+
+        var log = Single401Log();
+        Assert.Contains("續期結果無效", log.Message);
+        Assert.Contains("789", log.Message);
+    }
+
+    [Fact]
+    public async Task A7_401的log_不含sessionId與JWT的值()
+    {
+        _session.Setup(s => s.GetAsync("secret-session-value", "123")).ReturnsAsync((Session?)null);
+        await Run(BuildContext("discordId=123; sessionId123=secret-session-value"));
+
+        _jwt.Setup(j => j.ValidateToken("secret-jwt-value"))
+            .Returns(new JwtValidationResult { Exception = new SecurityTokenInvalidSignatureException() });
+        await Run(BuildContext("jwtToken=secret-jwt-value"));
+
+        Assert.Equal(2, _logger.Entries.Count(e => e.Message.Contains("401")));
+        Assert.DoesNotContain("secret-session-value", _logger.AllText());
+        Assert.DoesNotContain("secret-jwt-value", _logger.AllText());
+    }
+
+    [Fact]
+    public async Task A8_認證成功_不記401原因()
+    {
+        _jwt.Setup(j => j.ValidateToken("validtok"))
+            .Returns(new JwtValidationResult { IsValid = true, DiscordId = 456, Role = "user" });
+
+        await Run(BuildContext("jwtToken=validtok"));
+
+        Assert.DoesNotContain(_logger.Entries, e => e.Message.Contains("401"));
     }
 }
