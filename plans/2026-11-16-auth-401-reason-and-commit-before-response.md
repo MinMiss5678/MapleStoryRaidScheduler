@@ -168,3 +168,16 @@
 - **規格缺口（A2）**：實作後 A2 紅——值為空的 cookie 不會出現在 `Request.Cookies`，「sessionId 為空」那個分支永遠走不到。使用者核可改為「等同沒帶憑證」並刪死碼。
   流程：hook 規定先綠燈才能改測試 → 先依**原規格**實作（從原始 Cookie header 判斷空 sessionId）跑出綠燈結束該段 → 更新 case 文件 → 新段改 A2 期望值 → 紅 → 刪掉該特判與死碼 → 綠。
 - 結果：單元 407（+12）、整合 82、E2E 53 passed。E2E 後端 log 的 401 原因與刻意製造的情境一致：匿名打 API → 「沒有憑證」；G8 偽造 sessionId → 「session 無效」＋「查無 session」；G11.3 冒充 → 「session 歸屬不符」（Warning，含兩個 discordId）。
+
+---
+
+## 八、PR ② 實作紀錄（2026/11/17，D／G／E／F 組）
+
+- **D 組**：`TeamSlotEditLock.AcquireAsync`、`Outbox.EnqueueAsync` 開頭檢查 `DbContext.Transaction`，沒有交易就丟 `InvalidOperationException`。
+  - 守衛一上就抓到 `TeamLeaderServiceIntegrationTests` 有 8 筆測試在交易外呼叫寫入（正式環境 UoW 一定有交易，測試沒模擬到）。以 `tdd-testfix` 登記：加 `InTxAsync` helper（Begin → 動作 → Commit；例外 → Rollback 後原樣拋出），把 30 處寫入呼叫包進去；**期望值未改**。
+- **G 組**：`NoHttpCallInTransactionHandler`（`DelegatingHandler`，經 `IHttpContextAccessor` 取本次請求的 `DbContext`，有交易就丟例外），以 `ConfigureHttpClientDefaults` 掛到所有 `HttpClient`。單元 G1–G4＋整合 `TransactionGuardWiringIntegrationTests`（驗 Program.cs 真的有接線）。
+- **E 組**：`AuthAppService` 自己管交易——Discord 呼叫與角色解析在交易外，之後才 `BeginAsync` → 建玩家／session → Commit（失敗 Rollback）；`AuthController.LoginAsync` 標 `[NoAmbientTransaction]`，`UnitOfWorkMiddleware` 改看端點 metadata（取代原本的 `SkipUow` Items 旗標）。
+- **F 組**：`IIdempotencyStore.RemoveAsync`（Redis `DEL`，失敗 fail-open 記 Warning）；`IdempotencyMiddleware` 放行後若例外或狀態碼 ≥ 400 就撤銷標記，成功保留；「本身就是重複」的 409 提早 return，不會撤銷原請求的標記。
+- **順手修的測試基礎設施**：新增整合測試後，3 個 `WebApplicationFactory<Program>` 測試類別平行建 host，搶 Program.cs 設的全域 Serilog bootstrap logger → 「The logger is already frozen」。新增 `[Collection("webapp-host")]`（不平行）把三者收進同一集合。正式環境一個行程一個 host，不受影響。
+- 結果：單元 427、整合 88、build 0 警告、`dotnet format` 無差異、本機 E2E 53 passed（`scripts/e2e-local.sh`，playwright exit=0）。
+- 附帶發現（不屬本 PR）：從 Git Bash 執行 `scripts/e2e-local.sh` 時，腳本最後是 `exit 0`，外層卻拿到 1。原因是 WSL 端以 `bash -l` 執行，登出時跑 `~/.bash_logout` 的 `clear_console -q`（沒有終端機而失敗），它的回傳值蓋掉了腳本的結束碼（`bash -l -x` 追蹤已證實）。屬於結束碼傳遞的假紅，另開 PR 處理。

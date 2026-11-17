@@ -16,7 +16,11 @@ public class IdempotencyMiddlewareTests
     private static (IdempotencyMiddleware Middleware, Func<int> NextCalls) BuildMiddleware(IIdempotencyStore store)
     {
         var calls = 0;
-        RequestDelegate next = _ => { calls++; return Task.CompletedTask; };
+        RequestDelegate next = _ =>
+        {
+            calls++;
+            return Task.CompletedTask;
+        };
         return (new IdempotencyMiddleware(next, store), () => calls);
     }
 
@@ -119,5 +123,80 @@ public class IdempotencyMiddlewareTests
 
         Assert.Equal(1, nextCalls());
         store.Verify(s => s.TryMarkAsync(It.IsAny<string>(), It.IsAny<TimeSpan>()), Times.Never);
+    }
+
+    // ---------------------------------------------------------------- F 組：失敗時撤銷冪等標記
+    // plans/2026-11-16-auth-401-reason-and-commit-before-response.md F 組。
+    // 標記在「放行之前」就寫下；請求若失敗卻不撤銷，使用者修正後重送同一把 key 會被 409 擋 60 秒。
+
+    private static IdempotencyMiddleware MiddlewareWithNext(IIdempotencyStore store, RequestDelegate next) =>
+        new(next, store);
+
+    [Theory]
+    [InlineData(400)]
+    [InlineData(401)]
+    [InlineData(409)]
+    [InlineData(500)]
+    public async Task F1_放行後狀態碼大於等於400_撤銷此key(int status)
+    {
+        var store = StoreReturning(true);
+        var key = Guid.NewGuid().ToString();
+        var middleware = MiddlewareWithNext(store.Object, ctx =>
+        {
+            ctx.Response.StatusCode = status;
+            return Task.CompletedTask;
+        });
+        var context = BuildContext("POST", key);
+
+        await middleware.Invoke(context);
+
+        Assert.Equal(status, context.Response.StatusCode);
+        store.Verify(s => s.RemoveAsync(key), Times.Once);
+    }
+
+    [Fact]
+    public async Task F2_放行後丟出例外_撤銷此key_例外照常往外拋()
+    {
+        var store = StoreReturning(true);
+        var key = Guid.NewGuid().ToString();
+        var boom = new InvalidOperationException("boom");
+        var middleware = MiddlewareWithNext(store.Object, _ => throw boom);
+
+        var thrown =
+            await Assert.ThrowsAsync<InvalidOperationException>(() => middleware.Invoke(BuildContext("POST", key)));
+
+        Assert.Same(boom, thrown);
+        store.Verify(s => s.RemoveAsync(key), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(200)]
+    [InlineData(201)]
+    [InlineData(204)]
+    public async Task F3_成功_保留標記_不撤銷(int status)
+    {
+        var store = StoreReturning(true);
+        var middleware = MiddlewareWithNext(store.Object, ctx =>
+        {
+            ctx.Response.StatusCode = status;
+            return Task.CompletedTask;
+        });
+
+        await middleware.Invoke(BuildContext("POST", Guid.NewGuid().ToString()));
+
+        store.Verify(s => s.RemoveAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task F4_請求本身是重複_回409_不得撤銷原請求的key()
+    {
+        var store = StoreReturning(false);
+        var (middleware, _) = BuildMiddleware(store.Object);
+        var context = BuildContext("POST", Guid.NewGuid().ToString());
+
+        await middleware.Invoke(context);
+
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+        store.Verify(s => s.RemoveAsync(It.IsAny<string>()), Times.Never);
     }
 }

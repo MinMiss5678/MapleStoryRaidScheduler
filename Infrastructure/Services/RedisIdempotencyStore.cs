@@ -35,4 +35,17 @@ public class RedisIdempotencyStore : IIdempotencyStore
             return true;
         }
     }
+
+    public async Task RemoveAsync(string key)
+    {
+        try
+        {
+            await _redis.GetDatabase().KeyDeleteAsync($"idempotency:{key}");
+        }
+        catch (Exception ex)
+        {
+            // fail-open：撤銷失敗最壞只是 ttl 內用同一把 key 重送會被 409 擋，不值得讓請求本身失敗。
+            _logger.LogWarning(ex, "Idempotency Redis 不可用，撤銷標記失敗 key={Key}", key);
+        }
+    }
 }

@@ -26,8 +26,8 @@ public class IdempotencyRedisIntegrationTests : IClassFixture<RedisFixture>
         var store = StoreOn(redis);
         var key = Guid.NewGuid().ToString();
 
-        Assert.True(await store.TryMarkAsync(key, Ttl));   // 第一次 → 放行
-        Assert.False(await store.TryMarkAsync(key, Ttl));  // 重複 → 擋
+        Assert.True(await store.TryMarkAsync(key, Ttl)); // 第一次 → 放行
+        Assert.False(await store.TryMarkAsync(key, Ttl)); // 重複 → 擋
     }
 
     [Fact]
@@ -48,7 +48,36 @@ public class IdempotencyRedisIntegrationTests : IClassFixture<RedisFixture>
         await using var redisB = _fx.Connect();
         var key = Guid.NewGuid().ToString();
 
-        Assert.True(await StoreOn(redisA).TryMarkAsync(key, Ttl));   // pod A 第一次 → 放行
-        Assert.False(await StoreOn(redisB).TryMarkAsync(key, Ttl));  // pod B 同 key → 擋（跨 pod de-dup 成立）
+        Assert.True(await StoreOn(redisA).TryMarkAsync(key, Ttl)); // pod A 第一次 → 放行
+        Assert.False(await StoreOn(redisB).TryMarkAsync(key, Ttl)); // pod B 同 key → 擋（跨 pod de-dup 成立）
+    }
+
+    [Fact]
+    public async Task F1_撤銷後_同key可再次標記()
+    {
+        await using var redis = _fx.Connect();
+        var store = StoreOn(redis);
+        var key = Guid.NewGuid().ToString();
+
+        Assert.True(await store.TryMarkAsync(key, Ttl));
+        await store.RemoveAsync(key);
+
+        Assert.True(await store.TryMarkAsync(key, Ttl)); // 撤銷後重送 → 放行
+        Assert.False(await store.TryMarkAsync(key, Ttl)); // 再送一次 → 照常擋
+    }
+
+    [Fact]
+    public async Task F1_撤銷只影響自己的key()
+    {
+        await using var redis = _fx.Connect();
+        var store = StoreOn(redis);
+        var mine = Guid.NewGuid().ToString();
+        var other = Guid.NewGuid().ToString();
+        Assert.True(await store.TryMarkAsync(mine, Ttl));
+        Assert.True(await store.TryMarkAsync(other, Ttl));
+
+        await store.RemoveAsync(mine);
+
+        Assert.False(await store.TryMarkAsync(other, Ttl));
     }
 }

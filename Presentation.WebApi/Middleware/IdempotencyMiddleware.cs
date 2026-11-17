@@ -54,6 +54,19 @@ public class IdempotencyMiddleware(RequestDelegate next, IIdempotencyStore store
             return;
         }
 
-        await next(context);
+        // 標記在放行前就寫下：請求若失敗（≥ 400 或例外）要撤銷，否則使用者修正後用同一把 key 重送會被擋 ttl 秒。
+        // 成功才保留；上面「本身就是重複」的 409 已提早 return，不會撤銷到原請求的標記。
+        try
+        {
+            await next(context);
+        }
+        catch
+        {
+            await store.RemoveAsync(key);
+            throw;
+        }
+
+        if (context.Response.StatusCode >= StatusCodes.Status400BadRequest)
+            await store.RemoveAsync(key);
     }
 }
