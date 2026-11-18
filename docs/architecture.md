@@ -102,14 +102,19 @@ Sql.Query<CharacterDbModel>()
 
 **決策原因**：一個 HTTP 請求可能涉及多個 Repository 操作，需保證原子性。
 
-**實作方式**：`UnitOfWorkMiddleware` 在請求進入前開啟 `NpgsqlConnection` + `NpgsqlTransaction`，成功後 commit，例外時 rollback。所有 Repository 共享同一連線。
+**實作方式**：全域 action filter `UnitOfWorkActionFilter` 對寫入請求在 action 執行前開交易，action 執行後、**結果寫出前**依結果 commit／rollback。所有 Repository 共享同一連線。
 
 ```csharp
-// UnitOfWorkMiddleware.cs
-await _unitOfWork.BeginTransactionAsync();
-await next(context);
-await _unitOfWork.CommitAsync();
+// UnitOfWorkActionFilter.cs（節錄）
+await unitOfWork.BeginAsync();
+var executed = await next();                 // 只執行 action，還沒寫回應
+if (失敗：未處理例外 或 狀態碼 >= 400) await unitOfWork.RollbackAsync();
+else await unitOfWork.CommitAsync();         // commit 早於回應送出
 ```
+
+**為什麼不是 middleware**：middleware 包在 MVC 外面，`await next` 回來時回應通常已開始送出——commit 晚於回應，commit 失敗時用戶端已收到 200（2026/11 以整合測試證實，`TransactionBoundaryIntegrationTests`）。放在 action filter，結構上保證 commit 早於回應。取捨：commit 成功但之後序列化回應失敗 → 資料已提交、用戶端收到 5xx（比「收到 200 但沒存」好，重試由冪等／DB 約束擋重複）。
+
+**交易範圍切錯就報錯**：編輯鎖（`pg_advisory_xact_lock`）與 outbox 沒有交易就丟例外（範圍太小）；交易中發對外 HTTP 就丟例外（範圍太大，`NoHttpCallInTransactionHandler`）。需要先呼叫外部服務的端點標 `[NoAmbientTransaction]`、自己管交易（例：登入）。
 
 **連線池 headroom**：目前 Npgsql `Maximum Pool Size`（預設 100）與 Postgres `max_connections`（預設 100）之間沒有預留 headroom。負載測試（`plans/2026-07-28-load-testing.md` Phase 1）確認：backend 自己的請求不會因此失敗——超過 pool 上限的請求在 client 端排隊等連線，只是變慢；真正會被拒絕的是**繞過這個 pool 的外部新連線**（`psql`、migration job 等直接連 Postgres 的操作），backend pool 佔滿 `max_connections` 額度時這些連線會直接收到 `FATAL: sorry, too many clients already`。連線閒置要等 `Connection Idle Lifetime`（預設 300 秒）才會被收回，短時間內連續操作容易疊加占用。正式環境部署前應為 Postgres `max_connections` 保留 headroom（backend pool + migrate + 其他服務 + 保留量 < max_connections），或明確設定 Npgsql `Maximum Pool Size` 上限／縮短 `Connection Idle Lifetime`。
 
@@ -319,7 +324,7 @@ AuthenticationMiddleware     ← 驗證 JWT（玩家）或 SessionId（管理員
 RateLimiter                  ← 登入後按 discordId 限流（100/10s/人，計數存 Redis 固定視窗故跨 pod 共用上限；Redis 掛則 fail-open 放行）；放此處故被擋的請求不白開 DB 交易
   │
   ▼
-UnitOfWorkMiddleware         ← 開啟 DB 事務，成功 Commit，例外 Rollback
+MVC：UnitOfWorkActionFilter  ← 寫入請求開 DB 交易；action 後、寫回應前 Commit／Rollback
   │
   ▼
 Controller / Service
@@ -338,36 +343,36 @@ Controller / Service
 sequenceDiagram
     participant C as Client
     participant MW as Middleware<br/>(Exception→Idempotency→Auth→RateLimiter)
-    participant UoW as UnitOfWorkMiddleware
+    participant UoW as UnitOfWorkActionFilter
     participant Ctrl as Controller / Service
     participant Repo as Repository (Dapper)
     participant DB as PostgreSQL
 
     C->>MW: HTTP 請求
-    Note over MW: 任一中介軟體擋下即短路回應<br/>（不進 UoW、不開交易）
-    MW->>UoW: 通過驗證 / 限流
-    alt 寫入（POST/PUT/PATCH/DELETE）
+    Note over MW: 任一中介軟體擋下即短路回應<br/>（不進 MVC、不開交易）
+    MW->>UoW: 通過驗證 / 限流，路由到 action
+    alt 寫入（POST/PUT/PATCH/DELETE，且未標 NoAmbientTransaction）
         UoW->>DB: BeginTransaction
-        UoW->>Ctrl: next()
+        UoW->>Ctrl: 執行 action
         Ctrl->>Repo: 呼叫 Repository
         Repo->>DB: Dapper 執行 SQL（同一連線／交易）
         DB-->>Repo: 結果
         Repo-->>Ctrl: 物化為實體
-        Ctrl-->>UoW: 回應（設定 status code）
-        alt status < 400
+        Ctrl-->>UoW: action 結果（尚未寫回應）
+        alt 結果狀態碼 < 400
             UoW->>DB: Commit
-        else status >= 400 或拋例外
-            UoW->>DB: Rollback（例外再往外拋）
+        else 狀態碼 >= 400 或未處理例外
+            UoW->>DB: Rollback（例外照常往外拋）
         end
     else 讀取（GET 等）
-        UoW->>Ctrl: next()（不開交易）
+        UoW->>Ctrl: 執行 action（不開交易）
         Ctrl->>Repo: Query
         Repo->>DB: Dapper 讀取（連線自動開／關）
     end
-    UoW-->>C: HTTP 回應
+    UoW-->>C: 寫出 HTTP 回應（一定在 Commit 之後）
 ```
 
-> 交易邊界由中介軟體統一掌控，**Controller／Repository 不碰交易生命週期**——這是 Unit of Work 的核心：一個請求一個交易，成功才 Commit，任何失敗（4xx 或例外）整批 Rollback。詳見上方「關鍵設計決策 §3」。
+> 交易邊界由全域 action filter 統一掌控，**Controller／Repository 不碰交易生命週期**——這是 Unit of Work 的核心：一個請求一個交易，成功才 Commit，任何失敗（4xx 或例外）整批 Rollback。詳見上方「關鍵設計決策 §3」。
 
 ---
 

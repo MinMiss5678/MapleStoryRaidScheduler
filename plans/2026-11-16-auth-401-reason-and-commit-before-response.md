@@ -181,3 +181,20 @@
 - **順手修的測試基礎設施**：新增整合測試後，3 個 `WebApplicationFactory<Program>` 測試類別平行建 host，搶 Program.cs 設的全域 Serilog bootstrap logger → 「The logger is already frozen」。新增 `[Collection("webapp-host")]`（不平行）把三者收進同一集合。正式環境一個行程一個 host，不受影響。
 - 結果：單元 427、整合 88、build 0 警告、`dotnet format` 無差異、本機 E2E 53 passed（`scripts/e2e-local.sh`，playwright exit=0）。
 - 附帶發現（不屬本 PR）：從 Git Bash 執行 `scripts/e2e-local.sh` 時，腳本最後是 `exit 0`，外層卻拿到 1。原因是 WSL 端以 `bash -l` 執行，登出時跑 `~/.bash_logout` 的 `clear_console -q`（沒有終端機而失敗），它的回傳值蓋掉了腳本的結束碼（`bash -l -x` 追蹤已證實）。屬於結束碼傳遞的假紅，另開 PR 處理。
+
+---
+
+## 九、PR ③ 實作紀錄（2026/11/18，C 組，修法 B）
+
+- **先證實**：新增 `Test.Integration/TransactionBoundaryIntegrationTests.cs`（真 MVC 管線＋測試專用 `TxProbeController`＋記錄用假 `IUnitOfWork`，commit 當下記 `Response.HasStarted`）。對舊的 `UnitOfWorkMiddleware` 跑：
+  - C1（POST／PUT／PATCH／DELETE 四種）全紅：`commit(started=True)`——**commit 時回應已開始送出，假設證實**。
+  - C2 紅：commit 失敗時用戶端拿不到 500（回應已開始，例外處理設不了狀態碼）。
+  - C5 紅：序列化失敗時舊做法 rollback（action 其實成功了）。
+  - C3（4xx／例外 → rollback）、C4（GET 不開交易）、C6（`[NoAmbientTransaction]`）綠＝回歸保護。
+- **實作**：新增全域 `Presentation.WebApi/Filters/UnitOfWorkActionFilter.cs`（`IAsyncActionFilter`），`Program.cs` 以 `AddControllers(o => o.Filters.Add<…>())` 註冊；刪除 `UnitOfWorkMiddleware` 與其單元測試（契約全部改由上面的整合測試覆蓋，登入端點標記的反射測試一併搬過去）。
+  - 失敗判斷：未處理例外，或 `IStatusCodeActionResult.StatusCode ≥ 400`；沒有狀態碼的結果視為 200。
+  - `[ApiController]` 的模型驗證 400 由框架 filter 在本 filter 之前短路 → 不開交易（舊做法是開了再 rollback）。
+- 文件：`CLAUDE.md` 請求生命週期、`docs/architecture.md` §3 與管線圖／時序圖、`docs/business-rules.md` T1–T3（新增 T3a、T3b）。
+- 結果：單元 420（刪除 7 支 middleware 單元測試）、整合 99（+11）、build 0 警告、`dotnet format` 無差異。
+- E2E：第一次全套 52 passed＋1 flaky（`leader-led-auto-revoke` 候選頁 5 秒內沒出現 P-Full-A，重試通過；該次全套耗時 2.8 分，平常約 1 分，機器偏慢）；重跑全套 53 passed（1.3 分）。卡住的步驟是候選頁的 GET 讀取，不走交易；此改動只讓寫入的 commit 更早，不會讓讀取看不到資料。未能重現，先記錄。
+- Rider MCP 跑「整合測試全套」連續兩次逾時（同指令在 Bash 72 秒跑完 99/99）；稽核用的綠燈改以分類別跑（含本 PR 動到的類別）取得。
