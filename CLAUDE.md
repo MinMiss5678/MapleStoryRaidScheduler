@@ -73,7 +73,7 @@ Clean Architecture with DDD — dependency flows inward: Presentation → Applic
 
 ### Request Lifecycle
 
-1. `UnitOfWorkMiddleware` opens a DB transaction before the controller runs, commits on success, rolls back on exception.
+1. `UnitOfWorkActionFilter` (global MVC action filter, `Presentation.WebApi/Filters/`) opens a DB transaction for write requests (POST/PUT/PATCH/DELETE) before the action runs and commits/rolls back **after the action, before the result is written** — so the commit always precedes the response (a middleware can't guarantee that; see `plans/2026-11-16-auth-401-reason-and-commit-before-response.md` C 組). Status ≥ 400 or an unhandled exception → rollback. Endpoints that call external services first mark themselves `[NoAmbientTransaction]` and manage their own transaction (e.g. login → `AuthAppService`). Guards: edit lock / outbox throw without a transaction; outgoing `HttpClient` calls throw inside one.
 2. `AuthenticationMiddleware` validates JWT (regular users) or SessionId (admins) and sets `context.User` — **authentication only, returns 401 only**.
    `RoleAuthorizationMiddleware` runs right after it (before the rate limiter) and checks `[AuthorizeRole]` — **authorization only, returns 403**. Keep them separate: an early `await next()` in the authentication middleware can no longer skip authorization (see `plans/2026-11-04-split-authentication-authorization.md`). `[AuthorizeRole]` needs at least one role and can't be stacked on one target; class + method attributes must both pass.
 3. Controllers call **Application service interfaces**; implementations live in `Infrastructure/Services/`.

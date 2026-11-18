@@ -104,9 +104,11 @@
 
 | # | 規則 | 來源 |
 |---|---|---|
-| T1 | 一個 HTTP 請求 = 一個交易（Unit of Work）；所有 Repository 共用同一 scoped 連線/交易 | `UnitOfWorkMiddleware` / `DbContext` |
-| T2 | 寫入請求（POST/PUT/PATCH/DELETE）：status < 400 **Commit**，>= 400 或例外 **Rollback**（例外再往外拋） | `UnitOfWorkMiddleware` |
-| T3 | 讀取請求（GET 等）**不開交易** | `UnitOfWorkMiddleware` |
+| T1 | 一個 HTTP 請求 = 一個交易（Unit of Work）；所有 Repository 共用同一 scoped 連線/交易 | `UnitOfWorkActionFilter` / `DbContext` |
+| T2 | 寫入請求（POST/PUT/PATCH/DELETE）：action 結果 status < 400 **Commit**，>= 400 或未處理例外 **Rollback**（例外照常往外拋）；**Commit 一定早於回應送出** | `UnitOfWorkActionFilter` |
+| T3 | 讀取請求（GET 等）**不開交易** | `UnitOfWorkActionFilter` |
+| T3a | 標 `[NoAmbientTransaction]` 的端點不開共用交易、自己管（先完成外部呼叫才開交易，例：登入） | `UnitOfWorkActionFilter` / `AuthAppService` |
+| T3b | 交易範圍切錯就報錯：編輯鎖、outbox 沒有交易丟例外；交易中發對外 HTTP 丟例外 | `TeamSlotEditLock` / `Outbox` / `NoHttpCallInTransactionHandler` |
 | T4 | 需要「Commit 後才生效」的副作用走 **outbox**：事件與業務資料同一交易寫入 → Commit 才可被派發、Rollback 一起丟棄（無鬼影事件）；投遞由 dispatcher 事後讀已提交列 | `Outbox` / `OutboxDispatcher` |
 
 ## 十、角色（Character）

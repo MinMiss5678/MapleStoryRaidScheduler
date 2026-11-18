@@ -16,6 +16,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using StackExchange.Redis;
 using Presentation.WebApi.Extensions;
+using Presentation.WebApi.Filters;
 using Presentation.WebApi.HealthChecks;
 using Presentation.WebApi.Middleware;
 using Presentation.WebApi.RateLimiting;
@@ -219,7 +220,8 @@ builder.Services.AddRateLimiter(rateLimiterOptions =>
         return ValueTask.CompletedTask;
     };
 });
-builder.Services.AddControllers()
+// 一個寫入請求 = 一個交易：由 action filter 在結果寫出前 commit（見 UnitOfWorkActionFilter）
+builder.Services.AddControllers(options => options.Filters.Add<UnitOfWorkActionFilter>())
     .AddNewtonsoftJson(options =>
     {
         // 將所有 long/ulong 序列化為 string 以避免 JavaScript 精度遺失
@@ -332,7 +334,6 @@ app.UseMiddleware<AuthenticationMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
 // 限流放 Auth 之後（才有 discordId 可分區）、UoW 之前（被擋的請求不白開 DB 交易）
 app.UseRateLimiter();
-app.UseMiddleware<UnitOfWorkMiddleware>();
 app.MapControllers();
 app.Run();
 

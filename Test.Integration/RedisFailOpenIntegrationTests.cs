@@ -123,7 +123,7 @@ public class RedisFailOpenIntegrationTests
             {
                 // 正式的三個 Redis 元件都留著，只把連線換成指向沒有服務的 port（同一套連線設定）
                 services.AddSingleton<IConnectionMultiplexer>(_ => ConnectUnreachable());
-                // 寫入方法會經過 UnitOfWorkMiddleware 開 DB 交易；本測試沒有 DB → 換成 no-op，讓請求走到路由（404）
+                // 本測試沒有 DB：IUnitOfWork 換成 no-op，請求不會因開交易失敗而中斷（交易邊界另見 TransactionBoundaryIntegrationTests）
                 services.AddScoped<IUnitOfWork, NoOpUnitOfWork>();
                 services.PostConfigure<JwtOptions>(o =>
                 {
