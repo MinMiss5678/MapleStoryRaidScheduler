@@ -28,11 +28,16 @@ set -euo pipefail
 # MSYS_NO_PATHCONV：Git Bash 呼叫 Windows 程式時，會把「看起來像 Unix 路徑」的參數改寫
 #   （/ 開頭、= 後面、冒號分隔清單；例：--grep /api/Boss → C:/Program Files/Git/api/Boss）。
 #   Git for Windows 只檢查這個變數「存不存在」，值是多少都會關掉改寫。
+# 結束碼：登入殼層（bash -l）結束時會跑 ~/.bash_logout，Ubuntu 預設內容呼叫 `clear_console -q`，
+#   沒有終端機就失敗；本腳本開了 set -e，這個失敗會讓殼層以 1 結束，蓋掉腳本自己的 exit code
+#   （全過也回 1）。→ 登入殼層只用來載入 profile，接著 `exec` 換成非登入的 bash 跑本腳本，
+#   登入殼層被取代、不會再跑 .bash_logout。-c 的字串是固定的，參數仍以 "$@" 原樣傳遞、不拼字串。
 if ! command -v docker >/dev/null 2>&1 && command -v wsl.exe >/dev/null 2>&1; then
   user_opt=()
   [ -n "${E2E_WSL_USER:-}" ] && user_opt=(-u "$E2E_WSL_USER")
+  # shellcheck disable=SC2016  # $@ 要在 WSL 端展開
   MSYS_NO_PATHCONV=1 exec wsl.exe -d "${E2E_WSL_DISTRO:-Ubuntu}" ${user_opt[@]+"${user_opt[@]}"} \
-    --cd "$(git rev-parse --show-toplevel)" -e bash -l scripts/e2e-local.sh "$@"
+    --cd "$(git rev-parse --show-toplevel)" -e bash -lc 'exec bash scripts/e2e-local.sh "$@"' e2e-local "$@"
 fi
 
 # ---------------------------------------------------------------- 以下在有 docker 的環境執行
